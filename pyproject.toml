@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mbake"
-version = "1.0.1"
+version = "1.0.2"
 description = "A Python-based Makefile formatter and linter"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
-    {name = "Makefmt Contributors"},
+    {name = "mbake Contributors"},
 ]
 keywords = ["makefile", "formatter", "linter", "build-tools"]
 classifiers = [
@@ -55,6 +55,7 @@ Changelog = "https://github.com/ebodshojaei/mbake/releases"
 
 [project.scripts]
 bake = "bake.cli:main"
+mbake = "bake.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["bake"]

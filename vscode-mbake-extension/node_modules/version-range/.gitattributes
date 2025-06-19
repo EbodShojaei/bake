@@ -1,0 +1,8 @@
+# 2024 January 3
+# https://github.com/bevry/base
+
+# never modify any line ending in any file, disregarding all nonsense from eol, autocrlf, renormalize, safecrlf, usecrlfattr, allBinary
+* -text
+
+# =====================================
+# CUSTOM

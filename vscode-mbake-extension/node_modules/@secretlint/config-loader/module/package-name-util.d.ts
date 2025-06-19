@@ -1,0 +1,12 @@
+/**
+ * Remove `prefix` from `text`.
+ */
+export declare const removePrefixFromPackageName: (prefixList: string[], packageName: string) => string;
+/**
+ * Create full package name and return
+ * @param {string} prefix
+ * @param {string} name
+ * @returns {string}
+ */
+export declare const createFullPackageName: (prefix: string, name: string) => string;
+//# sourceMappingURL=package-name-util.d.ts.map

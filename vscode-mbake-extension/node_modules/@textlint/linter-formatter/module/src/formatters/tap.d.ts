@@ -1,0 +1,8 @@
+/**
+ * @fileoverview TAP reporter
+ * @author Jonathan Kingston
+ */
+import type { TextlintResult } from "@textlint/types";
+declare function formatter(results: TextlintResult[]): string;
+export default formatter;
+//# sourceMappingURL=tap.d.ts.map
