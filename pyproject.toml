@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mbake"
-version = "1.0.0"
+version = "1.0.1"
 description = "A Python-based Makefile formatter and linter"
 readme = "README.md"
 license = "MIT"

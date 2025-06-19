@@ -3,7 +3,7 @@
     "displayName": "mbake Makefile Formatter",
     "description": "Format Makefiles using the mbake formatter",
     "version": "1.0.0",
-    "publisher": "mbake-dev",
+    "publisher": "eshojaei",
     "engines": {
         "vscode": "^1.60.0"
     },
