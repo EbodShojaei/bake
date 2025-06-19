@@ -1,0 +1,157 @@
+{
+    "name": "mbake-makefile-formatter",
+    "displayName": "mbake Makefile Formatter",
+    "description": "Format Makefiles using the mbake formatter",
+    "version": "1.0.0",
+    "publisher": "mbake-dev",
+    "engines": {
+        "vscode": "^1.60.0"
+    },
+    "categories": [
+        "Formatters",
+        "Other"
+    ],
+    "keywords": [
+        "makefile",
+        "formatter",
+        "mbake",
+        "build",
+        "make"
+    ],
+    "activationEvents": [
+        "onLanguage:makefile"
+    ],
+    "main": "./extension.js",
+    "contributes": {
+        "languages": [
+            {
+                "id": "makefile",
+                "aliases": [
+                    "Makefile",
+                    "makefile"
+                ],
+                "extensions": [
+                    ".mk",
+                    ".make"
+                ],
+                "filenames": [
+                    "Makefile",
+                    "makefile",
+                    "GNUmakefile"
+                ]
+            }
+        ],
+        "commands": [
+            {
+                "command": "mbake.formatMakefile",
+                "title": "Format Makefile",
+                "category": "mbake"
+            },
+            {
+                "command": "mbake.checkMakefile",
+                "title": "Check Makefile Formatting",
+                "category": "mbake"
+            },
+            {
+                "command": "mbake.initConfig",
+                "title": "Initialize Configuration",
+                "category": "mbake"
+            }
+        ],
+        "menus": {
+            "editor/context": [
+                {
+                    "command": "mbake.formatMakefile",
+                    "when": "resourceLangId == makefile",
+                    "group": "1_modification"
+                },
+                {
+                    "command": "mbake.checkMakefile",
+                    "when": "resourceLangId == makefile",
+                    "group": "1_modification"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "mbake.formatMakefile",
+                    "when": "resourceLangId == makefile"
+                },
+                {
+                    "command": "mbake.checkMakefile",
+                    "when": "resourceLangId == makefile"
+                },
+                {
+                    "command": "mbake.initConfig"
+                }
+            ]
+        },
+        "keybindings": [
+            {
+                "command": "mbake.formatMakefile",
+                "key": "shift+alt+f",
+                "when": "resourceLangId == makefile && editorTextFocus"
+            }
+        ],
+        "configuration": {
+            "title": "mbake",
+            "properties": {
+                "mbake.executablePath": {
+                    "type": "string",
+                    "default": "bake",
+                    "description": "Path to the bake executable. Use 'bake' if it's in your PATH, or provide the full path."
+                },
+                "mbake.configPath": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Path to the bake configuration file. Leave empty to use default (~/.bake.toml)."
+                },
+                "mbake.formatOnSave": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Automatically format Makefiles on save."
+                },
+                "mbake.showDiff": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Show diff of changes when formatting."
+                },
+                "mbake.verbose": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable verbose output."
+                },
+                "mbake.autoInit": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically offer to initialize configuration when missing."
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "echo 'No compilation needed for JavaScript'",
+        "watch": "echo 'No watch needed for JavaScript'",
+        "package": "vsce package"
+    },
+    "devDependencies": {
+        "@types/node": "^16.x",
+        "@types/vscode": "^1.60.0",
+        "@vscode/vsce": "^3.5.0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/ebodshojaei/mbake.git",
+        "directory": "vscode-mbake-extension"
+    },
+    "homepage": "https://github.com/ebodshojaei/mbake#readme",
+    "bugs": {
+        "url": "https://github.com/ebodshojaei/mbake/issues"
+    },
+    "license": "MIT",
+    "icon": "icon.png",
+    "galleryBanner": {
+        "color": "#1e1e1e",
+        "theme": "dark"
+    }
+}

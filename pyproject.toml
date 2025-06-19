@@ -1,0 +1,150 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mbake"
+version = "1.0.0"
+description = "A Python-based Makefile formatter and linter"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    {name = "Makefmt Contributors"},
+]
+keywords = ["makefile", "formatter", "linter", "build-tools"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console", 
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Text Processing :: Markup",
+]
+dependencies = [
+    "typer[all] >= 0.9.0",
+    "rich >= 13.0.0",
+    "tomli >= 1.2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest >= 7.0.0",
+    "pytest-cov >= 4.0.0",
+    "black >= 23.0.0",
+    "ruff >= 0.1.0",
+    "mypy >= 1.0.0",
+    "pre-commit >= 3.0.0",
+    "tomli >= 1.2.0",  # For type checking support
+]
+
+[project.urls]
+Homepage = "https://github.com/ebodshojaei/mbake"
+Documentation = "https://github.com/ebodshojaei/mbake#readme"
+Repository = "https://github.com/ebodshojaei/mbake"
+"Bug Tracker" = "https://github.com/ebodshojaei/mbake/issues"
+Changelog = "https://github.com/ebodshojaei/mbake/releases"
+"Funding" = "https://github.com/sponsors/ebodshojaei"
+
+[project.scripts]
+bake = "bake.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bake"]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle
+    "F",  # pyflakes
+    "UP", # pyupgrade
+    "B",  # flake8-bugbear
+    "SIM", # flake8-simplify
+    "I",  # isort
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint.isort]
+known-first-party = ["bake"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = [
+    "tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["bake"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+] 
