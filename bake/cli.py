@@ -11,6 +11,7 @@ from rich.logging import RichHandler
 
 from .config import Config
 from .core.formatter import MakefileFormatter
+from . import __version__
 
 app = typer.Typer(
     name="bake",
@@ -18,6 +19,25 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+
+
+def version_callback(value: bool):
+    """Show version and exit."""
+    if value:
+        console.print(f"mbake version {__version__}")
+        raise typer.Exit()
+
+
+# Add version option to the main app
+@app.callback()
+def main_callback(
+    version: Optional[bool] = typer.Option(
+        None, "--version", callback=version_callback, is_eager=True,
+        help="Show version and exit"
+    )
+):
+    """Main callback for version handling."""
+    pass
 
 DEFAULT_CONFIG = """# mbake configuration file
 # Generated with: bake init
