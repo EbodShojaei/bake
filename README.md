@@ -52,21 +52,21 @@ bake applies the following formatting rules:
 pip install mbake
 ```
 
-### Option 2: Homebrew (macOS/Linux)
+<!-- ### Option 2: Homebrew (macOS/Linux)
 
 ```bash
 brew tap ebodshojaei/mbake
 brew install mbake
-```
+``` -->
 
-### Option 3: VSCode Extension
+### Option 2: VSCode Extension
 
 1. Open VSCode
 2. Go to Extensions (Ctrl+Shift+X)
 3. Search for "mbake Makefile Formatter"
 4. Click Install
 
-### Option 4: From Source
+### Option 3: From Source
 
 ```bash
 git clone https://github.com/ebodshojaei/mbake.git
@@ -318,7 +318,7 @@ mypy bake
 
 bake follows a modular, plugin-based architecture:
 
-```
+```text
 bake/
 ├── __init__.py          # Package initialization
 ├── cli.py               # Command-line interface
