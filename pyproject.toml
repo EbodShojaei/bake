@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mbake"
-version = "1.0.6"
+version = "1.1.0"
 description = "A Python-based Makefile formatter and linter"
 readme = "README.md"
 license = "MIT"
@@ -46,11 +46,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ebodshojaei/mbake"
-Documentation = "https://github.com/ebodshojaei/mbake#readme"
-Repository = "https://github.com/ebodshojaei/mbake"
-"Bug Tracker" = "https://github.com/ebodshojaei/mbake/issues"
-Changelog = "https://github.com/ebodshojaei/mbake/releases"
+Homepage = "https://github.com/EbodShojaei/bake"
+Documentation = "https://github.com/EbodShojaei/bake#readme"
+Repository = "https://github.com/EbodShojaei/bake"
+"Bug Tracker" = "https://github.com/EbodShojaei/bake/issues"
+Changelog = "https://github.com/EbodShojaei/bake/releases"
 "Funding" = "https://github.com/sponsors/ebodshojaei"
 
 [project.scripts]
