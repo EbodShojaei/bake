@@ -21,7 +21,7 @@ app = typer.Typer(
 console = Console()
 
 
-def version_callback(value: bool):
+def version_callback(value: bool) -> None:
     """Show version and exit."""
     if value:
         console.print(f"mbake version {__version__}")
@@ -38,7 +38,7 @@ def main_callback(
         is_eager=True,
         help="Show version and exit",
     )
-):
+) -> None:
     """Main callback for version handling."""
     pass
 
