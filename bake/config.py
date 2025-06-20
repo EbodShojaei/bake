@@ -1,13 +1,14 @@
-"""Configuration loading for makefmt."""
+"""Configuration loading for mbake."""
 
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-try:
-    import tomllib  # type: ignore[import-not-found]
-except ImportError:
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
     import tomli as tomllib
-from dataclasses import dataclass
 
 
 @dataclass
@@ -30,6 +31,7 @@ class FormatterConfig:
     # PHONY settings
     group_phony_declarations: bool = True
     phony_at_top: bool = True
+    auto_insert_phony_declarations: bool = False
 
     # General settings
     remove_trailing_whitespace: bool = True
@@ -77,6 +79,7 @@ class Config:
             "max_line_length",
             "group_phony_declarations",
             "phony_at_top",
+            "auto_insert_phony_declarations",
             "remove_trailing_whitespace",
             "ensure_final_newline",
             "normalize_empty_lines",
@@ -118,6 +121,7 @@ class Config:
                 "max_line_length": self.formatter.max_line_length,
                 "group_phony_declarations": self.formatter.group_phony_declarations,
                 "phony_at_top": self.formatter.phony_at_top,
+                "auto_insert_phony_declarations": self.formatter.auto_insert_phony_declarations,
                 "remove_trailing_whitespace": self.formatter.remove_trailing_whitespace,
                 "ensure_final_newline": self.formatter.ensure_final_newline,
                 "normalize_empty_lines": self.formatter.normalize_empty_lines,

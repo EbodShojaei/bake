@@ -17,6 +17,7 @@ A **Python-based Makefile formatter and linter** that enforces consistent format
 - **⚡ Fast & Reliable**: Written in Python with comprehensive test coverage
 - **✅ Syntax Validation**: Ensures Makefiles have correct syntax before and after formatting
 - **🔄 Shell Completion**: Auto-completion support for bash, zsh, and fish
+- **🎯 Smart .PHONY Detection**: Automatically inserts and enhances `.PHONY` declarations using dynamic analysis
 
 ## 🛠️ Formatting Rules
 
@@ -37,7 +38,9 @@ mbake applies the following formatting rules:
 ### .PHONY Declarations
 
 - **Grouping**: Consolidates multiple `.PHONY` declarations
-- **Auto-detection**: Automatically identifies phony targets when `.PHONY` already exists
+- **Auto-insertion**: Automatically detects and inserts `.PHONY` declarations when missing (opt-in)
+- **Dynamic enhancement**: Enhances existing `.PHONY` declarations with additional detected phony targets
+- **Rule-based analysis**: Uses command analysis to determine if targets are phony (no hardcoded lists)
 - **Minimal changes**: Only modifies `.PHONY` lines, preserves file structure
 
 ## 📦 Installation
@@ -192,6 +195,7 @@ max_line_length = 120
 # PHONY settings
 group_phony_declarations = true
 phony_at_top = true
+auto_insert_phony_declarations = false  # Enable to auto-insert .PHONY declarations
 
 # General settings
 remove_trailing_whitespace = true
@@ -204,9 +208,122 @@ debug = false
 verbose = false
 ```
 
+## 🎯 Smart .PHONY Detection
+
+mbake includes intelligent `.PHONY` detection that can automatically identify and manage phony targets in your Makefiles.
+
+### How It Works
+
+The detection uses **dynamic analysis** of recipe commands rather than hardcoded target names:
+
+- **Command Analysis**: Examines what each target's recipe actually does
+- **File Creation Detection**: Identifies if commands create files with the target name
+- **Pattern Recognition**: Understands compilation patterns, redirections, and common tools
+
+### Examples
+
+#### Docker/Container Targets
+
+```makefile
+# These are detected as phony because they manage containers, not files
+up:
+ docker compose up -d
+
+down:
+ docker compose down -v
+
+logs:
+ docker compose logs -f
+```
+
+#### Build/Development Targets  
+
+```makefile
+# These are detected as phony because they don't create files with their names
+test:
+ npm test
+
+lint:
+ eslint src/
+
+deploy:
+ ssh user@server 'systemctl restart myapp'
+```
+
+#### File vs Phony Target Detection
+
+```makefile
+# NOT phony - creates myapp.o file
+myapp.o: myapp.c
+ gcc -c myapp.c -o myapp.o
+
+# Phony - removes files, doesn't create "clean"
+clean:
+ rm -f *.o myapp
+```
+
+### Configuration
+
+Enable auto-insertion in your `~/.bake.toml`:
+
+```toml
+[formatter]
+auto_insert_phony_declarations = true
+```
+
+### Behavior Modes
+
+**Default (Conservative)**:
+
+- Groups existing `.PHONY` declarations
+- No automatic insertion or enhancement
+- Backwards compatible
+
+**Enhanced (auto_insert_phony_declarations = true)**:
+
+- Automatically inserts `.PHONY` when missing
+- Enhances existing `.PHONY` with detected targets
+- Uses dynamic analysis for accurate detection
+
+### Before and After
+
+**Input** (no `.PHONY`):
+
+```makefile
+setup:
+ docker compose up -d
+ npm install
+
+test:
+ npm test
+
+clean:
+ docker compose down -v
+ rm -rf node_modules
+```
+
+**Output** (with auto-insertion enabled):
+
+```makefile
+.PHONY: clean setup test
+
+setup:
+ docker compose up -d
+ npm install
+
+test:
+ npm test
+
+clean:
+ docker compose down -v
+ rm -rf node_modules
+```
+
 ## 🔧 Examples
 
-### Before Formatting
+### Basic Formatting
+
+**Before Formatting:**
 
 ```makefile
 # Inconsistent spacing and indentation
@@ -225,7 +342,7 @@ clean:
     rm -f *.o
 ```
 
-### After Formatting
+**After Formatting:**
 
 ```makefile
 # Clean, consistent formatting
@@ -240,6 +357,50 @@ all: $(TARGET)
 
 clean:
  rm -f *.o
+```
+
+### Auto-Insertion Example
+
+**Before** (with `auto_insert_phony_declarations = true`):
+
+```makefile
+# Docker development workflow
+setup:
+ docker compose down -v
+ docker compose up -d
+ @echo "Services ready!"
+
+build:
+ docker compose build --no-cache
+
+test:
+ docker compose exec app npm test
+
+clean:
+ docker compose down -v
+ docker system prune -af
+```
+
+**After**:
+
+```makefile
+# Docker development workflow
+.PHONY: build clean setup test
+
+setup:
+ docker compose down -v
+ docker compose up -d
+ @echo "Services ready!"
+
+build:
+ docker compose build --no-cache
+
+test:
+ docker compose exec app npm test
+
+clean:
+ docker compose down -v
+ docker system prune -af
 ```
 
 ## 🚦 CI/CD Integration
@@ -373,6 +534,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - ✅ **Tab indentation handling**
 - ✅ **Whitespace management**
 - ✅ **Line continuation formatting**
+- ✅ **Smart .PHONY detection and auto-insertion**
 - ✅ **Makefile syntax validation**
 - ✅ **Shell completion support**
 - ✅ **CI/CD integration**

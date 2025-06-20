@@ -183,7 +183,7 @@ This test demonstrates:
 
 ### Expected Output
 
-```
+```text
 🍞 Simple Bake Functionality Test
 ==================================================
 Original content:
@@ -214,7 +214,7 @@ clean:
 
 ## 🏗️ Project Structure
 
-```
+```text
 bake_fmt/
 ├── bake/                          # Main Python package
 │   ├── cli.py                     # Command-line interface
@@ -273,25 +273,25 @@ Now every time you save a Makefile, it's automatically formatted!
 
 ### Terminal Issues
 
-**"bake command not found"**
+**"bake command not found":**
 
 - Check if bake is in your PATH: `which bake`
 - Reinstall if needed: `pip install -e .`
 
-**Configuration errors**
+**Configuration errors:**
 
 - Ensure `~/.bake.toml` exists and is valid TOML
 - Use the provided example: `cp .bake.toml.example ~/.bake.toml`
 
 ### VS Code Extension Issues
 
-**Extension not activating**
+**Extension not activating:**
 
 - Ensure your file is recognized as a Makefile
 - Check the language mode in VS Code's bottom-right corner
 - Manually set language to "Makefile" if needed
 
-**Command not found**
+**Command not found:**
 
 - Set `bake.executablePath` to the full path: `/path/to/bake`
 - Verify bake is accessible: open terminal in VS Code and run `bake --help`

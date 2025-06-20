@@ -63,6 +63,7 @@ max_line_length = 120
 # PHONY settings
 group_phony_declarations = true
 phony_at_top = true
+auto_insert_phony_declarations = false
 
 # General settings
 remove_trailing_whitespace = true
@@ -181,6 +182,11 @@ def config(
                 "phony_at_top",
                 config.formatter.phony_at_top,
                 "Place .PHONY at top of file",
+            ),
+            (
+                "auto_insert_phony_declarations",
+                config.formatter.auto_insert_phony_declarations,
+                "Auto-insert .PHONY declarations",
             ),
             (
                 "remove_trailing_whitespace",

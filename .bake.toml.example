@@ -19,6 +19,7 @@ max_line_length = 120
 # PHONY settings
 group_phony_declarations = true
 phony_at_top = true
+auto_insert_phony_declarations = true
 
 # General settings
 remove_trailing_whitespace = true

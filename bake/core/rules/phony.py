@@ -2,6 +2,8 @@
 
 import re
 
+from bake.utils.line_utils import MakefileParser
+
 from ...plugins.base import FormatResult, FormatterPlugin
 
 
@@ -146,7 +148,7 @@ class PhonyRule(FormatterPlugin):
             # Group multiple .PHONY declarations at the top
             formatted_lines = []
             phony_inserted = False
-            insert_index = self._find_insertion_point(lines)
+            insert_index = MakefileParser.find_phony_insertion_point(lines)
 
             for i, line in enumerate(lines):
                 if i == insert_index and not phony_inserted:
@@ -186,28 +188,6 @@ class PhonyRule(FormatterPlugin):
         return FormatResult(
             lines=formatted_lines, changed=changed, errors=errors, warnings=warnings
         )
-
-    def _find_insertion_point(self, lines: list[str]) -> int:
-        """Find the best place to insert .PHONY declarations at the top."""
-        # Skip initial comments and variable declarations
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-
-            # Skip empty lines, comments, and variable assignments
-            if (
-                not stripped
-                or stripped.startswith("#")
-                or "=" in stripped
-                or stripped.startswith("include")
-                or stripped.startswith("-include")
-            ):
-                continue
-
-            # This looks like the first rule, insert here
-            return i
-
-        # If we get here, insert at the end
-        return len(lines)
 
     def _extract_phony_targets(self, line: str) -> list[str]:
         """Extract target names from a .PHONY line."""

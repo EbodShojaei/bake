@@ -12,6 +12,8 @@ from .rules import (
     ContinuationRule,
     DuplicateTargetRule,
     PatternSpacingRule,
+    PhonyDetectionRule,
+    PhonyInsertionRule,
     PhonyRule,
     ShellFormattingRule,
     TabsRule,
@@ -39,25 +41,28 @@ class MakefileFormatter:
     def __init__(self, config: Config):
         """Initialize formatter with configuration."""
         self.config = config
-        self.rules = self._initialize_rules()
 
-    def _initialize_rules(self) -> list[FormatterPlugin]:
-        """Initialize all formatting rules in proper order."""
-        rules = [
-            TabsRule(),
-            ShellFormattingRule(),
-            AssignmentSpacingRule(),
-            PatternSpacingRule(),
-            TargetSpacingRule(),
-            ContinuationRule(),
-            ConditionalRule(),
-            PhonyRule(),
-            DuplicateTargetRule(),
-            WhitespaceRule(),
+        # Initialize all formatting rules with correct priority order
+        self.rules: list[FormatterPlugin] = [
+            # Basic formatting rules (high priority)
+            WhitespaceRule(),  # priority 10
+            TabsRule(),  # priority 20
+            ShellFormattingRule(),  # priority 25
+            AssignmentSpacingRule(),  # priority 30
+            TargetSpacingRule(),  # priority 35
+            PatternSpacingRule(),  # priority 37
+            # PHONY-related rules (run in sequence)
+            PhonyInsertionRule(),  # priority 39 - auto-insert first
+            PhonyRule(),  # priority 40 - group/organize
+            PhonyDetectionRule(),  # priority 41 - enhance after grouping
+            # Advanced rules
+            ContinuationRule(),  # priority 50
+            ConditionalRule(),  # priority 55
+            DuplicateTargetRule(),  # priority 60
         ]
 
-        # Sort by priority (lower number = higher priority)
-        return sorted(rules, key=lambda r: r.priority)
+        # Sort rules by priority
+        self.rules.sort(key=lambda rule: rule.priority)
 
     def register_rule(self, rule: FormatterPlugin) -> None:
         """Register a custom formatting rule."""
@@ -123,45 +128,23 @@ class MakefileFormatter:
             return False, [error_msg]
 
     def format_lines(self, lines: list[str]) -> tuple[list[str], list[str]]:
-        """Apply all formatting rules to lines.
-
-        Args:
-            lines: List of lines to format
-
-        Returns:
-            Tuple of (formatted_lines, errors)
-        """
-        current_lines = lines[:]
-        all_errors = []
-
+        """Format makefile lines and return formatted lines and errors."""
         # Convert config to dict for rules
         config_dict = self.config.to_dict()["formatter"]
 
+        formatted_lines = lines.copy()
+        all_errors = []
+
         for rule in self.rules:
-            try:
-                if self.config.debug:
-                    logger.debug(f"Applying rule: {rule.name}")
+            result = rule.format(formatted_lines, config_dict)
+            if result.changed:
+                formatted_lines = result.lines
+            all_errors.extend(result.errors)
 
-                result = rule.format(current_lines, config_dict)
-                current_lines = result.lines
-                all_errors.extend(result.errors)
+        # Apply final cleanup
+        formatted_lines = self._final_cleanup(formatted_lines, config_dict)
 
-                if result.warnings and self.config.verbose:
-                    for warning in result.warnings:
-                        logger.warning(f"{rule.name}: {warning}")
-
-                if result.changed and self.config.debug:
-                    logger.debug(f"Rule {rule.name} made changes")
-
-            except Exception as e:
-                error_msg = f"Error in rule {rule.name}: {e}"
-                logger.error(error_msg)
-                all_errors.append(error_msg)
-
-        # Final cleanup
-        current_lines = self._final_cleanup(current_lines, config_dict)
-
-        return current_lines, all_errors
+        return formatted_lines, all_errors
 
     def _final_cleanup(self, lines: list[str], config: dict) -> list[str]:
         """Apply final cleanup steps."""

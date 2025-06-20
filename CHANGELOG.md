@@ -2,9 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.0] - 2024-01-XX
+## [1.1.1]
 
-### Added
+- **Smart .PHONY Detection**: Intelligent automatic detection and insertion of `.PHONY` declarations
+  - Dynamic analysis of recipe commands to determine if targets are phony
+  - Rule-based detection without hardcoded target lists
+  - Supports modern development workflows (Docker, npm, build tools)
+  - Opt-in via `auto_insert_phony_declarations = true` configuration
+- **Enhanced .PHONY Management**:
+  - Automatic enhancement of existing `.PHONY` declarations with detected targets
+  - Preserves backwards compatibility with conservative default behavior
+  - Sophisticated command analysis for accurate file creation detection
+
+### Improved
+
+- **DRY Code Architecture**: Refactored phony-related rules to use centralized utilities
+  - New `MakefileParser` class for target parsing
+  - New `PhonyAnalyzer` class for phony target analysis  
+  - Reduced code duplication by 52% (359 lines eliminated)
+  - Improved maintainability and testability
+- **Detection Accuracy**: Fixed variable cleaning bug in command analysis
+- **Documentation**: Updated README with comprehensive Smart .PHONY Detection section
+
+### Technical
+
+- **Separated Concerns**: Split phony functionality into focused plugins:
+  - `PhonyRule`: Groups existing `.PHONY` declarations (original behavior)
+  - `PhonyInsertionRule`: Auto-inserts `.PHONY` when missing
+  - `PhonyDetectionRule`: Enhances existing `.PHONY` with detected targets
+- **Comprehensive Testing**: Added 12 new auto-insertion specific tests
+- **Edge Case Coverage**: Handles Docker targets, compilation patterns, shell commands
+
+## [1.0.0]
 
 - **Core Formatting Engine**: Complete Makefile formatter with rule-based architecture
 - **Command Line Interface**: Rich CLI with Typer framework
@@ -60,4 +89,5 @@ All notable changes to this project will be documented in this file.
 - **VSCode Extension**: Ready for Visual Studio Code Marketplace
 - **GitHub Actions**: Automated CI/CD and publishing workflows
 
+[1.1.1]: https://github.com/ebodshojaei/mbake/releases/tag/v1.1.1
 [1.0.0]: https://github.com/ebodshojaei/mbake/releases/tag/v1.0.0
