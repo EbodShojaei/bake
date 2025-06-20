@@ -206,7 +206,7 @@ class TestMakefileFormatter:
         assert changed  # Should have made changes
 
         # Check file was actually modified
-        content = test_file.read_text()
+        content = test_file.read_text(encoding="utf-8")
         assert "VAR := value" in content
         assert "\techo 'hello'" in content
 
@@ -225,7 +225,7 @@ class TestMakefileFormatter:
         assert changed  # Should detect changes needed
 
         # Check file was NOT modified
-        assert test_file.read_text() == original_content
+        assert test_file.read_text(encoding="utf-8") == original_content
 
 
 class TestIntegration:

@@ -333,13 +333,13 @@ def format(
                     backup_path = file_path.with_suffix(
                         f"{file_path.suffix}.{timestamp}.bak"
                     )
-                    backup_path.write_text(file_path.read_text())
+                    backup_path.write_text(file_path.read_text(encoding="utf-8"))
                     if verbose:
                         console.print(f"[dim]Created backup: {backup_path}[/dim]")
 
                 # Show diff if requested
                 if diff:
-                    original_content = file_path.read_text()
+                    original_content = file_path.read_text(encoding="utf-8")
                     formatted_lines, errors = formatter.format_lines(
                         original_content.splitlines()
                     )

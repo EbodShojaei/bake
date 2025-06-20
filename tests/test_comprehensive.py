@@ -31,8 +31,8 @@ class TestRecipeTabs:
         expected_file = Path("tests/fixtures/recipe_tabs/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -75,8 +75,8 @@ class TestVariableAssignments:
         expected_file = Path("tests/fixtures/variable_assignments/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -131,8 +131,8 @@ class TestConditionalBlocks:
         expected_file = Path("tests/fixtures/conditional_blocks/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -170,8 +170,8 @@ class TestLineContinuations:
         expected_file = Path("tests/fixtures/line_continuations/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -210,8 +210,8 @@ class TestPhonyTargets:
         expected_file = Path("tests/fixtures/phony_targets/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -253,8 +253,8 @@ class TestWhitespaceNormalization:
         expected_file = Path("tests/fixtures/whitespace_normalization/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -287,8 +287,8 @@ class TestPatternRules:
         expected_file = Path("tests/fixtures/pattern_rules/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -324,8 +324,8 @@ class TestTargetSpacing:
         expected_file = Path("tests/fixtures/target_spacing/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -345,8 +345,8 @@ class TestShellFormatting:
         expected_file = Path("tests/fixtures/shell_formatting/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -366,8 +366,8 @@ class TestMakefileVariablesInShell:
         expected_file = Path("tests/fixtures/makefile_vars_in_shell/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -387,8 +387,8 @@ class TestComplexFormatting:
         expected_file = Path("tests/fixtures/complex/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -585,8 +585,8 @@ class TestMultilineVariables:
         expected_file = Path("tests/fixtures/multiline_variables/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -606,8 +606,8 @@ class TestFunctionCalls:
         expected_file = Path("tests/fixtures/function_calls/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -627,8 +627,8 @@ class TestCommentsAndDocumentation:
         expected_file = Path("tests/fixtures/comments_and_documentation/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -648,8 +648,8 @@ class TestAdvancedTargets:
         expected_file = Path("tests/fixtures/advanced_targets/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -669,8 +669,8 @@ class TestIncludesAndExports:
         expected_file = Path("tests/fixtures/includes_and_exports/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -690,8 +690,8 @@ class TestErrorHandlingFixtures:
         expected_file = Path("tests/fixtures/error_handling/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -711,8 +711,8 @@ class TestRealWorldComplex:
         expected_file = Path("tests/fixtures/real_world_complex/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -732,8 +732,8 @@ class TestEdgeCasesAndQuirks:
         expected_file = Path("tests/fixtures/edge_cases_and_quirks/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
@@ -753,8 +753,8 @@ class TestUnicodeAndEncoding:
         expected_file = Path("tests/fixtures/unicode_and_encoding/expected.mk")
 
         if input_file.exists() and expected_file.exists():
-            input_lines = input_file.read_text().splitlines()
-            expected_lines = expected_file.read_text().splitlines()
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
