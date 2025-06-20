@@ -1,4 +1,4 @@
-# mbake
+# 🍞 mbake
 
 A **Python-based Makefile formatter and linter** that enforces consistent formatting according to Makefile best practices. It only took 50 years!
 
@@ -14,20 +14,17 @@ A **Python-based Makefile formatter and linter** that enforces consistent format
 - **🚦 CI/CD Integration**: Check mode for continuous integration pipelines
 - **🔌 Plugin Architecture**: Extensible rule system for custom formatting needs
 - **🎨 Beautiful CLI**: Rich terminal output with colors and progress indicators
-- **⚡ Fast & Reliable**: Written in Python with comprehensive test coverage (100% pass rate)
-- **✅ Execution Validated**: Ensures formatted Makefiles run correctly with proper cleanup
+- **⚡ Fast & Reliable**: Written in Python with comprehensive test coverage
+- **✅ Syntax Validation**: Ensures Makefiles have correct syntax before and after formatting
+- **🔄 Shell Completion**: Auto-completion support for bash, zsh, and fish
 
 ## 🛠️ Formatting Rules
 
-bake applies the following formatting rules:
+mbake applies the following formatting rules:
 
-### Indentation
+### Indentation & Spacing
 
 - **Tabs for recipes**: Ensures all recipe lines use tabs instead of spaces
-- **Configurable tab width**: Customize tab-to-space conversion (default: 4)
-
-### Spacing
-
 - **Assignment operators**: Normalizes spacing around `:=`, `=`, `+=`, `?=`
 - **Target colons**: Consistent spacing around target dependency colons
 - **Trailing whitespace**: Removes unnecessary trailing spaces
@@ -36,13 +33,12 @@ bake applies the following formatting rules:
 
 - **Backslash normalization**: Proper spacing around backslash continuations
 - **Smart joining**: Consolidates simple continuations while preserving complex structures
-- **Multi-line formatting**: Clean alignment of continuation lines
 
 ### .PHONY Declarations
 
 - **Grouping**: Consolidates multiple `.PHONY` declarations
-- **Placement**: Configurable positioning (top of file or near targets)
-- **Sorting**: Alphabetical ordering of PHONY targets
+- **Auto-detection**: Automatically identifies phony targets when `.PHONY` already exists
+- **Minimal changes**: Only modifies `.PHONY` lines, preserves file structure
 
 ## 📦 Installation
 
@@ -51,13 +47,6 @@ bake applies the following formatting rules:
 ```bash
 pip install mbake
 ```
-
-<!-- ### Option 2: Homebrew (macOS/Linux)
-
-```bash
-brew tap ebodshojaei/mbake
-brew install mbake
-``` -->
 
 ### Option 2: VSCode Extension
 
@@ -82,22 +71,105 @@ cd mbake
 pip install -e ".[dev]"
 ```
 
-## ⚙️ Configuration
+## 🚀 Usage
 
-bake can work with default settings out-of-the-box, but you can customize it with a configuration file. Generate one with:
+mbake uses a subcommand-based CLI structure. All commands support both `bake` and `mbake` aliases.
+
+### Quick Start
 
 ```bash
+# Check version
+bake --version
+
+# Initialize configuration (optional)
 bake init
+
+# Format a Makefile
+bake format Makefile
+
+# Validate Makefile syntax
+bake validate Makefile
 ```
 
-If no configuration file exists, bake will use sensible defaults and continue working. You can also view your current configuration:
+### Configuration Management
 
 ```bash
+# Initialize configuration file with defaults
+bake init
+
+# Initialize with custom path or force overwrite
+bake init --config /path/to/config.toml --force
+
 # Show current configuration
 bake config
 
-# Show config file path
+# Show configuration file path
 bake config --path
+
+# Use custom configuration file
+bake config --config /path/to/config.toml
+```
+
+### Formatting Files
+
+```bash
+# Format a single Makefile
+bake format Makefile
+
+# Format multiple files
+bake format Makefile src/Makefile tests/*.mk
+
+# Check if files need formatting (CI/CD mode)
+bake format --check Makefile
+
+# Show diff of changes without modifying files
+bake format --diff Makefile
+
+# Format with verbose output
+bake format --verbose Makefile
+
+# Create backup before formatting
+bake format --backup Makefile
+
+# Validate syntax after formatting
+bake format --validate Makefile
+
+# Use custom configuration
+bake format --config /path/to/config.toml Makefile
+```
+
+### Syntax Validation
+
+```bash
+# Validate single file
+bake validate Makefile
+
+# Validate multiple files
+bake validate Makefile src/Makefile tests/*.mk
+
+# Validate with verbose output
+bake validate --verbose Makefile
+
+# Use custom configuration
+bake validate --config /path/to/config.toml Makefile
+```
+
+### Shell Completion
+
+```bash
+# Install completion for current shell
+bake --install-completion
+
+# Show completion script (for manual installation)
+bake --show-completion
+```
+
+## ⚙️ Configuration
+
+mbake works with sensible defaults out-of-the-box. Generate a configuration file with:
+
+```bash
+bake init
 ```
 
 ### Sample Configuration
@@ -130,66 +202,6 @@ max_consecutive_empty_lines = 2
 # Global settings
 debug = false
 verbose = false
-```
-
-## 🚀 Usage
-
-### Format Files
-
-```bash
-# Format a single Makefile
-bake Makefile
-
-# Format multiple files
-bake Makefile src/Makefile tests/*.mk
-
-# Format with verbose output
-bake --verbose Makefile
-
-# Create backup before formatting
-bake --backup Makefile
-
-# Format in-place (default behavior)
-bake Makefile
-```
-
-### Check Mode (CI/CD)
-
-```bash
-# Check if files need formatting (exit code 1 if changes needed)
-bake --check Makefile
-
-# Dry run to see what changes would be made
-bake --diff Makefile
-```
-
-### Validation & Testing
-
-```bash
-# Validate Makefile syntax after formatting
-bake format --validate Makefile
-
-# Check Makefile syntax separately
-bake validate Makefile
-
-# Get improved timestamps for backups
-bake format --backup Makefile
-```
-
-### Configuration Management
-
-```bash
-# Initialize configuration file with defaults
-bake init
-
-# Show current configuration
-bake config
-
-# Show configuration file path
-bake config --path
-
-# Use custom configuration file
-bake format --config /path/to/config.toml Makefile
 ```
 
 ## 🔧 Examples
@@ -230,48 +242,23 @@ clean:
  rm -f *.o
 ```
 
-## ✅ Execution Validation
+## 🚦 CI/CD Integration
 
-bake ensures that formatted Makefiles not only look good but also **execute correctly**:
+Use mbake in your continuous integration pipelines:
 
-### Validation Features
-
-- **Syntax verification**: Ensures make can parse the formatted file
-- **Target execution**: Tests that common targets (build, clean, test) work
-- **Cleanup verification**: Confirms temporary files are properly cleaned up
-- **Error handling**: Reports any execution issues with clear diagnostics
-
-### Temporary File Management
-
-```bash
-# bake automatically manages temporary files in ./temp/ subdirectory
-# All test artifacts are cleaned up after validation
-bake --test Makefile  # Creates temp/, runs tests, cleans up temp/
-
-# Manual cleanup if needed
-rm -rf ./temp/
+```yaml
+# GitHub Actions example
+- name: Check Makefile formatting
+  run: |
+    pip install mbake
+    bake format --check Makefile
 ```
 
-### Integration Testing
-
-```makefile
-# Example Makefile that bake validates
-TARGET = hello
-TEMP_DIR = ./temp
-
-.PHONY: all clean test
-
-all: $(TARGET)
- $(CC) -o $(TARGET) main.c
-
-test: $(TARGET)
- mkdir -p $(TEMP_DIR)
- ./$(TARGET) > $(TEMP_DIR)/output.txt
- @echo "Test completed"
-
-clean:
- rm -f $(TARGET) *.o
- rm -rf $(TEMP_DIR)
+```bash
+# Exit codes:
+# 0 - No formatting needed or formatting successful
+# 1 - Files need formatting (--check mode) or validation failed
+# 2 - Error occurred
 ```
 
 ## 🧪 Development
@@ -296,9 +283,6 @@ pytest --cov=bake --cov-report=html
 
 # Run specific test file
 pytest tests/test_formatter.py -v
-
-# Test makefile execution
-pytest tests/test_bake.py -v
 ```
 
 ### Code Quality
@@ -316,12 +300,12 @@ mypy bake
 
 ## 🏗️ Architecture
 
-bake follows a modular, plugin-based architecture:
+mbake follows a modular, plugin-based architecture:
 
 ```text
 bake/
 ├── __init__.py          # Package initialization
-├── cli.py               # Command-line interface
+├── cli.py               # Command-line interface with subcommands
 ├── config.py            # Configuration management
 ├── core/
 │   ├── formatter.py     # Main formatting engine
@@ -383,24 +367,24 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - ✅ **Core formatting engine** (100% test coverage)
 - ✅ **Configuration system**
-- ✅ **Command-line interface**
+- ✅ **Command-line interface with subcommands**
 - ✅ **Plugin architecture**
 - ✅ **Assignment spacing normalization**
 - ✅ **Tab indentation handling**
 - ✅ **Whitespace management**
 - ✅ **Line continuation formatting**
-- ✅ **Makefile execution validation**
-- ✅ **Temporary file cleanup**
+- ✅ **Makefile syntax validation**
+- ✅ **Shell completion support**
+- ✅ **CI/CD integration**
 - 🚧 Advanced rule customization
 - 🚧 IDE integrations
-- 📋 Additional output formats (JSON, XML)
 
 ## 🎯 Design Philosophy
 
-- ✅ **Consistent core functionality** over edge case perfection
-- ✅ **Predictable behavior** over complex configuration
-- ✅ **Maintainable codebase** over comprehensive feature coverage
-- ✅ **Fast execution** over handling every possible Makefile variant
-- ✅ **Execution validation** ensuring formatted files actually work
+- **Minimal changes**: Only modify what needs to be fixed, preserve file structure
+- **Predictable behavior**: Consistent formatting rules across all Makefiles
+- **Fast execution**: Efficient processing of large Makefiles
+- **Reliable validation**: Ensure formatted Makefiles have correct syntax
+- **Developer-friendly**: Rich CLI with helpful error messages and progress indicators
 
-This approach ensures a **reliable, maintainable formatter** that handles **100% of tested use cases** perfectly, with execution validation to guarantee that formatted Makefiles not only look good but also run correctly with proper cleanup.
+This approach ensures a **reliable, maintainable formatter** that handles common Makefile formatting needs while preserving the structure and functionality of your build files.
