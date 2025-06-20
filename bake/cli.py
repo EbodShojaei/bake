@@ -32,12 +32,16 @@ def version_callback(value: bool):
 @app.callback()
 def main_callback(
     version: Optional[bool] = typer.Option(
-        None, "--version", callback=version_callback, is_eager=True,
-        help="Show version and exit"
+        None,
+        "--version",
+        callback=version_callback,
+        is_eager=True,
+        help="Show version and exit",
     )
 ):
     """Main callback for version handling."""
     pass
+
 
 DEFAULT_CONFIG = """# mbake configuration file
 # Generated with: bake init

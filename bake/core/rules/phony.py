@@ -33,9 +33,25 @@ class PhonyRule(FormatterPlugin):
 
         # Common phony target names that should be automatically detected
         common_phony_targets = {
-            "all", "clean", "install", "uninstall", "test", "check", "help", 
-            "build", "rebuild", "debug", "release", "dist", "distclean", 
-            "docs", "doc", "lint", "format", "setup", "run"
+            "all",
+            "clean",
+            "install",
+            "uninstall",
+            "test",
+            "check",
+            "help",
+            "build",
+            "rebuild",
+            "debug",
+            "release",
+            "dist",
+            "distclean",
+            "docs",
+            "doc",
+            "lint",
+            "format",
+            "setup",
+            "run",
         }
 
         for i, line in enumerate(lines):
@@ -45,10 +61,10 @@ class PhonyRule(FormatterPlugin):
             if stripped.startswith(".PHONY:"):
                 has_phony_declarations = True
                 phony_line_indices.append(i)
-                
+
                 # Extract targets from this PHONY line
                 targets_part = stripped[7:].strip()  # Remove '.PHONY:'
-                
+
                 # Check for malformed .PHONY (like the one with backslashes)
                 if not targets_part or targets_part.startswith("\\"):
                     malformed_phony_found = True
@@ -62,7 +78,11 @@ class PhonyRule(FormatterPlugin):
                         if next_line.startswith("\\") or not next_line.startswith("\t"):
                             break
                         # This is a continuation line with targets
-                        targets = [t.strip() for t in next_line.replace("\\", "").split() if t.strip()]
+                        targets = [
+                            t.strip()
+                            for t in next_line.replace("\\", "").split()
+                            if t.strip()
+                        ]
                         phony_targets.update(targets)
                         phony_line_indices.append(j)
                         j += 1
@@ -75,7 +95,11 @@ class PhonyRule(FormatterPlugin):
         if has_phony_declarations:
             for i, line in enumerate(lines):
                 stripped = line.strip()
-                if ":" in stripped and not stripped.startswith("\t") and not stripped.startswith(".PHONY:"):
+                if (
+                    ":" in stripped
+                    and not stripped.startswith("\t")
+                    and not stripped.startswith(".PHONY:")
+                ):
                     # Check for target definitions
                     target_match = re.match(r"^([^:]+):", stripped)
                     if target_match:
