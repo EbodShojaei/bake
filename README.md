@@ -6,7 +6,6 @@ A **Python-based Makefile formatter and linter** that enforces consistent format
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI - mbake](https://img.shields.io/pypi/v/mbake.svg)](https://pypi.org/project/mbake/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![PyPI Downloads](https://img.shields.io/pypi/dm/mbake)](https://pypi.org/project/mbake/)
 
 ## ✨ Features
 
