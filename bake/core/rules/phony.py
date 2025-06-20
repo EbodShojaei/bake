@@ -1,7 +1,6 @@
 """PHONY declaration formatting rule for Makefiles."""
 
 import re
-from typing import Union
 
 from ...plugins.base import FormatResult, FormatterPlugin
 
@@ -93,7 +92,7 @@ class PhonyRule(FormatterPlugin):
 
         # Auto-detect obvious phony targets (only if we already have .PHONY declarations)
         if has_phony_declarations:
-            for i, line in enumerate(lines):
+            for _i, line in enumerate(lines):
                 stripped = line.strip()
                 if (
                     ":" in stripped

@@ -9,9 +9,9 @@ import typer
 from rich.console import Console
 from rich.logging import RichHandler
 
+from . import __version__
 from .config import Config
 from .core.formatter import MakefileFormatter
-from . import __version__
 
 app = typer.Typer(
     name="bake",
