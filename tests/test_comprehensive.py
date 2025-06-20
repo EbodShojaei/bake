@@ -571,3 +571,192 @@ clean:
                 except (PermissionError, FileNotFoundError):
                     # File might still be locked or already deleted, that's okay
                     pass
+
+
+class TestMultilineVariables:
+    """Test multiline variable formatting."""
+
+    def test_multiline_variables_fixture(self):
+        """Test multiline variables fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/multiline_variables/input.mk")
+        expected_file = Path("tests/fixtures/multiline_variables/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text().splitlines()
+            expected_lines = expected_file.read_text().splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+
+class TestFunctionCalls:
+    """Test Makefile function call formatting."""
+
+    def test_function_calls_fixture(self):
+        """Test function calls fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/function_calls/input.mk")
+        expected_file = Path("tests/fixtures/function_calls/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text().splitlines()
+            expected_lines = expected_file.read_text().splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+
+class TestCommentsAndDocumentation:
+    """Test comment and documentation formatting."""
+
+    def test_comments_and_documentation_fixture(self):
+        """Test comments and documentation fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/comments_and_documentation/input.mk")
+        expected_file = Path("tests/fixtures/comments_and_documentation/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text().splitlines()
+            expected_lines = expected_file.read_text().splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+
+class TestAdvancedTargets:
+    """Test advanced target pattern formatting."""
+
+    def test_advanced_targets_fixture(self):
+        """Test advanced targets fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/advanced_targets/input.mk")
+        expected_file = Path("tests/fixtures/advanced_targets/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text().splitlines()
+            expected_lines = expected_file.read_text().splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+
+class TestIncludesAndExports:
+    """Test include and export statement formatting."""
+
+    def test_includes_and_exports_fixture(self):
+        """Test includes and exports fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/includes_and_exports/input.mk")
+        expected_file = Path("tests/fixtures/includes_and_exports/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text().splitlines()
+            expected_lines = expected_file.read_text().splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+
+class TestErrorHandlingFixtures:
+    """Test error handling and edge case formatting."""
+
+    def test_error_handling_fixture(self):
+        """Test error handling fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/error_handling/input.mk")
+        expected_file = Path("tests/fixtures/error_handling/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text().splitlines()
+            expected_lines = expected_file.read_text().splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+
+class TestRealWorldComplex:
+    """Test real-world complex Makefile formatting."""
+
+    def test_real_world_complex_fixture(self):
+        """Test real world complex fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/real_world_complex/input.mk")
+        expected_file = Path("tests/fixtures/real_world_complex/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text().splitlines()
+            expected_lines = expected_file.read_text().splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+
+class TestEdgeCasesAndQuirks:
+    """Test edge cases and Makefile quirks."""
+
+    def test_edge_cases_and_quirks_fixture(self):
+        """Test edge cases and quirks fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/edge_cases_and_quirks/input.mk")
+        expected_file = Path("tests/fixtures/edge_cases_and_quirks/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text().splitlines()
+            expected_lines = expected_file.read_text().splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+
+class TestUnicodeAndEncoding:
+    """Test Unicode and special encoding handling."""
+
+    def test_unicode_and_encoding_fixture(self):
+        """Test Unicode and encoding fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/unicode_and_encoding/input.mk")
+        expected_file = Path("tests/fixtures/unicode_and_encoding/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text().splitlines()
+            expected_lines = expected_file.read_text().splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines

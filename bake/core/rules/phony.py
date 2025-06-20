@@ -51,6 +51,8 @@ class PhonyRule(FormatterPlugin):
             "format",
             "setup",
             "run",
+            "docker",
+            "package",
         }
 
         for i, line in enumerate(lines):
@@ -64,31 +66,44 @@ class PhonyRule(FormatterPlugin):
                 # Extract targets from this PHONY line
                 targets_part = stripped[7:].strip()  # Remove '.PHONY:'
 
-                # Check for malformed .PHONY (like the one with backslashes)
-                if not targets_part or targets_part.startswith("\\"):
-                    malformed_phony_found = True
-                    # Look ahead for continuation lines to collect all targets
-                    j = i + 1
-                    while j < len(lines):
-                        next_line = lines[j].strip()
-                        if not next_line or next_line.startswith("#"):
-                            j += 1
-                            continue
-                        if next_line.startswith("\\") or not next_line.startswith("\t"):
-                            break
-                        # This is a continuation line with targets
-                        targets = [
-                            t.strip()
-                            for t in next_line.replace("\\", "").split()
-                            if t.strip()
-                        ]
-                        phony_targets.update(targets)
+                # Normal .PHONY line - extract targets
+                targets = [t.strip() for t in targets_part.split() if t.strip()]
+                phony_targets.update(targets)
+
+                # Now look ahead to see if there are malformed continuation lines
+                j = i + 1
+                while j < len(lines):
+                    next_line = lines[j].strip()
+                    original_line = lines[j]  # Keep the original line for tab checking
+                    if not next_line or next_line.startswith("#"):
+                        j += 1
+                        continue
+
+                    # Check if this looks like a malformed continuation
+                    # Lines that start with tab and contain backslashes or target names
+                    if original_line.startswith("\t") and (
+                        original_line.startswith("\t\\")
+                        or original_line.startswith(
+                            "\t\\ \\"
+                        )  # Match "tab backslash space backslash"
+                        or next_line.replace("\\", "").strip() in common_phony_targets
+                    ):
+
+                        malformed_phony_found = True
+                        # Extract targets, removing backslashes and excess whitespace
+                        clean_line = next_line.replace("\\", "").strip()
+                        if clean_line:
+                            target_names = [
+                                t.strip()
+                                for t in clean_line.split()
+                                if t.strip() and not t.startswith("#")
+                            ]
+                            phony_targets.update(target_names)
                         phony_line_indices.append(j)
                         j += 1
-                else:
-                    # Normal .PHONY line
-                    targets = [t.strip() for t in targets_part.split() if t.strip()]
-                    phony_targets.update(targets)
+                    else:
+                        # This doesn't look like a continuation line
+                        break
 
         # Auto-detect obvious phony targets (only if we already have .PHONY declarations)
         if has_phony_declarations:
@@ -113,13 +128,13 @@ class PhonyRule(FormatterPlugin):
                 lines=lines, changed=False, errors=errors, warnings=warnings
             )
 
-        # Only make changes if we found malformed .PHONY or multiple .PHONY lines
+        # Always make changes if we found malformed .PHONY or multiple .PHONY lines
         if len(phony_line_indices) <= 1 and not malformed_phony_found:
             return FormatResult(
                 lines=lines, changed=False, errors=errors, warnings=warnings
             )
 
-        # If we have multiple .PHONY lines, group them at the top
+        # If we have multiple .PHONY lines or malformed ones, clean them up
         phony_at_top = config.get("phony_at_top", True)
 
         # Create a single, clean .PHONY declaration
@@ -127,7 +142,7 @@ class PhonyRule(FormatterPlugin):
         new_phony_line = f".PHONY: {' '.join(sorted_targets)}"
 
         # Replace all .PHONY lines with a single clean one
-        if phony_at_top and len(phony_line_indices) > 1:
+        if phony_at_top and (len(phony_line_indices) > 1 or malformed_phony_found):
             # Group multiple .PHONY declarations at the top
             formatted_lines = []
             phony_inserted = False
@@ -162,6 +177,11 @@ class PhonyRule(FormatterPlugin):
                         changed = True
                 else:
                     formatted_lines.append(line)
+
+        if malformed_phony_found:
+            warnings.append(
+                "Fixed malformed .PHONY declaration with invalid continuation syntax"
+            )
 
         return FormatResult(
             lines=formatted_lines, changed=changed, errors=errors, warnings=warnings

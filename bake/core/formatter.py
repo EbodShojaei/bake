@@ -10,6 +10,7 @@ from .rules import (
     AssignmentSpacingRule,
     ConditionalRule,
     ContinuationRule,
+    DuplicateTargetRule,
     PatternSpacingRule,
     PhonyRule,
     ShellFormattingRule,
@@ -51,6 +52,7 @@ class MakefileFormatter:
             ContinuationRule(),
             ConditionalRule(),
             PhonyRule(),
+            DuplicateTargetRule(),
             WhitespaceRule(),
         ]
 

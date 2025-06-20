@@ -3,6 +3,7 @@
 from .assignment_spacing import AssignmentSpacingRule
 from .conditionals import ConditionalRule
 from .continuation import ContinuationRule
+from .duplicate_targets import DuplicateTargetRule
 from .pattern_spacing import PatternSpacingRule
 from .phony import PhonyRule
 from .shell import ShellFormattingRule
@@ -20,4 +21,5 @@ __all__ = [
     "PhonyRule",
     "ConditionalRule",
     "ShellFormattingRule",
+    "DuplicateTargetRule",
 ]

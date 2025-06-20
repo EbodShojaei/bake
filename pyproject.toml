@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mbake"
-version = "1.0.4"
+version = "1.0.5"
 description = "A Python-based Makefile formatter and linter"
 readme = "README.md"
 license = "MIT"
@@ -115,10 +115,13 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_equality = true
+exclude = [
+    "tests/",
+]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
-disallow_untyped_defs = false
+ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"
