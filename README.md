@@ -2,7 +2,7 @@
 
 <!-- markdownlint-disable MD033 -->
 <div align="center">
-    <img src="vscode-mbake-extension/icon.png" alt="mbake logo" width="128" height="128">
+    <img src="https://raw.githubusercontent.com/ebodshojaei/bake/main/vscode-mbake-extension/icon.png" alt="mbake logo" width="128" height="128">
     <br/>
     <em>A Makefile formatter and linter. It only took 50 years!</em>
     <br/><br/>
