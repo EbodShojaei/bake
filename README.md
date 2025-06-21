@@ -1,32 +1,44 @@
 # 🍞 mbake
 
-A **Python-based Makefile formatter and linter** that enforces consistent formatting according to Makefile best practices. It only took 50 years!
+<!-- markdownlint-disable MD033 -->
+<div align="center">
+    <img src="vscode-mbake-extension/icon.png" alt="mbake logo" width="128" height="128">
+    <br/>
+    <em>A Makefile formatter and linter. It only took 50 years!</em>
+    <br/><br/>
+    <a href="https://opensource.org/licenses/MIT">
+        <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/>
+    </a>
+    <a href="https://www.python.org/downloads/">
+        <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+"/>
+    </a>
+    <a href="https://pypi.org/project/mbake/">
+        <img src="https://img.shields.io/pypi/v/mbake.svg" alt="PyPI - mbake"/>
+    </a>
+    <a href="https://github.com/psf/black">
+        <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black"/>
+    </a>
+    <a href="https://pepy.tech/projects/mbake">
+        <img src="https://static.pepy.tech/badge/mbake" alt="PyPI Downloads"/>
+    </a>
+</div>
+<!-- markdownlint-enable MD033 -->
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![PyPI - mbake](https://img.shields.io/pypi/v/mbake.svg)](https://pypi.org/project/mbake/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+## Features
 
-## ✨ Features
+- Configurable rules via `~/.bake.toml`
+- CI/CD integration with check mode
+- Extensible plugin architecture
+- Rich terminal output with progress indicators
+- Syntax validation before and after formatting
+- Smart .PHONY detection with automatic insertion
 
-- **🔧 Comprehensive Formatting**: Automatically formats Makefiles according to community best practices
-- **📋 Configurable Rules**: Customize formatting behavior via `~/.bake.toml`
-- **🚦 CI/CD Integration**: Check mode for continuous integration pipelines
-- **🔌 Plugin Architecture**: Extensible rule system for custom formatting needs
-- **🎨 Beautiful CLI**: Rich terminal output with colors and progress indicators
-- **⚡ Fast & Reliable**: Written in Python with comprehensive test coverage
-- **✅ Syntax Validation**: Ensures Makefiles have correct syntax before and after formatting
-- **🔄 Shell Completion**: Auto-completion support for bash, zsh, and fish
-- **🎯 Smart .PHONY Detection**: Automatically inserts and enhances `.PHONY` declarations using dynamic analysis
-
-## 🛠️ Formatting Rules
-
-mbake applies the following formatting rules:
+## Formatting Rules
 
 ### Indentation & Spacing
 
-- **Tabs for recipes**: Ensures all recipe lines use tabs instead of spaces
-- **Assignment operators**: Normalizes spacing around `:=`, `=`, `+=`, `?=`
+- **Tabs for recipes**: Recipe lines use tabs instead of spaces
+- **Assignment operators**: Normalized spacing around `:=`, `=`, `+=`, `?=`
 - **Target colons**: Consistent spacing around target dependency colons
 - **Trailing whitespace**: Removes unnecessary trailing spaces
 
@@ -40,28 +52,28 @@ mbake applies the following formatting rules:
 - **Grouping**: Consolidates multiple `.PHONY` declarations
 - **Auto-insertion**: Automatically detects and inserts `.PHONY` declarations when missing (opt-in)
 - **Dynamic enhancement**: Enhances existing `.PHONY` declarations with additional detected phony targets
-- **Rule-based analysis**: Uses command analysis to determine if targets are phony (no hardcoded lists)
+- **Rule-based analysis**: Uses command analysis to determine if targets are phony
 - **Minimal changes**: Only modifies `.PHONY` lines, preserves file structure
 
-## 📦 Installation
+## Installation
 
-### Option 1: PyPI (Recommended)
+### PyPI (Recommended)
 
 ```bash
 pip install mbake
 ```
 
-### Option 2: VSCode Extension
+### VSCode Extension
 
 1. Open VSCode
 2. Go to Extensions (Ctrl+Shift+X)
 3. Search for "mbake Makefile Formatter"
 4. Click Install
 
-### Option 3: From Source
+### From Source
 
 ```bash
-git clone https://github.com/ebodshojaei/mbake.git
+git clone https://github.com/ebodshojaei/bake.git
 cd mbake
 pip install -e .
 ```
@@ -69,14 +81,14 @@ pip install -e .
 ### Development Installation
 
 ```bash
-git clone https://github.com/ebodshojaei/mbake.git
+git clone https://github.com/ebodshojaei/bake.git
 cd mbake
 pip install -e ".[dev]"
 ```
 
-## 🚀 Usage
+## Usage
 
-mbake uses a subcommand-based CLI structure. All commands support both `bake` and `mbake` aliases.
+mbake uses a subcommand-based CLI. All commands support both `bake` and `mbake` aliases.
 
 ### Quick Start
 
@@ -167,9 +179,9 @@ bake --install-completion
 bake --show-completion
 ```
 
-## ⚙️ Configuration
+## Configuration
 
-mbake works with sensible defaults out-of-the-box. Generate a configuration file with:
+mbake works with sensible defaults. Generate a configuration file with:
 
 ```bash
 bake init
@@ -195,7 +207,7 @@ max_line_length = 120
 # PHONY settings
 group_phony_declarations = true
 phony_at_top = true
-auto_insert_phony_declarations = false  # Enable to auto-insert .PHONY declarations
+auto_insert_phony_declarations = false
 
 # General settings
 remove_trailing_whitespace = true
@@ -208,13 +220,13 @@ debug = false
 verbose = false
 ```
 
-## 🎯 Smart .PHONY Detection
+## Smart .PHONY Detection
 
-mbake includes intelligent `.PHONY` detection that can automatically identify and manage phony targets in your Makefiles.
+mbake includes intelligent `.PHONY` detection that automatically identifies and manages phony targets.
 
 ### How It Works
 
-The detection uses **dynamic analysis** of recipe commands rather than hardcoded target names:
+Detection uses dynamic analysis of recipe commands rather than hardcoded target names:
 
 - **Command Analysis**: Examines what each target's recipe actually does
 - **File Creation Detection**: Identifies if commands create files with the target name
@@ -319,11 +331,11 @@ clean:
  rm -rf node_modules
 ```
 
-## 🔧 Examples
+## Examples
 
 ### Basic Formatting
 
-**Before Formatting:**
+**Before:**
 
 ```makefile
 # Inconsistent spacing and indentation
@@ -342,7 +354,7 @@ clean:
     rm -f *.o
 ```
 
-**After Formatting:**
+**After:**
 
 ```makefile
 # Clean, consistent formatting
@@ -381,7 +393,7 @@ clean:
  docker system prune -af
 ```
 
-**After**:
+**After:**
 
 ```makefile
 # Docker development workflow
@@ -403,9 +415,9 @@ clean:
  docker system prune -af
 ```
 
-## 🚦 CI/CD Integration
+## CI/CD Integration
 
-Use mbake in your continuous integration pipelines:
+Use mbake in continuous integration:
 
 ```yaml
 # GitHub Actions example
@@ -415,19 +427,18 @@ Use mbake in your continuous integration pipelines:
     bake format --check Makefile
 ```
 
-```bash
-# Exit codes:
-# 0 - No formatting needed or formatting successful
-# 1 - Files need formatting (--check mode) or validation failed
-# 2 - Error occurred
-```
+Exit codes:
 
-## 🧪 Development
+- `0` - No formatting needed or formatting successful
+- `1` - Files need formatting (--check mode) or validation failed
+- `2` - Error occurred
+
+## Development
 
 ### Setup
 
 ```bash
-git clone https://github.com/ebodshojaei/mbake.git
+git clone https://github.com/ebodshojaei/bake.git
 cd mbake
 pip install -e ".[dev]"
 pre-commit install
@@ -459,24 +470,24 @@ ruff check bake tests
 mypy bake
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 mbake follows a modular, plugin-based architecture:
 
 ```text
 bake/
-├── __init__.py          # Package initialization
-├── cli.py               # Command-line interface with subcommands
-├── config.py            # Configuration management
+├── __init__.py                 # Package initialization
+├── cli.py                      # Command-line interface with subcommands
+├── config.py                   # Configuration management
 ├── core/
-│   ├── formatter.py     # Main formatting engine
-│   └── rules/           # Individual formatting rules
-│       ├── tabs.py      # Tab/indentation handling
-│       ├── spacing.py   # Spacing normalization
-│       ├── continuation.py # Line continuation formatting
-│       └── phony.py     # .PHONY declaration management
+│   ├── formatter.py            # Main formatting engine
+│   └── rules/                  # Individual formatting rules
+│       ├── tabs.py             # Tab/indentation handling
+│       ├── spacing.py          # Spacing normalization
+│       ├── continuation.py     # Line continuation formatting
+│       └── phony.py            # .PHONY declaration management
 └── plugins/
-    └── base.py          # Plugin interface
+    └── base.py                 # Plugin interface
 ```
 
 ### Adding Custom Rules
@@ -500,14 +511,9 @@ class MyCustomRule(FormatterPlugin):
         )
 ```
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on:
-
-- Code of conduct
-- Development process
-- Submitting pull requests
-- Reporting issues
+Contributions are welcome! Read the [Contributing Guide](CONTRIBUTING.md) for details on development process, submitting pull requests, and reporting issues.
 
 ### Quick Start for Contributors
 
@@ -520,33 +526,14 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 7. Push to the branch (`git push origin feature/amazing-feature`)
 8. Open a Pull Request
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📊 Project Status
-
-- ✅ **Core formatting engine** (100% test coverage)
-- ✅ **Configuration system**
-- ✅ **Command-line interface with subcommands**
-- ✅ **Plugin architecture**
-- ✅ **Assignment spacing normalization**
-- ✅ **Tab indentation handling**
-- ✅ **Whitespace management**
-- ✅ **Line continuation formatting**
-- ✅ **Smart .PHONY detection and auto-insertion**
-- ✅ **Makefile syntax validation**
-- ✅ **Shell completion support**
-- ✅ **CI/CD integration**
-- 🚧 Advanced rule customization
-- 🚧 IDE integrations
-
-## 🎯 Design Philosophy
+## Design Philosophy
 
 - **Minimal changes**: Only modify what needs to be fixed, preserve file structure
 - **Predictable behavior**: Consistent formatting rules across all Makefiles
 - **Fast execution**: Efficient processing of large Makefiles
 - **Reliable validation**: Ensure formatted Makefiles have correct syntax
 - **Developer-friendly**: Rich CLI with helpful error messages and progress indicators
-
-This approach ensures a **reliable, maintainable formatter** that handles common Makefile formatting needs while preserving the structure and functionality of your build files.
