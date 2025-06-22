@@ -1,0 +1,19 @@
+- id: mbake-format
+  name: mbake format
+  description: "Run 'mbake format' for Makefile formatting"
+  entry: mbake format
+  language: python
+  types: [makefile]
+  args: []
+  require_serial: true
+  additional_dependencies: []
+
+- id: mbake-validate
+  name: mbake validate
+  description: "Run 'mbake validate' for Makefile validation"
+  entry: mbake validate
+  language: python
+  types: [makefile]
+  args: []
+  require_serial: true
+  additional_dependencies: []
