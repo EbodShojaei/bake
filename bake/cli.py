@@ -130,7 +130,7 @@ def init(
         console.print("\nNext steps:")
         console.print("  • Edit the config file to customize formatting rules")
         console.print("  • Run [bold]bake config[/bold] to view current settings")
-        console.print("  • Run [bold]bake Makefile[/bold] to format your first file")
+        console.print("  • Run [bold]bake format Makefile[/bold] to format your first file")
     except Exception as e:
         console.print(f"[red]Error:[/red] Failed to create config: {e}")
         raise typer.Exit(1) from e
