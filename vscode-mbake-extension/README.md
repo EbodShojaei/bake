@@ -1,6 +1,6 @@
 # mbake Makefile Formatter - VS Code Extension
 
-A VS Code extension that integrates the [mbake](https://github.com/mbake-dev/mbake) Makefile formatter directly into your editor.
+A VS Code extension that integrates the [mbake](https://github.com/ebodshojaei/bake) Makefile formatter directly into your editor.
 
 ## Features
 
@@ -23,7 +23,7 @@ A VS Code extension that integrates the [mbake](https://github.com/mbake-dev/mba
 pip install mbake
 
 # Or install from source
-git clone https://github.com/mbake-dev/mbake.git
+git clone https://github.com/ebodshojaei/bake.git
 cd mbake
 pip install -e .
 ```
@@ -192,6 +192,10 @@ Found a bug or want to contribute? Visit the [GitHub repository](https://github.
 This extension is licensed under the MIT License. See the LICENSE file for details.
 
 ## Release Notes
+
+### 1.1.1
+- Smart .PHONY Detection
+- Opt-in via `auto_insert_phony_declarations = true` configuration
 
 ### 1.0.0
 - Initial release
