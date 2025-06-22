@@ -48,26 +48,31 @@ pip install -e .
 Access these settings through VS Code's settings (`Cmd/Ctrl + ,`) and search for "mbake":
 
 ### `mbake.executablePath`
+
 - **Type**: `string`
 - **Default**: `"bake"`
 - **Description**: Path to the bake executable. Use 'bake' if it's in your PATH, or provide the full path.
 
 ### `mbake.configPath`
+
 - **Type**: `string`
 - **Default**: `""`
 - **Description**: Path to the bake configuration file. Leave empty to use default (~/.bake.toml).
 
 ### `mbake.formatOnSave`
+
 - **Type**: `boolean`
 - **Default**: `false`
 - **Description**: Automatically format Makefiles on save.
 
 ### `mbake.showDiff`
+
 - **Type**: `boolean`
 - **Default**: `false`
 - **Description**: Show diff of changes when formatting.
 
 ### `mbake.verbose`
+
 - **Type**: `boolean`
 - **Default**: `false`
 - **Description**: Enable verbose output.
@@ -89,6 +94,7 @@ Add these settings to your VS Code `settings.json`:
 ## Supported File Types
 
 The extension automatically activates for:
+
 - Files with `.mk` or `.make` extensions
 - Files named `Makefile`, `makefile`, or `GNUmakefile`
 - Files with the `makefile` language ID
@@ -138,6 +144,7 @@ bake --help
 ### Configuration file not found
 
 If you see errors about missing configuration files, either:
+
 1. Create a `~/.bake.toml` configuration file
 2. Set a custom path in `mbake.configPath`
 3. Use the example configuration provided in the mbake repository
@@ -145,6 +152,7 @@ If you see errors about missing configuration files, either:
 ### Extension not activating
 
 Make sure your file is recognized as a Makefile:
+
 1. Check the language mode in the bottom-right corner of VS Code
 2. Manually set the language to "Makefile" if needed
 3. Ensure your file has the correct name or extension
@@ -185,7 +193,7 @@ max_consecutive_empty_lines = 2
 
 ## Contributing
 
-Found a bug or want to contribute? Visit the [GitHub repository](https://github.com/mbake-dev/vscode-mbake-extension).
+Found a bug or want to contribute? Visit the [GitHub repository](https://github.com/ebodshojaei/bake).
 
 ## License
 
@@ -194,11 +202,13 @@ This extension is licensed under the MIT License. See the LICENSE file for detai
 ## Release Notes
 
 ### 1.1.1
+
 - Smart .PHONY Detection
 - Opt-in via `auto_insert_phony_declarations = true` configuration
 
 ### 1.0.0
+
 - Initial release
 - Format and check commands
 - Format on save support
-- Context menu integration 
+- Context menu integration

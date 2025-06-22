@@ -25,7 +25,7 @@ We use GitHub to host code, to track issues and feature requests, as well as acc
 
 ```bash
 # Clone your fork
-git clone https://github.com/ebodshojaei/mbake.git
+git clone https://github.com/ebodshojaei/bake.git
 cd mbake
 
 # Create virtual environment
@@ -163,4 +163,4 @@ Instances of abusive, harassing, or otherwise unacceptable behavior may be repor
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under its MIT License. 
+By contributing, you agree that your contributions will be licensed under its MIT License.

@@ -88,7 +88,7 @@ The repository includes GitHub Actions for automatic publishing:
 
 1. **Create a homebrew tap repository:**
    ```bash
-   git clone https://github.com/ebodshojaei/homebrew-mbake.git
+   git clone https://github.com/ebodshojaei/homebrew-bake.git
    cd homebrew-mbake
    ```
 
