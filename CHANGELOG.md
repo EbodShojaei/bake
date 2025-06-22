@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.3]
+
+### Added
+
+- Version checking and update functionality
+  - `bake update --check` flag to check for newer versions on PyPI
+  - `bake update` command to update mbake to the latest version
+  - Automatic update notification when using `bake --version`
+  - Development installation detection to prevent update conflicts
+  - Support for both pip-based installations and development setups
+
+### Changed
+
+- Version callback now includes update availability information
+- Version synchronization between `__init__.py` and `pyproject.toml`
+
+### Technical
+
+- New `version_utils.py` module with comprehensive version management
+- Unit tests for version checking functionality
+- Enhanced error handling for network-related version operations
+
 ## [1.1.1]
 
 - **Smart .PHONY Detection**: Intelligent automatic detection and insertion of `.PHONY` declarations
@@ -24,6 +46,7 @@ All notable changes to this project will be documented in this file.
 - **Detection Accuracy**: Fixed variable cleaning bug in command analysis
 - **Documentation**: Updated README with comprehensive Smart .PHONY Detection section
 
+<!-- markdownlint-disable MD024 -->
 ### Technical
 
 - **Separated Concerns**: Split phony functionality into focused plugins:
@@ -89,5 +112,6 @@ All notable changes to this project will be documented in this file.
 - **VSCode Extension**: Ready for Visual Studio Code Marketplace
 - **GitHub Actions**: Automated CI/CD and publishing workflows
 
-[1.1.1]: https://github.com/ebodshojaei/mbake/releases/tag/v1.1.1
-[1.0.0]: https://github.com/ebodshojaei/mbake/releases/tag/v1.0.0
+[1.1.3]: https://github.com/ebodshojaei/bake/releases/tag/v1.1.3
+[1.1.1]: https://github.com/ebodshojaei/bake/releases/tag/v1.1.1
+[1.0.0]: https://github.com/ebodshojaei/bake/releases/tag/v1.0.0

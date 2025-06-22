@@ -80,7 +80,7 @@ class MakefileFormatter:
             check_only: If True, only check formatting without modifying
 
         Returns:
-            Tuple of (changed, errors)
+            tuple of (changed, errors)
         """
         if not file_path.exists():
             return False, [f"File not found: {file_path}"]

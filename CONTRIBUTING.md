@@ -120,7 +120,7 @@ In short, when you submit code changes, your submissions are understood to be un
 
 ## Report bugs using GitHub's issue tracker
 
-We use GitHub issues to track public bugs. Report a bug by [opening a new issue](https://github.com/ebodshojaei/mbake/issues).
+We use GitHub issues to track public bugs. Report a bug by [opening a new issue](https://github.com/ebodshojaei/bake/issues).
 
 **Great Bug Reports** tend to have:
 

@@ -2,8 +2,8 @@ class Mbake < Formula
   include Language::Python::Virtualenv
 
   desc "Python-based Makefile formatter and linter"
-  homepage "https://github.com/ebodshojaei/mbake"
-  url "https://github.com/ebodshojaei/mbake/archive/v1.0.0.tar.gz"
+  homepage "https://github.com/ebodshojaei/bake"
+  url "https://github.com/ebodshojaei/bake/archive/v1.0.0.tar.gz"
   sha256 "SHA256_PLACEHOLDER"
   license "MIT"
 

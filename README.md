@@ -24,6 +24,15 @@
 </div>
 <!-- markdownlint-enable MD033 -->
 
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Examples](#examples-1)
+- [Contributing](#contributing)
+
 ## Features
 
 - Configurable rules via `~/.bake.toml`
@@ -32,6 +41,8 @@
 - Rich terminal output with progress indicators
 - Syntax validation before and after formatting
 - Smart .PHONY detection with automatic insertion
+
+---
 
 ## Formatting Rules
 
@@ -54,6 +65,8 @@
 - **Dynamic enhancement**: Enhances existing `.PHONY` declarations with additional detected phony targets
 - **Rule-based analysis**: Uses command analysis to determine if targets are phony
 - **Minimal changes**: Only modifies `.PHONY` lines, preserves file structure
+
+---
 
 ## Installation
 
@@ -85,6 +98,8 @@ git clone https://github.com/ebodshojaei/bake.git
 cd mbake
 pip install -e ".[dev]"
 ```
+
+---
 
 ## Usage
 
@@ -169,6 +184,25 @@ bake validate --verbose Makefile
 bake validate --config /path/to/config.toml Makefile
 ```
 
+### Version Management
+
+```bash
+# Check current version and for updates
+bake --version
+
+# Check for updates only (without updating)
+bake update --check
+
+# Update to latest version
+bake update
+
+# Update with confirmation prompt bypass
+bake update --yes
+
+# Force update even if already up to date
+bake update --force
+```
+
 ### Shell Completion
 
 ```bash
@@ -178,6 +212,8 @@ bake --install-completion
 # Show completion script (for manual installation)
 bake --show-completion
 ```
+
+---
 
 ## Configuration
 
@@ -219,6 +255,8 @@ max_consecutive_empty_lines = 2
 debug = false
 verbose = false
 ```
+
+---
 
 ## Smart .PHONY Detection
 
@@ -274,6 +312,7 @@ clean:
  rm -f *.o myapp
 ```
 
+<!-- markdownlint-disable MD024 -->
 ### Configuration
 
 Enable auto-insertion in your `~/.bake.toml`:
@@ -330,6 +369,8 @@ clean:
  docker compose down -v
  rm -rf node_modules
 ```
+
+---
 
 ## Examples
 
@@ -415,6 +456,8 @@ clean:
  docker system prune -af
 ```
 
+---
+
 ## CI/CD Integration
 
 Use mbake in continuous integration:
@@ -432,6 +475,8 @@ Exit codes:
 - `0` - No formatting needed or formatting successful
 - `1` - Files need formatting (--check mode) or validation failed
 - `2` - Error occurred
+
+---
 
 ## Development
 
@@ -469,6 +514,8 @@ ruff check bake tests
 # Type checking
 mypy bake
 ```
+
+---
 
 ## Architecture
 
@@ -511,6 +558,8 @@ class MyCustomRule(FormatterPlugin):
         )
 ```
 
+---
+
 ## Contributing
 
 Contributions are welcome! Read the [Contributing Guide](CONTRIBUTING.md) for details on development process, submitting pull requests, and reporting issues.
@@ -526,9 +575,13 @@ Contributions are welcome! Read the [Contributing Guide](CONTRIBUTING.md) for de
 7. Push to the branch (`git push origin feature/amazing-feature`)
 8. Open a Pull Request
 
+---
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
 
 ## Design Philosophy
 

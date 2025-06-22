@@ -15,16 +15,19 @@ This document outlines the steps to publish mbake to PyPI, Homebrew, and VSCode 
 ### Manual Publishing
 
 1. **Build the package:**
+
    ```bash
    python -m build
    ```
 
 2. **Check the package:**
+
    ```bash
    twine check dist/*
    ```
 
 3. **Upload to PyPI:**
+
    ```bash
    twine upload dist/*
    ```
@@ -34,7 +37,7 @@ This document outlines the steps to publish mbake to PyPI, Homebrew, and VSCode 
 The repository includes GitHub Actions for automatic publishing:
 
 1. **Create a PyPI API token:**
-   - Go to https://pypi.org/manage/account/token/
+   - Go to <https://pypi.org/manage/account/token/>
    - Create a new API token with scope limited to this project
    - Copy the token
 
@@ -59,11 +62,13 @@ The repository includes GitHub Actions for automatic publishing:
 
 1. **Wait for PyPI publication**
 2. **Calculate SHA256:**
+
    ```bash
    curl -sL https://files.pythonhosted.org/packages/source/m/mbake/mbake-1.0.0.tar.gz | shasum -a 256
    ```
 
 3. **Fork homebrew-core:**
+
    ```bash
    brew tap homebrew/core
    cd $(brew --repo homebrew/core)
@@ -76,6 +81,7 @@ The repository includes GitHub Actions for automatic publishing:
    - Update the URL to point to PyPI
 
 5. **Test formula:**
+
    ```bash
    brew install --build-from-source ./Formula/mbake.rb
    brew test mbake
@@ -87,6 +93,7 @@ The repository includes GitHub Actions for automatic publishing:
 ### Option 2: Personal Tap (Easier for initial publication)
 
 1. **Create a homebrew tap repository:**
+
    ```bash
    git clone https://github.com/ebodshojaei/homebrew-bake.git
    cd homebrew-mbake
@@ -98,33 +105,38 @@ The repository includes GitHub Actions for automatic publishing:
    - Commit and push
 
 3. **Users can install with:**
+
    ```bash
-   brew tap ebodshojaei/mbake
+   brew tap ebodshojaei/bake
    brew install mbake
    ```
 
 ## Publishing to VSCode Marketplace
 
+<!-- markdownlint-disable MD024 -->
 ### Prerequisites
 
 1. **Install vsce:**
+
    ```bash
    npm install -g vsce
    ```
 
 2. **Create publisher account:**
-   - Go to https://marketplace.visualstudio.com/manage
+   - Go to <https://marketplace.visualstudio.com/manage>
    - Create a publisher account
    - Generate a Personal Access Token (PAT)
 
 ### Publishing Steps
 
 1. **Navigate to extension directory:**
+
    ```bash
    cd vscode-mbake-extension
    ```
 
 2. **Install dependencies:**
+
    ```bash
    npm install
    ```
@@ -134,16 +146,19 @@ The repository includes GitHub Actions for automatic publishing:
    - Ensure version matches main package
 
 4. **Package the extension:**
+
    ```bash
    vsce package
    ```
 
 5. **Login to marketplace:**
+
    ```bash
    vsce login your-publisher-name
    ```
 
 6. **Publish:**
+
    ```bash
    vsce publish
    ```
@@ -151,6 +166,7 @@ The repository includes GitHub Actions for automatic publishing:
 ### VSCode Extension Assets
 
 The extension should include:
+
 - `icon.png` - 128x128px icon
 - Screenshots in README
 - Proper keywords for discoverability
@@ -158,6 +174,7 @@ The extension should include:
 ## Release Checklist
 
 ### Pre-release
+
 - [ ] All tests pass (`pytest tests/`)
 - [ ] Package builds successfully (`python -m build`)
 - [ ] Version updated in `pyproject.toml`
@@ -167,22 +184,26 @@ The extension should include:
 - [ ] All repository URLs updated in configs
 
 ### PyPI Release
+
 - [ ] Package uploaded to PyPI
 - [ ] Installation verified: `pip install mbake`
 - [ ] Basic functionality tested
 
 ### Homebrew Release
+
 - [ ] Formula created/updated
 - [ ] SHA256 hash updated
 - [ ] Formula tested locally
 - [ ] Submitted to appropriate tap
 
 ### VSCode Release
+
 - [ ] Extension packaged
 - [ ] Extension published to marketplace
 - [ ] Extension tested in VS Code
 
 ### Post-release
+
 - [ ] GitHub release created with changelog
 - [ ] Documentation updated with new version
 - [ ] Social media announcement (optional)
@@ -190,16 +211,19 @@ The extension should include:
 ## Troubleshooting
 
 ### PyPI Issues
+
 - **"File already exists"**: Version already published, increment version
 - **"Invalid distribution"**: Check package metadata and structure
 - **"Authentication failed"**: Verify API token
 
 ### Homebrew Issues
+
 - **Audit failures**: Check formula syntax and dependencies
 - **Build failures**: Test locally with `--build-from-source`
 - **Hash mismatches**: Recalculate SHA256
 
 ### VSCode Issues
+
 - **Package too large**: Check file exclusions in `.vscodeignore`
 - **Invalid manifest**: Validate `package.json` schema
 - **Authentication issues**: Regenerate PAT token
@@ -207,6 +231,7 @@ The extension should include:
 ## Version Management
 
 We follow [Semantic Versioning](https://semver.org/):
+
 - **MAJOR.MINOR.PATCH**
 - **MAJOR**: Breaking changes
 - **MINOR**: New features (backward compatible)
@@ -217,6 +242,7 @@ Example progression: `1.0.0` → `1.0.1` → `1.1.0` → `2.0.0`
 ## Support
 
 For publishing issues:
+
 1. Check GitHub Actions logs
 2. Review package manager documentation
-3. Open an issue in the repository 
+3. Open an issue in the repository

@@ -12,6 +12,12 @@ from rich.logging import RichHandler
 from . import __version__
 from .config import Config
 from .core.formatter import MakefileFormatter
+from .utils.version_utils import (
+    VersionError,
+    check_for_updates,
+    is_development_install,
+    update_package,
+)
 
 app = typer.Typer(
     name="bake",
@@ -25,6 +31,17 @@ def version_callback(value: bool) -> None:
     """Show version and exit."""
     if value:
         console.print(f"mbake version {__version__}")
+
+        # Check for updates (non-blocking)
+        try:
+            update_available, latest_version, _ = check_for_updates()
+            if update_available and latest_version:
+                console.print(f"[dim]💡 New version available: v{latest_version}[/dim]")
+                console.print("[dim]   Run 'bake update' to upgrade[/dim]")
+        except Exception:
+            # Silently ignore update check errors when showing version
+            pass
+
         raise typer.Exit()
 
 
@@ -432,6 +449,117 @@ def format(
         if debug:
             console.print_exception()
         raise typer.Exit(2) from None
+
+
+@app.command()
+def update(
+    force: bool = typer.Option(
+        False, "--force", help="Force update even if up to date"
+    ),
+    check_only: bool = typer.Option(False, "--check", help="Only check, don't update"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+) -> None:
+    """Update mbake to the latest version from PyPI."""
+    if check_only:
+        console.print("🔍 Checking for updates...", style="dim")
+
+        try:
+            update_available, latest_version, current_ver = check_for_updates()
+
+            if update_available and latest_version:
+                console.print("[green]✨ Update available![/green]")
+                console.print(f"Current version: [yellow]{current_ver}[/yellow]")
+                console.print(f"Latest version:  [green]{latest_version}[/green]")
+
+                if is_development_install():
+                    console.print(
+                        "\n[yellow]Note:[/yellow] You appear to be using a development installation."
+                    )
+                    console.print(
+                        "Consider updating your local repository and reinstalling."
+                    )
+                else:
+                    console.print("\nTo update, run: [bold]bake update[/bold]")
+
+            elif latest_version is None:
+                console.print(
+                    "[yellow]⚠️[/yellow] Unable to check for updates (network error)"
+                )
+                console.print("Check your internet connection and try again later.")
+            else:
+                console.print(f"[green]✅ You're up to date![/green] (v{current_ver})")
+
+        except VersionError as e:
+            console.print(f"[red]Error checking version:[/red] {e}")
+            raise typer.Exit(1) from e
+        return
+
+    console.print("🔍 Checking for updates...", style="dim")
+
+    try:
+        update_available, latest_version, current_ver = check_for_updates()
+
+        if latest_version is None:
+            console.print("[red]❌ Unable to check for updates[/red]")
+            console.print("Check your internet connection and try again later.")
+            raise typer.Exit(1)
+
+        if not update_available and not force:
+            console.print(f"[green]✅ Already up to date![/green] (v{current_ver})")
+            return
+
+        # Check if this is a development install
+        if is_development_install():
+            console.print("[yellow]⚠️ Development installation detected[/yellow]")
+            console.print("This appears to be an editable/development installation.")
+            console.print(
+                "Please update manually by pulling the latest changes and reinstalling:"
+            )
+            console.print("  git pull")
+            console.print("  pip install -e .")
+            return
+
+        if update_available:
+            console.print("[green]✨ Update available![/green]")
+            console.print(f"Current version: [yellow]{current_ver}[/yellow]")
+            console.print(f"Latest version:  [green]{latest_version}[/green]")
+        else:
+            console.print(
+                f"[yellow]Forcing update...[/yellow] (current: v{current_ver})"
+            )
+
+        # Confirmation prompt
+        if not yes:
+            proceed = typer.confirm(
+                f"Do you want to update mbake to v{latest_version}?"
+            )
+            if not proceed:
+                console.print("Update cancelled.")
+                return
+
+        # Perform update
+        console.print("📦 Updating mbake...", style="dim")
+
+        with console.status("Installing update..."):
+            success = update_package("mbake")
+
+        if success:
+            console.print(
+                f"[green]🎉 Successfully updated to v{latest_version}![/green]"
+            )
+            console.print(
+                "\n[dim]Note: You may need to restart your terminal or reload your shell for changes to take effect.[/dim]"
+            )
+        else:
+            console.print("[red]❌ Update failed[/red]")
+            console.print(
+                "Try updating manually with: [bold]pip install --upgrade mbake[/bold]"
+            )
+            raise typer.Exit(1)
+
+    except VersionError as e:
+        console.print(f"[red]Error during update:[/red] {e}")
+        raise typer.Exit(1) from e
 
 
 def main() -> None:
