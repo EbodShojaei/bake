@@ -103,6 +103,7 @@ remove_trailing_whitespace = true
 ensure_final_newline = true
 normalize_empty_lines = true
 max_consecutive_empty_lines = 2
+fix_missing_recipe_tabs = true
 """
 
 
@@ -238,6 +239,11 @@ def config(
                 "max_consecutive_empty_lines",
                 config.formatter.max_consecutive_empty_lines,
                 "Max consecutive empty lines",
+            ),
+            (
+                "fix_missing_recipe_tabs",
+                config.formatter.fix_missing_recipe_tabs,
+                "Fix recipe lines missing tab separator",
             ),
         ]
 
