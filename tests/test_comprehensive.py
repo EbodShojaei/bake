@@ -807,3 +807,24 @@ class TestDuplicateTargetsConditional:
             ]
             assert len(duplicate_errors) == 1
             assert "install" in duplicate_errors[0]
+
+
+class TestMultilineBackslashHandling:
+    """Ensure line continuation formatting is handled correctly for long multiline."""
+
+    def test_backslash_continuation_block(self):
+        """Test fixture that ensures long multiline variable assignments are formatted correctly and efficiently."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/backslash_continuation_block/input.mk")
+        expected_file = Path("tests/fixtures/backslash_continuation_block/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines

@@ -110,17 +110,13 @@ class LineUtils:
             # this could be a recipe continuation line
             if prev_line.startswith(("\t", " ")) and prev_stripped.endswith("\\"):
                 # Check if the previous line is a recipe line
-                if LineUtils._is_recipe_line_helper(
-                    prev_line, i, all_lines, visited.copy()
-                ):
+                if LineUtils._is_recipe_line_helper(prev_line, i, all_lines, visited):
                     return True
                 continue
 
             # If previous line is an indented recipe line, this is also a recipe line
             if prev_line.startswith(("\t", " ")):
-                if LineUtils._is_recipe_line_helper(
-                    prev_line, i, all_lines, visited.copy()
-                ):
+                if LineUtils._is_recipe_line_helper(prev_line, i, all_lines, visited):
                     return True
                 continue
 
