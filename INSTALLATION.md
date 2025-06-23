@@ -2,12 +2,6 @@
 
 This guide covers how to set up both the terminal command and VS Code extension for the mbake Makefile formatter.
 
-## ✅ Status
-
-✅ **Terminal Functionality**: Working correctly  
-✅ **VS Code Extension**: Ready for installation  
-✅ **Comprehensive Testing**: Completed  
-
 ## 📦 Terminal Installation
 
 ### 1. Package Installation
@@ -26,6 +20,10 @@ Your configuration file is located at `~/.bake.toml`. It contains sensible defau
 # Global settings
 debug = false
 verbose = false
+
+# Error message formatting
+gnu_error_format = true         # Use GNU standard error format (file:line: Error: message)
+wrap_error_messages = false     # Wrap long error messages (can interfere with IDE parsing)
 
 [formatter]
 # Indentation settings
@@ -50,6 +48,7 @@ remove_trailing_whitespace = true
 ensure_final_newline = true
 normalize_empty_lines = true
 max_consecutive_empty_lines = 2
+fix_missing_recipe_tabs = true
 ```
 
 ### 3. Terminal Usage
@@ -63,6 +62,9 @@ bake --check Makefile
 
 # Show what changes would be made
 bake --diff Makefile
+
+# Validate Makefile syntax using GNU make
+bake validate Makefile
 
 # Format with verbose output
 bake --verbose Makefile

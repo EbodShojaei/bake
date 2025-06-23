@@ -2,8 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0]
+
+### Added
+
+- GNU Standard Error Format: Error messages now include filename and line numbers for IDE integration
+  - Format: `filename:line: Error: message`
+  - Configurable via `gnu_error_format = true/false` (default: true)
+- Configurable Error Message Line Wrapping: Control line wrapping for better IDE compatibility
+  - `wrap_error_messages = false` (default) prevents line wrapping that interferes with IDE parsing
+  - Can be enabled for terminal-friendly wrapped output
+
+### Changed
+
+- The != operator is correctly preserved as !=
+  - No unwanted space insertion in shell comparison operators
+  - Regular Make assignments still get proper spacing
+- Place .PHONY after file header but before section comments
+- Conditional targets properly excluded
+  - default and build targets inside conditionals are no longer included in .PHONY
+- Non-conditional targets properly included (clean, install, test targets outside conditionals)
+- Normalized tab indentation for consistency in edge-cases (e.g., mixed tabs+spaces)
+- Added `context` param to `format` method in `base.py` for passing references to any rule (e.g., original .mk content)
+
 ## [1.1.3]
 
+<!-- markdownlint-disable MD024 -->
 ### Added
 
 - Version checking and update functionality
@@ -112,6 +136,7 @@ All notable changes to this project will be documented in this file.
 - **VSCode Extension**: Ready for Visual Studio Code Marketplace
 - **GitHub Actions**: Automated CI/CD and publishing workflows
 
+[1.2.0]: https://github.com/ebodshojaei/bake/releases/tag/v1.2.0
 [1.1.3]: https://github.com/ebodshojaei/bake/releases/tag/v1.1.3
 [1.1.1]: https://github.com/ebodshojaei/bake/releases/tag/v1.1.1
 [1.0.0]: https://github.com/ebodshojaei/bake/releases/tag/v1.0.0

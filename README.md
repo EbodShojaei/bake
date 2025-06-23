@@ -184,6 +184,13 @@ bake validate --verbose Makefile
 bake validate --config /path/to/config.toml Makefile
 ```
 
+#### **validate vs format --check**
+
+- **`bake validate`**: Checks if Makefile will execute correctly using GNU `make` (syntax validation)
+- **`bake format --check`**: Checks if Makefile follows formatting rules (style validation)
+
+Both are useful! Use `validate` for syntax errors, `format --check` for style issues.
+
 ### Version Management
 
 ```bash
@@ -250,10 +257,15 @@ remove_trailing_whitespace = true
 ensure_final_newline = true
 normalize_empty_lines = true
 max_consecutive_empty_lines = 2
+fix_missing_recipe_tabs = true
 
 # Global settings
 debug = false
 verbose = false
+
+# Error message formatting
+gnu_error_format = true         # Use GNU standard error format (file:line: Error: message)
+wrap_error_messages = false     # Wrap long error messages (can interfere with IDE parsing)
 ```
 
 ---
@@ -486,7 +498,6 @@ Exit codes:
 git clone https://github.com/ebodshojaei/bake.git
 cd mbake
 pip install -e ".[dev]"
-pre-commit install
 ```
 
 ### Running Tests
