@@ -178,3 +178,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp 
+
+# Other
+PUBLISHING.md
