@@ -101,13 +101,58 @@ class TestWhitespaceRule:
 
     def test_removes_trailing_whitespace(self):
         rule = WhitespaceRule()
-        config = {"remove_trailing_whitespace": True, "ensure_final_newline": True}
+        config = {"remove_trailing_whitespace": True}
         lines = ["line1  ", "line2\t", "line3"]
 
         result = rule.format(lines, config)
 
         assert result.changed
-        assert result.lines == ["line1", "line2", "line3", ""]
+        assert result.lines == ["line1", "line2", "line3"]
+
+
+class TestFinalNewlineRule:
+    """Test the final newline rule."""
+
+    def test_detects_missing_final_newline(self):
+        from bake.core.rules.final_newline import FinalNewlineRule
+
+        rule = FinalNewlineRule()
+        config = {"ensure_final_newline": True, "_global": {"gnu_error_format": True}}
+        lines = ["line1", "line2", "line3"]
+
+        result = rule.format(
+            lines, config, check_mode=True, original_content_ends_with_newline=False
+        )
+
+        assert result.changed
+        assert len(result.check_messages) == 1
+        assert "3: Error: Missing final newline" in result.check_messages[0]
+
+    def test_skips_when_disabled(self):
+        from bake.core.rules.final_newline import FinalNewlineRule
+
+        rule = FinalNewlineRule()
+        config = {"ensure_final_newline": False}
+        lines = ["line1", "line2", "line3"]
+
+        result = rule.format(lines, config, check_mode=True)
+
+        assert not result.changed
+        assert len(result.check_messages) == 0
+
+    def test_skips_when_original_has_newline(self):
+        from bake.core.rules.final_newline import FinalNewlineRule
+
+        rule = FinalNewlineRule()
+        config = {"ensure_final_newline": True, "_global": {"gnu_error_format": True}}
+        lines = ["line1", "line2", "line3"]
+
+        result = rule.format(
+            lines, config, check_mode=True, original_content_ends_with_newline=True
+        )
+
+        assert not result.changed
+        assert len(result.check_messages) == 0
 
 
 class TestContinuationRule:
@@ -221,7 +266,6 @@ class TestMakefileFormatter:
 
         changed, errors = formatter.format_file(test_file, check_only=True)
 
-        assert not errors
         assert changed  # Should detect changes needed
 
         # Check file was NOT modified

@@ -38,6 +38,6 @@ clean:
 
 #Comment with trailing spaces
 install: #Install target
-		cp main /usr/local/bin/#Copy binary
+	cp main /usr/local/bin/#Copy binary
 
 #EOF comment

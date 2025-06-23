@@ -25,7 +25,7 @@ target_with_underscores: dependency
 
 #Targets with variables in names
 $(TARGET).backup: $(TARGET)
-		cp $< $@
+	cp $< $@
 
 #Pattern rules with edge cases
 %.out: %.in
@@ -91,7 +91,7 @@ CC = gcc#inline comment
 #Tab vs spaces in recipes (this tests tab handling)
 tab-test:
 	echo "This line uses tab"
-		echo "This line uses spaces (should be converted to tab)"
+	echo "This line uses spaces (should be converted to tab)"
 		echo "This line uses mixed tab and spaces"
 
 #Function calls with complex arguments

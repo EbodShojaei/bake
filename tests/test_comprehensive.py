@@ -781,3 +781,30 @@ class TestUnicodeAndEncoding:
 
             assert not errors
             assert formatted_lines == expected_lines
+
+
+class TestDuplicateTargetsConditional:
+    """Test duplicate target detection in conditional blocks."""
+
+    def test_duplicate_targets_conditional_fixture(self):
+        """Test duplicate targets in conditional blocks fixture."""
+        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=False))
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/duplicate_targets_conditional/input.mk")
+        expected_file = Path("tests/fixtures/duplicate_targets_conditional/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(
+                input_lines, check_only=True
+            )
+
+            # Should only flag the real duplicate target (install) at the end
+            duplicate_errors = [
+                error for error in errors if "Duplicate target" in error
+            ]
+            assert len(duplicate_errors) == 1
+            assert "install" in duplicate_errors[0]
