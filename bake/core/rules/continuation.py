@@ -3,6 +3,7 @@
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import ShellUtils
 
 
 class ContinuationRule(FormatterPlugin):
@@ -38,16 +39,31 @@ class ContinuationRule(FormatterPlugin):
 
             # Check if line ends with backslash (continuation)
             if line.rstrip().endswith("\\"):
+                # Check if this is actually the end of a shell control structure
+                # and the next line should not be treated as a continuation
+                if self._is_shell_control_end(line, i, lines):
+                    formatted_lines.append(line)
+                    i += 1
+                    continue
+
                 # Collect all continuation lines
                 continuation_lines = [line]
                 j = i + 1
 
                 while j < len(lines):
-                    continuation_lines.append(lines[j])
+                    current_line = lines[j]
+                    continuation_lines.append(current_line)
+
                     # If this line doesn't end with backslash, it's the last line
-                    if not lines[j].rstrip().endswith("\\"):
+                    if not current_line.rstrip().endswith("\\"):
                         j += 1
                         break
+
+                    # Check if this line is a shell control end and should stop collection
+                    if self._is_shell_control_end(current_line, j, lines):
+                        j += 1
+                        break
+
                     j += 1
 
                 # Format the continuation block
@@ -178,17 +194,10 @@ class ContinuationRule(FormatterPlugin):
         full_content = full_content.strip()
 
         # NEVER join shell control structures - they should always stay multi-line
-        shell_control_keywords = [
-            "for ",
-            "while ",
-            "if ",
-            "case ",
-            "do",
-            "then",
-            "else",
-            "elif",
-        ]
-        if any(keyword in full_content.lower() for keyword in shell_control_keywords):
+        if any(
+            f" {kw} " in f" {full_content.lower()} "
+            for kw in ShellUtils.SIMPLE_KEYWORDS
+        ):
             return False
 
         # NEVER join lines that contain shell control operators in deliberate structure
@@ -205,15 +214,10 @@ class ContinuationRule(FormatterPlugin):
                 for keyword in ["for", "while", "if", "case", "do", "then", "function"]
             )
             and not self._has_complex_deliberate_structure(lines, full_content)
-            and not self._contains_shell_operators(full_content)
+            and not ShellUtils.contains_shell_operators(full_content)
         )
 
         return should_join
-
-    def _contains_shell_operators(self, content: str) -> bool:
-        """Check if content contains shell operators that suggest deliberate structure."""
-        operators = ["&&", "||", ";", "|", ">", "<", ">>", "<<", "$(", "`"]
-        return any(op in content for op in operators)
 
     def _has_complex_deliberate_structure(
         self, lines: list[str], full_content: str
@@ -302,3 +306,32 @@ class ContinuationRule(FormatterPlugin):
         # Remove trailing whitespace before backslash, ensure single space
         content = line.rstrip()[:-1].rstrip()
         return content + " \\"
+
+    def _is_shell_control_end(
+        self, line: str, line_index: int, lines: list[str]
+    ) -> bool:
+        """
+        Check if a line ending with backslash is actually the end of a shell control structure.
+
+        Returns True if the next line should not be treated as a continuation.
+        """
+        if not line.startswith("\t"):
+            return False
+
+        # Check if this line contains shell control structure endings
+        stripped = line.lstrip("\t ").rstrip()
+        if stripped.endswith("\\"):
+            content = stripped[:-1].strip()
+
+            if ShellUtils.is_shell_control_end(content) and line_index + 1 < len(lines):
+                # Check if next line exists and looks like a new recipe command
+                next_line = lines[line_index + 1]
+                # If next line starts with tab and doesn't look like a continuation,
+                # then this shell control end should not be treated as a continuation
+                if next_line.startswith("\t") and not any(
+                    next_line.strip().startswith(kw)
+                    for kw in ShellUtils.CONTINUATION_KEYWORDS
+                ):
+                    return True
+
+        return False

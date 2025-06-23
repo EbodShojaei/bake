@@ -23,7 +23,7 @@ class AssignmentSpacingRule(FormatterPlugin):
 
         space_around_assignment = config.get("space_around_assignment", True)
 
-        for i, line in enumerate(lines):
+        for _, line in enumerate(lines):
             # Skip comments and empty lines
             if LineUtils.should_skip_line(
                 line, skip_recipe=False, skip_comments=True, skip_empty=True
@@ -31,8 +31,8 @@ class AssignmentSpacingRule(FormatterPlugin):
                 formatted_lines.append(line)
                 continue
 
-            # Skip actual recipe lines (shell commands), but allow indented variable assignments
-            if LineUtils.is_recipe_line(line, i, lines):
+            # Skip any assignments inside recipe lines (these are shell, not makefile)
+            if line.startswith("\t"):
                 formatted_lines.append(line)
                 continue
 

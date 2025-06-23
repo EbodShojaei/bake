@@ -7,7 +7,7 @@ test:
 	else \
 	  CFLAGS="-O2"; \
 	fi; \
-  $(CC) $$CFLAGS -o $(TARGET) $(SOURCES)
+	$(CC) $$CFLAGS -o $(TARGET) $(SOURCES)
 
 deploy:
 	for file in $(wildcard *.txt); do \

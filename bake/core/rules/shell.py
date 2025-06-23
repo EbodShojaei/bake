@@ -1,9 +1,9 @@
 """Shell script formatting rule for Makefile recipes."""
 
-import re
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import ShellUtils
 
 
 class ShellFormattingRule(FormatterPlugin):
@@ -31,7 +31,7 @@ class ShellFormattingRule(FormatterPlugin):
                 stripped = line.lstrip("\t ")
 
                 # Check if this starts a shell control structure
-                if self._is_shell_control_start(stripped):
+                if ShellUtils.is_shell_control_start(stripped):
                     # Process the shell block
                     shell_block, block_end = self._extract_shell_block(lines, i)
                     formatted_block = self._format_shell_block(shell_block)
@@ -55,21 +55,6 @@ class ShellFormattingRule(FormatterPlugin):
             warnings=warnings,
             check_messages=[],
         )
-
-    def _is_shell_control_start(self, line: str) -> bool:
-        """Check if line starts a shell control structure."""
-        # Strip make command prefixes (@, -, +)
-        stripped = line.lstrip("@-+ ")
-
-        control_patterns = [
-            r"^if\s+\[",
-            r"^for\s+\w+\s+in\s+",
-            r"^while\s+",
-            r"^case\s+",
-            r"^{\s*$",
-        ]
-
-        return any(re.match(pattern, stripped) for pattern in control_patterns)
 
     def _extract_shell_block(
         self, lines: list[str], start_idx: int
@@ -133,8 +118,8 @@ class ShellFormattingRule(FormatterPlugin):
 
             # Adjust indent level for closing keywords
             if any(
-                command_content.strip().startswith(end)
-                for end in ["else", "elif", "fi", "done", "esac", "}"]
+                command_content.strip().startswith(kw)
+                for kw in ShellUtils.CONTINUATION_KEYWORDS + ShellUtils.END_KEYWORDS
             ):
                 indent_level = max(0, indent_level - 1)
 
@@ -150,8 +135,8 @@ class ShellFormattingRule(FormatterPlugin):
 
             # Adjust indent level for opening keywords
             if any(
-                command_content.strip().startswith(start)
-                for start in ["if", "for", "while", "case", "else", "elif"]
+                command_content.strip().startswith(kw)
+                for kw in ShellUtils.START_KEYWORDS + ShellUtils.CONTINUATION_KEYWORDS
             ) and stripped.rstrip().endswith("\\"):
                 indent_level += 1
 
