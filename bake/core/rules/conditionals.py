@@ -1,6 +1,7 @@
 """Conditional block formatting rule for Makefiles."""
 
 import re
+from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
 
@@ -11,7 +12,9 @@ class ConditionalRule(FormatterPlugin):
     def __init__(self) -> None:
         super().__init__("conditionals", priority=35)
 
-    def format(self, lines: list[str], config: dict) -> FormatResult:
+    def format(
+        self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
+    ) -> FormatResult:
         """Format conditional block indentation."""
         formatted_lines = []
         changed = False
@@ -72,7 +75,11 @@ class ConditionalRule(FormatterPlugin):
                 formatted_lines.append(line)
 
         return FormatResult(
-            lines=formatted_lines, changed=changed, errors=errors, warnings=warnings
+            lines=formatted_lines,
+            changed=changed,
+            errors=errors,
+            warnings=warnings,
+            check_messages=[],
         )
 
     def _is_conditional_start(self, line: str) -> bool:

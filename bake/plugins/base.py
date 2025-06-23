@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -12,6 +13,7 @@ class FormatResult:
     changed: bool
     errors: list[str]
     warnings: list[str]
+    check_messages: list[str]  # Messages describing what would change in check mode
 
 
 class FormatterPlugin(ABC):
@@ -28,12 +30,16 @@ class FormatterPlugin(ABC):
         self.priority = priority
 
     @abstractmethod
-    def format(self, lines: list[str], config: dict) -> FormatResult:
+    def format(
+        self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
+    ) -> FormatResult:
         """Apply formatting rule to the lines.
 
         Args:
             lines: List of lines to format
             config: Configuration dictionary
+            check_mode: If True, generate descriptive messages about changes
+            **context: Optional context information (e.g., original_content_ends_with_newline)
 
         Returns:
             FormatResult with updated lines and metadata
@@ -50,7 +56,7 @@ class FormatterPlugin(ABC):
         Returns:
             List of validation error messages
         """
-        result = self.format(lines, config)
+        result = self.format(lines, config, check_mode=False)
         if result.changed:
             return [f"{self.name}: formatting violations detected"]
         return []

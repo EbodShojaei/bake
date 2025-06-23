@@ -1,6 +1,7 @@
 """PHONY declaration formatting rule for Makefiles."""
 
 import re
+from typing import Any
 
 from bake.utils.line_utils import MakefileParser
 
@@ -13,7 +14,9 @@ class PhonyRule(FormatterPlugin):
     def __init__(self) -> None:
         super().__init__("phony", priority=40)
 
-    def format(self, lines: list[str], config: dict) -> FormatResult:
+    def format(
+        self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
+    ) -> FormatResult:
         """Group and organize .PHONY declarations."""
         changed = False
         errors: list[str] = []
@@ -23,7 +26,11 @@ class PhonyRule(FormatterPlugin):
 
         if not group_phony:
             return FormatResult(
-                lines=lines, changed=False, errors=errors, warnings=warnings
+                lines=lines,
+                changed=False,
+                errors=errors,
+                warnings=warnings,
+                check_messages=[],
             )
 
         # Find all .PHONY declarations and detect obvious phony targets
@@ -127,13 +134,21 @@ class PhonyRule(FormatterPlugin):
         # If no .PHONY declarations found, return original
         if not phony_targets:
             return FormatResult(
-                lines=lines, changed=False, errors=errors, warnings=warnings
+                lines=lines,
+                changed=False,
+                errors=errors,
+                warnings=warnings,
+                check_messages=[],
             )
 
         # Always make changes if we found malformed .PHONY or multiple .PHONY lines
         if len(phony_line_indices) <= 1 and not malformed_phony_found:
             return FormatResult(
-                lines=lines, changed=False, errors=errors, warnings=warnings
+                lines=lines,
+                changed=False,
+                errors=errors,
+                warnings=warnings,
+                check_messages=[],
             )
 
         # If we have multiple .PHONY lines or malformed ones, clean them up
@@ -186,7 +201,11 @@ class PhonyRule(FormatterPlugin):
             )
 
         return FormatResult(
-            lines=formatted_lines, changed=changed, errors=errors, warnings=warnings
+            lines=formatted_lines,
+            changed=changed,
+            errors=errors,
+            warnings=warnings,
+            check_messages=[],
         )
 
     def _extract_phony_targets(self, line: str) -> list[str]:

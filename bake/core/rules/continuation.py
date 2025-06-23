@@ -1,5 +1,7 @@
 """Line continuation formatting rule for Makefiles."""
 
+from typing import Any
+
 from ...plugins.base import FormatResult, FormatterPlugin
 
 
@@ -9,7 +11,9 @@ class ContinuationRule(FormatterPlugin):
     def __init__(self) -> None:
         super().__init__("continuation", priority=30)
 
-    def format(self, lines: list[str], config: dict) -> FormatResult:
+    def format(
+        self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
+    ) -> FormatResult:
         """Normalize line continuation formatting."""
         formatted_lines = []
         changed = False
@@ -21,7 +25,11 @@ class ContinuationRule(FormatterPlugin):
 
         if not normalize_continuations:
             return FormatResult(
-                lines=lines, changed=False, errors=errors, warnings=warnings
+                lines=lines,
+                changed=False,
+                errors=errors,
+                warnings=warnings,
+                check_messages=[],
             )
 
         i = 0
@@ -57,7 +65,11 @@ class ContinuationRule(FormatterPlugin):
                 i += 1
 
         return FormatResult(
-            lines=formatted_lines, changed=changed, errors=errors, warnings=warnings
+            lines=formatted_lines,
+            changed=changed,
+            errors=errors,
+            warnings=warnings,
+            check_messages=[],
         )
 
     def _format_continuation_block(
