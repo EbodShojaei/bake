@@ -47,6 +47,13 @@ class Config:
     formatter: FormatterConfig
     debug: bool = False
     verbose: bool = False
+    # Error message formatting
+    gnu_error_format: bool = (
+        True  # Use GNU standard error format (file:line: Error: message)
+    )
+    wrap_error_messages: bool = (
+        False  # Wrap long error messages (can interfere with IDE parsing)
+    )
 
     @classmethod
     def load(cls, config_path: Optional[Path] = None) -> "Config":
@@ -90,12 +97,17 @@ class Config:
         }
         formatter_config = FormatterConfig(**filtered_formatter_data)
 
-        # Extract global config, only taking debug and verbose
+        # Extract global config (only from top level - these are global settings, not formatter settings)
         global_data = {}
+
         if "debug" in data:
             global_data["debug"] = data["debug"]
         if "verbose" in data:
             global_data["verbose"] = data["verbose"]
+        if "gnu_error_format" in data:
+            global_data["gnu_error_format"] = data["gnu_error_format"]
+        if "wrap_error_messages" in data:
+            global_data["wrap_error_messages"] = data["wrap_error_messages"]
 
         return cls(formatter=formatter_config, **global_data)
 
@@ -129,4 +141,6 @@ class Config:
             },
             "debug": self.debug,
             "verbose": self.verbose,
+            "gnu_error_format": self.gnu_error_format,
+            "wrap_error_messages": self.wrap_error_messages,
         }

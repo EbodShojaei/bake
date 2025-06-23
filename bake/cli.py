@@ -27,6 +27,14 @@ app = typer.Typer(
 console = Console()
 
 
+def get_console(config: Optional[Config] = None) -> Console:
+    """Get console with appropriate configuration."""
+    if config and not config.wrap_error_messages:
+        # Disable line wrapping for better IDE integration
+        return Console(width=None, legacy_windows=False)
+    return console
+
+
 def version_callback(value: bool) -> None:
     """Show version and exit."""
     if value:
@@ -53,8 +61,8 @@ def main_callback(
         "--version",
         callback=version_callback,
         is_eager=True,
-        help="Show version and exit",
-    )
+        help="Show version and exit.",
+    ),
 ) -> None:
     """Main callback for version handling."""
     pass
@@ -62,6 +70,14 @@ def main_callback(
 
 DEFAULT_CONFIG = """# mbake configuration file
 # Generated with: bake init
+
+# Global settings
+debug = false
+verbose = false
+
+# Error message formatting
+gnu_error_format = true  # Use GNU standard error format (file:line: Error: message)
+wrap_error_messages = false  # Wrap long error messages (can interfere with IDE parsing)
 
 [formatter]
 # Indentation settings
@@ -87,10 +103,6 @@ remove_trailing_whitespace = true
 ensure_final_newline = true
 normalize_empty_lines = true
 max_consecutive_empty_lines = 2
-
-# Global settings
-debug = false
-verbose = false
 """
 
 
@@ -108,9 +120,9 @@ def setup_logging(verbose: bool = False, debug: bool = False) -> None:
 
 @app.command()
 def init(
-    force: bool = typer.Option(False, "--force", help="Overwrite existing config"),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing config."),
     config_file: Optional[Path] = typer.Option(
-        None, "--config", help="Path to configuration file (default: ~/.bake.toml)"
+        None, "--config", help="Path to configuration file (default: ~/.bake.toml)."
     ),
 ) -> None:
     """Initialize configuration file with defaults."""
@@ -130,7 +142,9 @@ def init(
         console.print("\nNext steps:")
         console.print("  • Edit the config file to customize formatting rules")
         console.print("  • Run [bold]bake config[/bold] to view current settings")
-        console.print("  • Run [bold]bake format Makefile[/bold] to format your first file")
+        console.print(
+            "  • Run [bold]bake format Makefile[/bold] to format your first file"
+        )
     except Exception as e:
         console.print(f"[red]Error:[/red] Failed to create config: {e}")
         raise typer.Exit(1) from e
@@ -138,9 +152,9 @@ def init(
 
 @app.command()
 def config(
-    show_path: bool = typer.Option(False, "--path", help="Show config file path"),
+    show_path: bool = typer.Option(False, "--path", help="Show config file path."),
     config_file: Optional[Path] = typer.Option(
-        None, "--config", help="Path to configuration file"
+        None, "--config", help="Path to configuration file."
     ),
 ) -> None:
     """Show current configuration."""
@@ -235,6 +249,8 @@ def config(
         console.print("\n[bold]Global Settings[/bold]")
         console.print(f"  debug: {config.debug}")
         console.print(f"  verbose: {config.verbose}")
+        console.print(f"  gnu_error_format: {config.gnu_error_format}")
+        console.print(f"  wrap_error_messages: {config.wrap_error_messages}")
 
     except Exception as e:
         console.print(f"[red]Error:[/red] Failed to load config: {e}")
@@ -243,15 +259,15 @@ def config(
 
 @app.command()
 def validate(
-    files: list[Path] = typer.Argument(..., help="Makefile(s) to validate"),
+    files: list[Path] = typer.Argument(..., help="Makefile(s) to validate."),
     config_file: Optional[Path] = typer.Option(
-        None, "--config", help="Path to configuration file"
+        None, "--config", help="Path to configuration file."
     ),
     verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Enable verbose output"
+        False, "--verbose", "-v", help="Enable verbose output."
     ),
 ) -> None:
-    """Validate that Makefiles have correct syntax."""
+    """Validate Makefile syntax using GNU make."""
     setup_logging(verbose)
 
     try:
@@ -299,31 +315,31 @@ def validate(
 
 @app.command()
 def format(
-    files: list[Path] = typer.Argument(..., help="Makefile(s) to format"),
+    files: list[Path] = typer.Argument(..., help="Makefile(s) to format."),
     check: bool = typer.Option(
         False,
         "--check",
         "-c",
-        help="Check if files are formatted without making changes",
+        help="Check formatting rules without making changes.",
     ),
     diff: bool = typer.Option(
-        False, "--diff", "-d", help="Show diff of changes that would be made"
+        False, "--diff", "-d", help="Show diff of changes that would be made."
     ),
     verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Enable verbose output"
+        False, "--verbose", "-v", help="Enable verbose output."
     ),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug output"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug output."),
     config_file: Optional[Path] = typer.Option(
-        None, "--config", help="Path to configuration file (default: ~/.bake.toml)"
+        None, "--config", help="Path to configuration file (default: ~/.bake.toml)."
     ),
     backup: bool = typer.Option(
-        False, "--backup", "-b", help="Create backup files before formatting"
+        False, "--backup", "-b", help="Create backup files before formatting."
     ),
     validate_syntax: bool = typer.Option(
-        False, "--validate", help="Validate syntax after formatting"
+        False, "--validate", help="Validate syntax after formatting."
     ),
 ) -> None:
-    """Format Makefile(s) according to configuration."""
+    """Format Makefiles according to style rules (use 'validate' command for syntax checking)."""
     setup_logging(verbose, debug)
 
     try:
@@ -331,6 +347,9 @@ def format(
         config = Config.load_or_default(config_file)
         config.verbose = verbose or config.verbose
         config.debug = debug or config.debug
+
+        # Get appropriately configured console
+        output_console = get_console(config)
 
         # Initialize formatter
         formatter = MakefileFormatter(config)
@@ -341,10 +360,12 @@ def format(
 
         with console.status("Processing files...") as status:
             for i, file_path in enumerate(files):
-                status.update(f"Processing {file_path.name} ({i+1}/{len(files)})")
+                status.update(f"Processing {file_path.name} ({i + 1}/{len(files)})")
 
                 if not file_path.exists():
-                    console.print(f"[red]Error:[/red] File not found: {file_path}")
+                    output_console.print(
+                        f"[red]Error:[/red] File not found: {file_path}"
+                    )
                     any_errors = True
                     continue
 
@@ -358,7 +379,9 @@ def format(
                     )
                     backup_path.write_text(file_path.read_text(encoding="utf-8"))
                     if verbose:
-                        console.print(f"[dim]Created backup: {backup_path}[/dim]")
+                        output_console.print(
+                            f"[dim]Created backup: {backup_path}[/dim]"
+                        )
 
                 # Show diff if requested
                 if diff:
@@ -391,14 +414,28 @@ def format(
                 if errors:
                     any_errors = True
                     for error in errors:
-                        console.print(f"[red]Error:[/red] {error}")
+                        if config.gnu_error_format:
+                            # GNU standard format: filename:line: Error: message
+                            if ":" in error and error.split(":")[0].isdigit():
+                                # Error already has line number, prepend filename
+                                output_console.print(f"[red]{file_path}:{error}[/red]")
+                            else:
+                                # Error doesn't have line number, add generic format
+                                output_console.print(
+                                    f"[red]{file_path}: Error: {error}[/red]"
+                                )
+                        else:
+                            # Traditional format
+                            output_console.print(f"[red]Error:[/red] {error}")
 
                 if changed:
                     any_changed = True
                     if check:
-                        console.print(f"[yellow]Would reformat:[/yellow] {file_path}")
+                        output_console.print(
+                            f"[yellow]Would reformat:[/yellow] {file_path}"
+                        )
                     else:
-                        console.print(f"[green]Formatted:[/green] {file_path}")
+                        output_console.print(f"[green]Formatted:[/green] {file_path}")
 
                         # Validate syntax if requested
                         if validate_syntax:
@@ -410,7 +447,7 @@ def format(
                                     timeout=5,
                                 )
                                 if result.returncode != 0:
-                                    console.print(
+                                    output_console.print(
                                         "[red]Warning:[/red] Formatted file has syntax errors"
                                     )
                                     any_errors = True
@@ -418,14 +455,16 @@ def format(
                                 pass  # Skip validation if make not available
 
                 elif verbose:
-                    console.print(f"[dim]Already formatted:[/dim] {file_path}")
+                    output_console.print(f"[dim]Already formatted:[/dim] {file_path}")
 
         # Show summary
         if len(files) > 1:
-            console.print(f"\n[bold]Summary:[/bold] Processed {len(files)} files")
+            output_console.print(
+                f"\n[bold]Summary:[/bold] Processed {len(files)} files"
+            )
             if any_changed:
                 action = "would be reformatted" if check else "reformatted"
-                console.print(f"[green]✓[/green] Files {action}")
+                output_console.print(f"[green]✓[/green] Files {action}")
 
         # Exit with appropriate code
         if any_errors:
@@ -454,10 +493,10 @@ def format(
 @app.command()
 def update(
     force: bool = typer.Option(
-        False, "--force", help="Force update even if up to date"
+        False, "--force", help="Force update even if up to date."
     ),
-    check_only: bool = typer.Option(False, "--check", help="Only check, don't update"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    check_only: bool = typer.Option(False, "--check", help="Only check, don't update."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
 ) -> None:
     """Update mbake to the latest version from PyPI."""
     if check_only:
