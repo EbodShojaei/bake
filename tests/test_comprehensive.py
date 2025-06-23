@@ -796,7 +796,6 @@ class TestDuplicateTargetsConditional:
 
         if input_file.exists() and expected_file.exists():
             input_lines = input_file.read_text(encoding="utf-8").splitlines()
-            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
 
             formatted_lines, errors = formatter.format_lines(
                 input_lines, check_only=True
