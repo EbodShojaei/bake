@@ -128,6 +128,7 @@ The mbake formatter applies these improvements to your Makefiles:
 - **Line continuations**: Normalizes multi-line variable assignments
 - **Whitespace**: Removes trailing whitespace and ensures consistent empty lines
 - **Final newline**: Ensures files end with a newline
+- **Error formatting**: Provides GNU standard error format for perfect
 
 ## Troubleshooting
 
@@ -166,6 +167,10 @@ Create `~/.bake.toml` with these contents:
 debug = false
 verbose = false
 
+# Error message formatting
+gnu_error_format = true         # Use GNU standard error format (file:line: Error: message)
+wrap_error_messages = false     # Wrap long error messages (can interfere with IDE parsing)
+
 [formatter]
 # Indentation settings
 use_tabs = true
@@ -189,6 +194,7 @@ remove_trailing_whitespace = true
 ensure_final_newline = true
 normalize_empty_lines = true
 max_consecutive_empty_lines = 2
+fix_missing_recipe_tabs = true
 ```
 
 ## Contributing
@@ -198,17 +204,3 @@ Found a bug or want to contribute? Visit the [GitHub repository](https://github.
 ## License
 
 This extension is licensed under the MIT License. See the LICENSE file for details.
-
-## Release Notes
-
-### 1.1.1
-
-- Smart .PHONY Detection
-- Opt-in via `auto_insert_phony_declarations = true` configuration
-
-### 1.0.0
-
-- Initial release
-- Format and check commands
-- Format on save support
-- Context menu integration
