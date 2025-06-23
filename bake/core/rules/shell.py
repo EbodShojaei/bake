@@ -58,6 +58,9 @@ class ShellFormattingRule(FormatterPlugin):
 
     def _is_shell_control_start(self, line: str) -> bool:
         """Check if line starts a shell control structure."""
+        # Strip make command prefixes (@, -, +)
+        stripped = line.lstrip("@-+ ")
+
         control_patterns = [
             r"^if\s+\[",
             r"^for\s+\w+\s+in\s+",
@@ -66,7 +69,7 @@ class ShellFormattingRule(FormatterPlugin):
             r"^{\s*$",
         ]
 
-        return any(re.match(pattern, line) for pattern in control_patterns)
+        return any(re.match(pattern, stripped) for pattern in control_patterns)
 
     def _extract_shell_block(
         self, lines: list[str], start_idx: int
@@ -125,9 +128,12 @@ class ShellFormattingRule(FormatterPlugin):
                 trailing = " " * trailing_spaces
                 stripped = stripped.rstrip(" ")
 
+            # Strip make command prefixes for keyword detection
+            command_content = stripped.lstrip("@-+ ")
+
             # Adjust indent level for closing keywords
             if any(
-                stripped.strip().startswith(end)
+                command_content.strip().startswith(end)
                 for end in ["else", "elif", "fi", "done", "esac", "}"]
             ):
                 indent_level = max(0, indent_level - 1)
@@ -144,7 +150,7 @@ class ShellFormattingRule(FormatterPlugin):
 
             # Adjust indent level for opening keywords
             if any(
-                stripped.strip().startswith(start)
+                command_content.strip().startswith(start)
                 for start in ["if", "for", "while", "case", "else", "elif"]
             ) and stripped.rstrip().endswith("\\"):
                 indent_level += 1
