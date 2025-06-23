@@ -99,6 +99,7 @@ class RecipeValidationRule(FormatterPlugin):
                 "ifndef",
                 "else",
                 "endif",
+                "endef",
             )
         ):
             return False
