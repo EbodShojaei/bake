@@ -1,6 +1,7 @@
 """Shell script formatting rule for Makefile recipes."""
 
 import re
+from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
 
@@ -11,7 +12,9 @@ class ShellFormattingRule(FormatterPlugin):
     def __init__(self) -> None:
         super().__init__("shell_formatting", priority=50)
 
-    def format(self, lines: list[str], config: dict) -> FormatResult:
+    def format(
+        self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
+    ) -> FormatResult:
         """Format shell script indentation within recipes."""
         formatted_lines = []
         changed = False
@@ -46,7 +49,11 @@ class ShellFormattingRule(FormatterPlugin):
                 i += 1
 
         return FormatResult(
-            lines=formatted_lines, changed=changed, errors=errors, warnings=warnings
+            lines=formatted_lines,
+            changed=changed,
+            errors=errors,
+            warnings=warnings,
+            check_messages=[],
         )
 
     def _is_shell_control_start(self, line: str) -> bool:
@@ -97,6 +104,10 @@ class ShellFormattingRule(FormatterPlugin):
         formatted = []
         indent_level = 0
 
+        # Use consistent base indentation (1 tab) for all recipe lines
+        # This ensures consistency within the same target
+        base_tabs = 1
+
         for line in block:
             if not line.strip():
                 formatted.append(line)
@@ -121,13 +132,13 @@ class ShellFormattingRule(FormatterPlugin):
             ):
                 indent_level = max(0, indent_level - 1)
 
-            # Calculate proper indentation
+            # Calculate proper indentation, preserving base indentation level
             if indent_level == 0:
-                # Primary recipe level
-                new_line = "\t" + stripped + trailing
+                # Primary recipe level - use base tabs from original indentation
+                new_line = "\t" * base_tabs + stripped + trailing
             else:
-                # Nested shell level
-                new_line = "\t" + "  " * indent_level + stripped + trailing
+                # Nested shell level - add extra indentation
+                new_line = "\t" * base_tabs + "  " * indent_level + stripped + trailing
 
             formatted.append(new_line)
 
