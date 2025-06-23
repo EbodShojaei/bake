@@ -113,13 +113,13 @@ $(BUILDDIR) $(BINDIR) $(LIBDIR):
 
 # Convenience targets
 debug:
-	$(MAKE) DEBUG = 1
+	$(MAKE) DEBUG=1
 
 release:
-	$(MAKE) DEBUG = 0
+	$(MAKE) DEBUG=0
 
 profile:
-	$(MAKE) PROFILE = 1
+	$(MAKE) PROFILE=1
 
 # Installation
 PREFIX ?= /usr/local
@@ -141,7 +141,7 @@ format:
 	xargs clang-format -i
 
 lint:
-	cppcheck --enable = all --std=c++17 --suppress=missingIncludeSystem \
+	cppcheck --enable=all --std=c++17 --suppress=missingIncludeSystem \
   $(SRCDIR) $(INCDIR) $(TESTDIR)
 
 docs:
@@ -165,8 +165,8 @@ help:
 	@echo "  lint     - Run static analysis"
 	@echo ""
 	@echo "Configuration options:"
-	@echo "  DEBUG = 1  - Build with debug symbols"
-	@echo "  STATIC = 1 - Build static binary"
+	@echo "  DEBUG=1  - Build with debug symbols"
+	@echo "  STATIC=1 - Build static binary"
 
 # Dependency tracking
 -include $(OBJECTS:.o=.d)

@@ -295,6 +295,27 @@ class TestPatternRules:
             assert not errors
             assert formatted_lines == expected_lines
 
+
+class TestShellOperators:
+    """Test shell operators and comparison operators handling."""
+
+    def test_shell_operators_fixture(self):
+        """Test shell operators fixture."""
+        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=False))
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/shell_operators/input.mk")
+        expected_file = Path("tests/fixtures/shell_operators/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
     def test_pattern_rule_colon_spacing(self):
         """Test colon spacing in pattern rules."""
         rule = PatternSpacingRule()

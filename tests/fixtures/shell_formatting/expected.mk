@@ -3,9 +3,9 @@ test:
 	# Complex shell command with inconsistent indentation
 	if [ "$(DEBUG)" = "yes" ]; then \
 	  echo "Debug mode enabled"; \
-	  CFLAGS = "-g -O0"; \
+	  CFLAGS="-g -O0"; \
 	else \
-	  CFLAGS = "-O2"; \
+	  CFLAGS="-O2"; \
 	fi; \
   $(CC) $$CFLAGS -o $(TARGET) $(SOURCES)
 

@@ -10,16 +10,16 @@ class PatternUtils:
     # Common regex patterns
     ASSIGNMENT_PATTERNS = {
         "spaced": [
-            (r"^([^:+=?]*?)\s*:=\s*(.*)", r"\1 := \2"),
-            (r"^([^:+=?]*?)\s*\+=\s*(.*)", r"\1 += \2"),
-            (r"^([^:+=?]*?)\s*\?=\s*(.*)", r"\1 ?= \2"),
-            (r"^([^:+=?]*?)\s*=\s*(.*)", r"\1 = \2"),
+            (r"^([^:+=?!]*?)\s*:=\s*(.*)", r"\1 := \2"),
+            (r"^([^:+=?!]*?)\s*\+=\s*(.*)", r"\1 += \2"),
+            (r"^([^:+=?!]*?)\s*\?=\s*(.*)", r"\1 ?= \2"),
+            (r"^([^:+=?!]*?)\s*=\s*(.*)", r"\1 = \2"),
         ],
         "compact": [
-            (r"^([^:+=?]*?)\s*:=\s*(.*)", r"\1:=\2"),
-            (r"^([^:+=?]*?)\s*\+=\s*(.*)", r"\1+=\2"),
-            (r"^([^:+=?]*?)\s*\?=\s*(.*)", r"\1?=\2"),
-            (r"^([^:+=?]*?)\s*=\s*(.*)", r"\1=\2"),
+            (r"^([^:+=?!]*?)\s*:=\s*(.*)", r"\1:=\2"),
+            (r"^([^:+=?!]*?)\s*\+=\s*(.*)", r"\1+=\2"),
+            (r"^([^:+=?!]*?)\s*\?=\s*(.*)", r"\1?=\2"),
+            (r"^([^:+=?!]*?)\s*=\s*(.*)", r"\1=\2"),
         ],
     }
 
@@ -34,7 +34,10 @@ class PatternUtils:
         Returns:
             True if line contains assignment operators
         """
-        return bool(re.search(r"[^:+=?]*[=]", line))
+        # Check for assignment operators, but exclude shell comparison operators like !=, <=, >=
+        return bool(
+            re.search(r"[^:+=?!<>]*[=]", line) and not re.search(r"[!<>=]=", line)
+        )
 
     @staticmethod
     def apply_assignment_spacing(line: str, use_spaces: bool = True) -> str:
@@ -82,7 +85,6 @@ class PatternUtils:
             and not re.search(r"%.*:", line)  # Skip pattern rules
             and line.count(":") == 1
         ):  # Only single colon lines
-
             # Match target: dependencies pattern
             colon_match = re.match(r"^([^:]+):(.*)$", line)
             if colon_match:

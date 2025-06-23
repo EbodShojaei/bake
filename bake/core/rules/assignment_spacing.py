@@ -19,11 +19,16 @@ class AssignmentSpacingRule(FormatterPlugin):
 
         space_around_assignment = config.get("space_around_assignment", True)
 
-        for line in lines:
+        for i, line in enumerate(lines):
             # Skip comments and empty lines
             if LineUtils.should_skip_line(
                 line, skip_recipe=False, skip_comments=True, skip_empty=True
             ):
+                formatted_lines.append(line)
+                continue
+
+            # Skip actual recipe lines (shell commands), but allow indented variable assignments
+            if LineUtils.is_recipe_line(line, i, lines):
                 formatted_lines.append(line)
                 continue
 
