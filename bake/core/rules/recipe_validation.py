@@ -93,6 +93,7 @@ class RecipeValidationRule(FormatterPlugin):
                 "include",
                 "export",
                 "unexport",
+                "define",
                 "ifeq",
                 "ifneq",
                 "ifdef",
