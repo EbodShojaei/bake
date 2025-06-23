@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.2.0]
+## [1.2.1]
 
 ### Added
 
@@ -136,7 +136,7 @@ All notable changes to this project will be documented in this file.
 - **VSCode Extension**: Ready for Visual Studio Code Marketplace
 - **GitHub Actions**: Automated CI/CD and publishing workflows
 
-[1.2.0]: https://github.com/ebodshojaei/bake/releases/tag/v1.2.0
+[1.2.1]: https://github.com/ebodshojaei/bake/releases/tag/v1.2.1
 [1.1.3]: https://github.com/ebodshojaei/bake/releases/tag/v1.1.3
 [1.1.1]: https://github.com/ebodshojaei/bake/releases/tag/v1.1.1
 [1.0.0]: https://github.com/ebodshojaei/bake/releases/tag/v1.0.0

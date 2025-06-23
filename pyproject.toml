@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mbake"
-version = "1.2.0"
+version = "1.2.1"
 description = "A Python-based Makefile formatter and linter"
 readme = "README.md"
 license = "MIT"
@@ -31,7 +31,7 @@ classifiers = [
 dependencies = [
     "typer[all] >= 0.9.0",
     "rich >= 13.0.0",
-    "tomli >= 1.2.0; python_version < '3.11'",
+    "tomli >= 1.2.1; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -42,7 +42,7 @@ dev = [
     "ruff >= 0.1.0",
     "mypy >= 1.0.0",
     "pre-commit >= 3.0.0",
-    "tomli >= 1.2.0",  # For type checking support
+    "tomli >= 1.2.1",  # For type checking support
 ]
 
 [project.urls]
