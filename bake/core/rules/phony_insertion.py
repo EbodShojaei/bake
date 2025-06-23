@@ -138,7 +138,7 @@ class PhonyInsertionRule(FormatterPlugin):
             stripped = line.strip()
 
             # Skip empty lines, comments, and lines that start with tab (recipes)
-            if not stripped or stripped.startswith("#") or stripped.startswith("\t"):
+            if not stripped or stripped.startswith("#") or line.startswith("\t"):
                 continue
 
             # Track conditional context
@@ -159,6 +159,15 @@ class PhonyInsertionRule(FormatterPlugin):
 
             # Skip export variable assignments (e.g., "export VAR:=value")
             if stripped.startswith("export ") and "=" in stripped:
+                continue
+
+            # Skip $(info) function calls and other function calls
+            if stripped.startswith("$(") and stripped.endswith(")"):
+                continue
+
+            # Skip lines that are clearly not target definitions
+            # (e.g., lines that start with @ or contain function calls)
+            if stripped.startswith("@") or "$(" in stripped:
                 continue
 
             # Check for target definitions
@@ -194,7 +203,7 @@ class PhonyInsertionRule(FormatterPlugin):
                     continue
 
                 # Check if this is a static pattern rule (contains %)
-                if "%" in target_body:
+                if any("%" in name for name in target_names):
                     continue
 
                 # Check if this is a target-specific variable assignment
@@ -207,6 +216,17 @@ class PhonyInsertionRule(FormatterPlugin):
                 # Process each target name
                 for target_name in target_names:
                     if target_name in allowed_duplicates:
+                        continue
+
+                    # Skip targets that contain quotes or special characters that shouldn't be in target names
+                    if (
+                        '"' in target_name
+                        or "'" in target_name
+                        or "@" in target_name
+                        or "$" in target_name
+                        or "(" in target_name
+                        or ")" in target_name
+                    ):
                         continue
 
                     # Analyze if target is phony
