@@ -1,5 +1,7 @@
 """Whitespace cleanup rule for Makefiles."""
 
+from typing import Any
+
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils import LineUtils
 
@@ -12,7 +14,9 @@ class WhitespaceRule(FormatterPlugin):
             "whitespace", priority=45
         )  # Run late to clean up after other rules
 
-    def format(self, lines: list[str], config: dict) -> FormatResult:
+    def format(
+        self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
+    ) -> FormatResult:
         """Remove trailing whitespace and normalize empty lines."""
         formatted_lines = []
         changed = False
@@ -21,7 +25,6 @@ class WhitespaceRule(FormatterPlugin):
 
         remove_trailing_whitespace = config.get("remove_trailing_whitespace", True)
         normalize_empty_lines = config.get("normalize_empty_lines", True)
-        ensure_final_newline = config.get("ensure_final_newline", False)
 
         prev_was_empty = False
 
@@ -61,24 +64,19 @@ class WhitespaceRule(FormatterPlugin):
 
             formatted_lines.append(line)
 
-        # Only ensure newline at end if the file is not empty and config requires it
-        if ensure_final_newline and formatted_lines and formatted_lines[-1] != "":
-            formatted_lines.append("")
-            changed = True
-        elif (
+        # Remove extra trailing empty lines
+        while (
             len(formatted_lines) > 1
             and formatted_lines[-1] == ""
             and formatted_lines[-2] == ""
         ):
-            # Remove extra trailing empty lines
-            while (
-                len(formatted_lines) > 1
-                and formatted_lines[-1] == ""
-                and formatted_lines[-2] == ""
-            ):
-                formatted_lines.pop()
-                changed = True
+            formatted_lines.pop()
+            changed = True
 
         return FormatResult(
-            lines=formatted_lines, changed=changed, errors=errors, warnings=warnings
+            lines=formatted_lines,
+            changed=changed,
+            errors=errors,
+            warnings=warnings,
+            check_messages=[],
         )
