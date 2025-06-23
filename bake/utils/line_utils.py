@@ -1,6 +1,7 @@
 """Utility functions for line processing in Makefile formatting."""
 
 import re
+from typing import Any
 
 
 class LineUtils:
@@ -368,31 +369,133 @@ class MakefileParser:
         """
         Find the best place to insert .PHONY declarations at the top.
 
+        Uses enhanced logic that respects comment blocks:
+        - Treats contiguous comments as file header
+        - Inserts .PHONY after first blank line following header comments
+        - Preserves section comments that come after variables/blank lines
+
         Args:
             lines: List of lines from the Makefile
 
         Returns:
             Index where .PHONY should be inserted
         """
-        # Skip initial comments and variable declarations
+        in_header_comments = True
+        last_comment_index = -1
+
         for i, line in enumerate(lines):
             stripped = line.strip()
 
-            # Skip empty lines, comments, and variable assignments
-            if (
-                not stripped
-                or stripped.startswith("#")
-                or "=" in stripped
+            if not stripped:  # Empty line
+                if in_header_comments and last_comment_index >= 0:
+                    # Found blank line after header comments - insert here
+                    return i
+                # Continue looking (empty line in middle of file)
+                continue
+
+            elif stripped.startswith("#"):  # Comment
+                if not in_header_comments:
+                    # This is a section comment after variables/rules, skip it
+                    continue
+                last_comment_index = i
+                continue
+
+            elif (
+                "=" in stripped
                 or stripped.startswith("include")
                 or stripped.startswith("-include")
             ):
+                # Variable assignment or include - part of declarations
+                in_header_comments = False
                 continue
 
-            # This looks like the first rule, insert here
-            return i
+            else:
+                # First rule/target found
+                return i
 
         # If we get here, insert at the end
         return len(lines)
+
+
+class ConditionalTracker:
+    """Utility for tracking conditional contexts in Makefiles."""
+
+    def __init__(self) -> None:
+        """Initialize the conditional tracker."""
+        self.conditional_stack: list[dict[str, Any]] = []
+        self.conditional_branch_id: int = 0
+
+    def process_line(self, line: str, line_index: int) -> tuple:
+        """Process a line and return the conditional context the line is IN.
+
+        Args:
+            line: The line to process
+            line_index: Index of the line (for debugging)
+
+        Returns:
+            Tuple representing the conditional context the line is IN
+        """
+        stripped = line.strip()
+
+        # Get current context BEFORE processing conditional directives
+        # This way we return the context the line is IN, not the context after processing it
+        current_context = tuple(block["branch_id"] for block in self.conditional_stack)
+
+        # Track conditional blocks (update state after getting current context)
+        if stripped.startswith(("ifeq", "ifneq", "ifdef", "ifndef")):
+            self.conditional_stack.append(
+                {
+                    "type": "if",
+                    "line": line_index,
+                    "branch_id": self.conditional_branch_id,
+                }
+            )
+            self.conditional_branch_id += 1
+        elif stripped.startswith("else"):
+            if self.conditional_stack and self.conditional_stack[-1]["type"] == "if":
+                self.conditional_stack[-1]["type"] = "else"
+                self.conditional_stack[-1]["branch_id"] = self.conditional_branch_id
+                self.conditional_branch_id += 1
+        elif stripped.startswith("endif"):
+            if self.conditional_stack:
+                self.conditional_stack.pop()
+
+        # Return the context the line was IN (before processing)
+        return current_context
+
+    def reset(self) -> None:
+        """Reset the tracker state."""
+        self.conditional_stack = []
+        self.conditional_branch_id = 0
+
+    @staticmethod
+    def are_mutually_exclusive(context1: tuple, context2: tuple) -> bool:
+        """Check if two conditional contexts are mutually exclusive.
+
+        Two contexts are mutually exclusive if they differ at any conditional level,
+        which means they're in different branches of some conditional block.
+
+        Args:
+            context1: First conditional context
+            context2: Second conditional context
+
+        Returns:
+            True if contexts are mutually exclusive
+        """
+        # If contexts are identical, not mutually exclusive
+        if context1 == context2:
+            return False
+
+        # If one context is empty and the other not, not mutually exclusive
+        # in the sense that one is unconditional and the other is conditional
+        if not context1 or not context2:
+            return False
+
+        # Compare contexts level by level
+        min_len = min(len(context1), len(context2))
+
+        # If contexts differ at any level, mutually exclusive
+        return any(context1[i] != context2[i] for i in range(min_len))
 
 
 class PhonyAnalyzer:
