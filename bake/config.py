@@ -38,6 +38,7 @@ class FormatterConfig:
     ensure_final_newline: bool = True
     normalize_empty_lines: bool = True
     max_consecutive_empty_lines: int = 2
+    fix_missing_recipe_tabs: bool = True
 
 
 @dataclass
@@ -91,6 +92,7 @@ class Config:
             "ensure_final_newline",
             "normalize_empty_lines",
             "max_consecutive_empty_lines",
+            "fix_missing_recipe_tabs",
         }
         filtered_formatter_data = {
             k: v for k, v in formatter_data.items() if k in valid_formatter_keys
@@ -138,6 +140,7 @@ class Config:
                 "ensure_final_newline": self.formatter.ensure_final_newline,
                 "normalize_empty_lines": self.formatter.normalize_empty_lines,
                 "max_consecutive_empty_lines": self.formatter.max_consecutive_empty_lines,
+                "fix_missing_recipe_tabs": self.formatter.fix_missing_recipe_tabs,
             },
             "debug": self.debug,
             "verbose": self.verbose,

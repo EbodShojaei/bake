@@ -2,6 +2,14 @@
 # Copy this to ~/.bake.toml and customize as needed
 # Generate with: bake init
 
+# Global settings
+debug = false
+verbose = false
+
+# Error message formatting
+gnu_error_format = true
+wrap_error_messages = false
+
 [formatter]
 # Indentation settings
 use_tabs = true
@@ -26,7 +34,4 @@ remove_trailing_whitespace = true
 ensure_final_newline = true
 normalize_empty_lines = true
 max_consecutive_empty_lines = 2
-
-# Global settings
-debug = false
-verbose = false 
+fix_missing_recipe_tabs = true
