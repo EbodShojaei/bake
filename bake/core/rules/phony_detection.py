@@ -1,10 +1,9 @@
 """Plugin for enhancing existing .PHONY declarations with additional detected targets."""
 
-import re
 from typing import Any
 
 from bake.plugins.base import FormatResult, FormatterPlugin
-from bake.utils.line_utils import ConditionalTracker, MakefileParser, PhonyAnalyzer
+from bake.utils.line_utils import MakefileParser, PhonyAnalyzer
 
 
 class PhonyDetectionRule(FormatterPlugin):
@@ -46,7 +45,9 @@ class PhonyDetectionRule(FormatterPlugin):
         existing_phony_targets = MakefileParser.extract_phony_targets(lines)
 
         # Detect phony targets using conditional-aware analysis (same as PhonyInsertionRule)
-        detected_targets = self._detect_phony_targets_excluding_conditionals(lines)
+        detected_targets = PhonyAnalyzer.detect_phony_targets_excluding_conditionals(
+            lines
+        )
 
         # Only add newly detected targets that weren't already in .PHONY
         new_targets = detected_targets - existing_phony_targets
@@ -119,135 +120,3 @@ class PhonyDetectionRule(FormatterPlugin):
                 warnings=warnings,
                 check_messages=check_messages,
             )
-
-    def _detect_phony_targets_excluding_conditionals(
-        self, lines: list[str]
-    ) -> set[str]:
-        """Detect phony targets excluding those inside conditional blocks."""
-        target_pattern = re.compile(r"^([^:=]+):(:?)\s*(.*)$")
-        conditional_tracker = ConditionalTracker()
-        phony_targets = set()
-
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-
-            # Skip empty lines, comments, and lines that start with tab (recipes)
-            if not stripped or stripped.startswith("#") or line.startswith("\t"):
-                continue
-
-            # Track conditional context
-            current_context = conditional_tracker.process_line(line, i)
-
-            # Skip targets inside conditional blocks
-            if current_context:
-                continue
-
-            # Skip variable assignments (=, :=, +=, ?=)
-            if "=" in stripped and (
-                ":" not in stripped
-                or ":=" in stripped
-                or "+=" in stripped
-                or "?=" in stripped
-            ):
-                continue
-
-            # Skip export variable assignments (e.g., "export VAR:=value")
-            if stripped.startswith("export ") and "=" in stripped:
-                continue
-
-            # Skip $(info) function calls and other function calls
-            if stripped.startswith("$(") and stripped.endswith(")"):
-                continue
-
-            # Skip lines that are clearly not target definitions
-            # (e.g., lines that start with @ or contain function calls)
-            if stripped.startswith("@") or "$(" in stripped:
-                continue
-
-            # Check for target definitions
-            match = target_pattern.match(stripped)
-            if match:
-                target_list = match.group(1).strip()
-                is_double_colon = match.group(2) == ":"
-                target_body = match.group(3).strip()
-
-                # Handle multiple targets on one line
-                target_names = [t.strip() for t in target_list.split() if t.strip()]
-
-                # Skip special targets that can be duplicated
-                allowed_duplicates = {
-                    ".PHONY",
-                    ".SUFFIXES",
-                    ".DEFAULT",
-                    ".PRECIOUS",
-                    ".INTERMEDIATE",
-                    ".SECONDARY",
-                    ".DELETE_ON_ERROR",
-                    ".IGNORE",
-                    ".LOW_RESOLUTION_TIME",
-                    ".SILENT",
-                    ".EXPORT_ALL_VARIABLES",
-                    ".NOTPARALLEL",
-                    ".ONESHELL",
-                    ".POSIX",
-                }
-
-                # Double-colon rules are allowed to have multiple definitions
-                if is_double_colon:
-                    continue
-
-                # Check if this is a static pattern rule (contains %)
-                if any("%" in name for name in target_names):
-                    continue
-
-                # Check if this is a target-specific variable assignment
-                if re.match(r"^\s*[A-Z_][A-Z0-9_]*\s*[+:?]?=", target_body):
-                    continue
-
-                # Get recipe lines for this target
-                recipe_lines = self._get_target_recipe_lines(lines, i)
-
-                # Process each target name
-                for target_name in target_names:
-                    if target_name in allowed_duplicates:
-                        continue
-
-                    # Skip targets that contain quotes or special characters that shouldn't be in target names
-                    if (
-                        '"' in target_name
-                        or "'" in target_name
-                        or "@" in target_name
-                        or "$" in target_name
-                        or "(" in target_name
-                        or ")" in target_name
-                    ):
-                        continue
-
-                    # Analyze if target is phony
-                    if PhonyAnalyzer.is_target_phony(target_name, recipe_lines):
-                        phony_targets.add(target_name)
-
-        return phony_targets
-
-    def _get_target_recipe_lines(
-        self, lines: list[str], target_index: int
-    ) -> list[str]:
-        """Get the recipe lines for a target starting at target_index."""
-        recipe_lines = []
-
-        # Start from the line after the target
-        for i in range(target_index + 1, len(lines)):
-            line = lines[i]
-
-            # Stop at empty line or next target/directive
-            if not line.strip():
-                continue
-
-            # Recipe lines start with tab
-            if line.startswith("\t"):
-                recipe_lines.append(line.strip())
-            else:
-                # Hit a non-recipe line, stop collecting
-                break
-
-        return recipe_lines
