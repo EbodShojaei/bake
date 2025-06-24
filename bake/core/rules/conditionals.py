@@ -22,14 +22,32 @@ class ConditionalRule(FormatterPlugin):
         warnings: list[str] = []
 
         indent_level = 0
-        base_indent = "    "  # 4 spaces for conditional content
+        define_stack = []  # Track nested define blocks with their indentation
+
+        # Conditional indentation uses 2 spaces for readability
+        # This is separate from recipe indentation (which uses tabs)
+        # Using 2 spaces avoids confusion with tab-indented recipes (8 chars = 2 levels ≠ 1 tab)
+        base_indent = "  "  # 2 spaces for conditional blocks
+
+        # Get tab configuration for recipe detection
+        use_tabs = config.get("use_tabs", True)
+        tab_width = config.get("tab_width", 4)
 
         for line in lines:
             stripped = line.strip()
             original_line = line
 
-            # Skip recipe lines (start with tab)
-            if line.startswith("\t"):
+            # Skip recipe lines (start with tab) - but only if we're using tabs
+            # If we're using spaces, we need to be more careful
+            if (
+                use_tabs
+                and line.startswith("\t")
+                or (
+                    not use_tabs
+                    and line.startswith(" " * tab_width)
+                    and self._looks_like_recipe_line(line, tab_width)
+                )
+            ):
                 formatted_lines.append(line)
                 continue
 
@@ -38,9 +56,56 @@ class ConditionalRule(FormatterPlugin):
                 formatted_lines.append(line)
                 continue
 
+            # Handle define blocks
+            if stripped.startswith("define "):
+                # Starting a define block
+                if indent_level > 0:
+                    # Define inside conditional - indent the define keyword
+                    formatted_line = base_indent * indent_level + stripped
+                    define_stack.append(indent_level)  # Remember the conditional level
+                else:
+                    # Top-level define
+                    formatted_line = stripped
+                    define_stack.append(0)
+                formatted_lines.append(formatted_line)
+                if formatted_line != original_line.rstrip():
+                    changed = True
+                continue
+            elif stripped == "endef":
+                # Ending a define block
+                if define_stack:
+                    define_indent_level = define_stack.pop()
+                    if define_indent_level > 0:
+                        # endef inside conditional - indent to match define
+                        formatted_line = base_indent * define_indent_level + stripped
+                    else:
+                        # Top-level endef
+                        formatted_line = stripped
+                else:
+                    # No matching define (shouldn't happen in valid Makefiles)
+                    formatted_line = stripped
+                formatted_lines.append(formatted_line)
+                if formatted_line != original_line.rstrip():
+                    changed = True
+                continue
+            elif define_stack:
+                # Inside a define block - preserve original indentation relative to define
+                # but add conditional indentation if the define block is inside a conditional
+                if define_stack[-1] > 0:  # Define block is inside a conditional
+                    # Add conditional indentation to the content
+                    formatted_line = base_indent * define_stack[-1] + stripped
+                    formatted_lines.append(formatted_line)
+                    if formatted_line != original_line.rstrip():
+                        changed = True
+                else:
+                    # Top-level define block - preserve original indentation
+                    formatted_lines.append(line)
+                continue
+
             # Handle conditional keywords
             if self._is_conditional_start(stripped):
                 # Conditional start: ifeq, ifneq, ifdef, ifndef
+                # Indent nested conditionals relative to their parent
                 formatted_line = base_indent * indent_level + stripped
                 formatted_lines.append(formatted_line)
                 indent_level += 1
@@ -48,7 +113,7 @@ class ConditionalRule(FormatterPlugin):
                     changed = True
             elif self._is_conditional_middle(stripped):
                 # Middle: else, else if
-                # Remove indent before rendering 'else' to match the matching 'if'
+                # Indent 'else' to match the corresponding 'if'
                 indent_for_else = max(indent_level - 1, 0)
                 formatted_line = base_indent * indent_for_else + stripped
                 formatted_lines.append(formatted_line)
@@ -63,15 +128,25 @@ class ConditionalRule(FormatterPlugin):
                     changed = True
             elif indent_level > 0:
                 # Inside conditional block - indent content
-                if "=" in stripped and not self._is_target_line(stripped):
-                    # Variable assignment inside conditional
+                if self._is_target_line(stripped):
+                    # Target lines should not be indented - they define new targets
+                    formatted_lines.append(line)
+                elif use_tabs and line.startswith("\t"):
+                    # Recipe lines (start with tab) - keep as is
+                    formatted_lines.append(line)
+                elif (
+                    not use_tabs
+                    and line.startswith(" " * tab_width)
+                    and self._looks_like_recipe_line(line, tab_width)
+                ):
+                    # Recipe lines when using spaces - keep as is
+                    formatted_lines.append(line)
+                else:
+                    # Any other content inside conditional block should be indented
                     formatted_line = base_indent * indent_level + stripped
                     formatted_lines.append(formatted_line)
                     if formatted_line != original_line.rstrip():
                         changed = True
-                else:
-                    # Other content (could be nested conditionals or targets)
-                    formatted_lines.append(line)
             else:
                 # Regular line outside conditionals
                 formatted_lines.append(line)
@@ -98,4 +173,74 @@ class ConditionalRule(FormatterPlugin):
 
     def _is_target_line(self, line: str) -> bool:
         """Check if line is a target definition."""
-        return ":" in line and not line.startswith(("ifeq", "ifneq", "ifdef", "ifndef"))
+        # Target lines have : for dependencies, but not := for assignments
+        # Also exclude conditional statements, dot directives, and Make function calls
+        if line.startswith(("ifeq", "ifneq", "ifdef", "ifndef")):
+            return False
+
+        # Exclude dot directives like .PHONY, .SUFFIXES, etc.
+        if line.startswith("."):
+            return False
+
+        # Exclude Make function calls like $(error...), $(warning...), etc.
+        if line.startswith("$("):
+            return False
+
+        # Check for target pattern: target: dependencies
+        # But exclude variable assignments like BUILDDIR := value
+        colon_pos = line.find(":")
+        if colon_pos == -1:
+            return False
+
+        # If there's a = after the colon, it's likely an assignment, not a target
+        return not (colon_pos < len(line) - 1 and line[colon_pos + 1] == "=")
+
+    def _should_indent_as_content(self, line: str) -> bool:
+        """Check if line should be indented as conditional content."""
+        # Include directives and other makefile constructs that should be indented
+        return (
+            line.startswith(("include", "-include", "export", "unexport"))
+            or line.startswith(".")  # Other dot directives like .PHONY, .SUFFIXES, etc.
+            or line.startswith(
+                "$("
+            )  # Make function calls like $(error...), $(warning...), etc.
+            or line.startswith(("define", "endef"))  # Define blocks
+        )
+
+    def _looks_like_recipe_line(self, line: str, tab_width: int) -> bool:
+        """Check if a line looks like a recipe line when using spaces."""
+        # This is a heuristic - recipe lines typically have specific patterns
+        if not line.startswith(" " * tab_width):
+            return False
+
+        # Look for common recipe patterns
+        content = line.strip()
+        # Commands often start with common shell commands or make functions
+        recipe_indicators = [
+            "@",
+            "$",
+            "echo",
+            "mkdir",
+            "rm",
+            "cp",
+            "mv",
+            "cd",
+            "make",
+            "gcc",
+            "g++",
+            "python",
+            "node",
+            "npm",
+            "go",
+            "cargo",
+            "docker",
+            "kubectl",
+        ]
+
+        return any(content.startswith(indicator) for indicator in recipe_indicators)
+
+    def _is_variable_assignment(self, line: str) -> bool:
+        """Check if line is a variable assignment."""
+        # Match variable assignments but exclude target lines (which have : for dependencies)
+        # Look for pattern: VARIABLE_NAME [spaces] assignment_operator [spaces] value
+        return re.match(r"^[a-zA-Z0-9_]+\s*[:+?]?=\s*.*$", line) is not None

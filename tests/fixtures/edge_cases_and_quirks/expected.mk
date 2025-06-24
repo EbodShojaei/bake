@@ -54,11 +54,11 @@ very-long-target-name-that-might-cause-formatting-issues: very-long-dependency-n
 
 #Conditional assignments with complex conditions
 ifeq ($(origin CC),undefined)
-    CC = gcc
+  CC = gcc
 endif
 
 ifneq (,$(findstring gcc,$(CC)))
-    COMPILER_FLAGS = -Wall -Wextra
+  COMPILER_FLAGS = -Wall -Wextra
 endif
 
 #Complex shell constructs in recipes

@@ -13,9 +13,9 @@ all: $(TARGET)
 
 # Conditional with poor formatting
 ifeq ($(DEBUG),yes)
-    EXTRA_FLAGS = -g -O0
+  EXTRA_FLAGS = -g -O0
 else
-    EXTRA_FLAGS = -O2
+  EXTRA_FLAGS = -O2
 endif
 
 test: $(TARGET)

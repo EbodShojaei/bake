@@ -5,7 +5,7 @@ include build/common.mk
 
 # Conditional includes with poor spacing
 ifeq ($(PLATFORM),linux)
-include   platform/linux.mk
+  include   platform/linux.mk
 endif
 
 ifneq ($(TOOLCHAIN),)

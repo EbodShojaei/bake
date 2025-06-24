@@ -9,15 +9,15 @@ STATIC ?= 0
 # Toolchain detection
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
-    PLATFORM = linux
-    CC = gcc
-    CXX = g++
+  PLATFORM = linux
+  CC = gcc
+  CXX = g++
 else ifeq ($(UNAME_S),Darwin)
-    PLATFORM = macos
-    CC = clang
-    CXX = clang++
+  PLATFORM = macos
+  CC = clang
+  CXX = clang++
 else
-    $(error Unsupported platform: $(UNAME_S))
+  $(error Unsupported platform: $(UNAME_S))
 endif
 
 # Version information
@@ -54,26 +54,26 @@ CPPFLAGS = -I$(INCDIR) -DVERSION=\"$(VERSION)\" -DBUILD_DATE=\"$(BUILD_DATE)\"
 CXXFLAGS = -std=c++17 -Wall -Wextra -Wpedantic
 
 ifeq ($(DEBUG),1)
-    CXXFLAGS += -g -O0 -DDEBUG
-    BUILDDIR := $(BUILDDIR)/debug
+  CXXFLAGS += -g -O0 -DDEBUG
+  BUILDDIR := $(BUILDDIR)/debug
 else
-    CXXFLAGS += -O3 -DNDEBUG
-BUILDDIR := $(BUILDDIR)/release
+  CXXFLAGS += -O3 -DNDEBUG
+  BUILDDIR := $(BUILDDIR)/release
 endif
 
 ifeq ($(PROFILE),1)
-    CXXFLAGS += -pg
-    LDFLAGS += -pg
+  CXXFLAGS += -pg
+  LDFLAGS += -pg
 endif
 
 ifeq ($(STATIC),1)
-    LDFLAGS += -static
+  LDFLAGS += -static
 endif
 
 # Library dependencies
 LIBS = -lpthread -lm
 ifeq ($(PLATFORM),linux)
-    LIBS += -ldl -lrt
+  LIBS += -ldl -lrt
 endif
 
 # Phony targets declaration

@@ -191,6 +191,70 @@ class TestConditionalBlocks:
         assert not errors
         assert formatted_lines == expected_lines
 
+    def test_deeply_nested_conditionals(self):
+        """Test deeply nested conditionals with proper 2-space indentation."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_lines = [
+            "ifeq ($(OS),linux)",
+            "ifeq ($(ARCH),x86_64)",
+            "ifeq ($(DEBUG),yes)",
+            "CFLAGS = -g -m64",
+            ".PHONY: debug-linux-x64",
+            "debug-linux-x64:",
+            "\t@echo 'Debug build for Linux x64'",
+            "else",
+            "CFLAGS = -O2 -m64",
+            ".PHONY: release-linux-x64",
+            "define BUILD_SCRIPT",
+            "echo 'Building optimized'",
+            "endef",
+            "endif",
+            "else",
+            "ifeq ($(DEBUG),yes)",
+            "CFLAGS = -g -m32",
+            "else",
+            "CFLAGS = -O2 -m32",
+            "endif",
+            "endif",
+            "else",
+            "$(error Unsupported OS: $(OS))",
+            "endif",
+        ]
+
+        expected_lines = [
+            "ifeq ($(OS),linux)",
+            "  ifeq ($(ARCH),x86_64)",
+            "    ifeq ($(DEBUG),yes)",
+            "      CFLAGS = -g -m64",
+            "      .PHONY: debug-linux-x64",
+            "debug-linux-x64:",
+            "\t@echo 'Debug build for Linux x64'",
+            "    else",
+            "      CFLAGS = -O2 -m64",
+            "      .PHONY: release-linux-x64",
+            "      define BUILD_SCRIPT",
+            "      echo 'Building optimized'",
+            "      endef",
+            "    endif",
+            "  else",
+            "    ifeq ($(DEBUG),yes)",
+            "      CFLAGS = -g -m32",
+            "    else",
+            "      CFLAGS = -O2 -m32",
+            "    endif",
+            "  endif",
+            "else",
+            "  $(error Unsupported OS: $(OS))",
+            "endif",
+        ]
+
+        formatted_lines, errors = formatter.format_lines(input_lines)
+
+        assert not errors
+        assert formatted_lines == expected_lines
+
 
 class TestLineContinuations:
     """Test line continuation formatting."""

@@ -1,14 +1,14 @@
 ifeq ($(CFG_WITH_LONGTESTS),yes)
-    ifeq ($(DRIVER_STD),newest)
-        CPPFLAGS += $(CFG_CXXFLAGS_STD)
-    else
-        CPPFLAGS += else_term
-    endif
+  ifeq ($(DRIVER_STD),newest)
+    CPPFLAGS += $(CFG_CXXFLAGS_STD)
+  else
+    CPPFLAGS += else_term
+  endif
+  ifneq ($(DRIVER_STD),newest)
     ifneq ($(DRIVER_STD),newest)
-        ifneq ($(DRIVER_STD),newest)
-            CPPFLAGS += ifneq_term
-        endif
+      CPPFLAGS += ifneq_term
     endif
+  endif
 endif
 
 define TEST_SNAP_template
@@ -20,11 +20,11 @@ find $(TEST_SNAP_DIR)/obj_$(1) \( $(TEST_SNAP_IGNORE:%=-name "%" -o) \
 endef
 
 ifeq ($(FOO),yes)
-define FOO_template
-something
-endef
+  define FOO_template
+  something
+  endef
 else
-define FOO_template
-something_else
-endef
+  define FOO_template
+  something_else
+  endef
 endif
