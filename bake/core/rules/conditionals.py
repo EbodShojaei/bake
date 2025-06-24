@@ -41,21 +41,23 @@ class ConditionalRule(FormatterPlugin):
             # Handle conditional keywords
             if self._is_conditional_start(stripped):
                 # Conditional start: ifeq, ifneq, ifdef, ifndef
-                formatted_line = stripped
+                formatted_line = base_indent * indent_level + stripped
                 formatted_lines.append(formatted_line)
                 indent_level += 1
                 if formatted_line != original_line.rstrip():
                     changed = True
             elif self._is_conditional_middle(stripped):
                 # Middle: else, else if
-                formatted_line = stripped if indent_level > 0 else stripped
+                # Remove indent before rendering 'else' to match the matching 'if'
+                indent_for_else = max(indent_level - 1, 0)
+                formatted_line = base_indent * indent_for_else + stripped
                 formatted_lines.append(formatted_line)
                 if formatted_line != original_line.rstrip():
                     changed = True
             elif self._is_conditional_end(stripped):
                 # Conditional end: endif
                 indent_level = max(0, indent_level - 1)
-                formatted_line = stripped
+                formatted_line = base_indent * indent_level + stripped
                 formatted_lines.append(formatted_line)
                 if formatted_line != original_line.rstrip():
                     changed = True

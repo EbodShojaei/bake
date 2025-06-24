@@ -173,6 +173,24 @@ class TestConditionalBlocks:
         assert result.changed
         # Basic test for conditional handling
 
+    def test_nested_conditional_indentation(self):
+        """Test nested conditional indentation fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/nested_conditional_indentation/input.mk")
+        expected_file = Path(
+            "tests/fixtures/nested_conditional_indentation/expected.mk"
+        )
+
+        input_lines = input_file.read_text(encoding="utf-8").splitlines()
+        expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+        formatted_lines, errors = formatter.format_lines(input_lines)
+
+        assert not errors
+        assert formatted_lines == expected_lines
+
 
 class TestLineContinuations:
     """Test line continuation formatting."""
