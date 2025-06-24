@@ -8,14 +8,14 @@ SOURCES = \
 # Variables with mixed line continuations
 CFLAGS = -Wall -Wextra \
   -Werror \
-  -std = c99 \
+  -std=c99 \
   -pedantic
 
 # Complex variable with embedded quotes and spaces
 DEFINES = -DVERSION=\"$(VERSION)\" \
-  -DBUILD_DATE = "$(shell date)" \
-  -DDEBUG = 1 \
-  -DPLATFORM = \"$(PLATFORM)\"
+  -DBUILD_DATE="$(shell date)" \
+  -DDEBUG=1 \
+  -DPLATFORM=\"$(PLATFORM)\"
 
 # Variable with function calls and complex syntax
 OBJECTS = $(patsubst %.c,%.o,$(SOURCES)) \
@@ -36,3 +36,14 @@ CLEANED_SOURCES = $(subst src/,,$(SOURCES:.c=.o)) \
 EXTRA_LIBS ?= -lm \
   -lpthread \
   -ldl
+
+# Test: Assignment spacing with multi-line values (from demo.mk)
+CPPCHECK_FLAGS = --enable=all --inline-suppr \
+  --suppress=cstyleCast --suppress=useInitializationList \
+  --suppress=nullPointer --suppress=nullPointerRedundantCheck --suppress=ctunullpointer \
+  --suppress=unusedFunction --suppress=unusedScopedObject \
+  --suppress=useStlAlgorithm \
+
+CLANGTIDY_FLAGS = -config='' \
+  -header-filter='.*' \
+  -checks='-fuchsia-*,-cppcoreguidelines-avoid-c-arrays,-cppcoreguidelines-init-variables,-cppcoreguidelines-avoid-goto,-modernize-avoid-c-arrays,-readability-magic-numbers,-readability-simplify-boolean-expr,-cppcoreguidelines-macro-usage' \

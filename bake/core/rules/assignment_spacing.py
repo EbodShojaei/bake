@@ -29,6 +29,13 @@ class AssignmentSpacingRule(FormatterPlugin):
             if LineUtils.is_recipe_line(line, line_index, lines):
                 return line, False
 
+            # Skip continuation lines (part of a multi-line assignment value)
+            if line_index > 0:
+                prev_line = lines[line_index - 1]
+                # If the previous line is a continuation, skip this line
+                if LineUtils.is_continuation_line(prev_line):
+                    return line, False
+
             # Check if the trimmed line is actually an assignment (regardless of indentation)
             if PatternUtils.contains_assignment(line.strip()):
                 new_line = PatternUtils.apply_assignment_spacing(

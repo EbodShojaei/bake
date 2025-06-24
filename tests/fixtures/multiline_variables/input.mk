@@ -36,3 +36,15 @@ CLEANED_SOURCES = $(subst src/,,$(SOURCES:.c=.o)) \
 EXTRA_LIBS ?= -lm \
               -lpthread \
 		-ldl 
+
+# Test: Assignment spacing with multi-line values (from demo.mk)
+CPPCHECK_FLAGS = --enable=all --inline-suppr \
+  --suppress=cstyleCast --suppress=useInitializationList \
+  --suppress=nullPointer --suppress=nullPointerRedundantCheck --suppress=ctunullpointer \
+  --suppress=unusedFunction --suppress=unusedScopedObject \
+  --suppress=useStlAlgorithm \
+
+CLANGTIDY_FLAGS = -config='' \
+  -header-filter='.*' \
+  -checks='-fuchsia-*,-cppcoreguidelines-avoid-c-arrays,-cppcoreguidelines-init-variables,-cppcoreguidelines-avoid-goto,-modernize-avoid-c-arrays,-readability-magic-numbers,-readability-simplify-boolean-expr,-cppcoreguidelines-macro-usage' \
+  
