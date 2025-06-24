@@ -24,10 +24,11 @@ class TabsRule(FormatterPlugin):
         tab_width = config.get("tab_width", 4)
 
         for i, line in enumerate(lines):
-            # Check if this is an indented line
+            # Check if this is an indented line or should be indented
+            is_recipe = LineUtils.is_recipe_line(line, i, lines)
+
             if line.startswith((" ", "\t")) and line.strip():
-                # Determine if this is a recipe line or continuation line
-                is_recipe = LineUtils.is_recipe_line(line, i, lines)
+                # This line is already indented
 
                 if is_recipe:
                     # This is a recipe line - convert spaces to tabs while normalizing basic indentation
@@ -72,8 +73,14 @@ class TabsRule(FormatterPlugin):
                     else:
                         # Already uses spaces, keep as is
                         formatted_lines.append(line)
+            elif is_recipe and line.strip():
+                # This line should be indented as a recipe but isn't yet
+                stripped = line.strip()
+                new_line = "\t" + stripped
+                changed = True
+                formatted_lines.append(new_line)
             else:
-                # Empty line or non-indented line
+                # Empty line or non-indented line that shouldn't be indented
                 formatted_lines.append(line)
 
         return FormatResult(

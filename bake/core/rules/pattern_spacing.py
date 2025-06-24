@@ -16,28 +16,30 @@ class PatternSpacingRule(FormatterPlugin):
         self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
     ) -> FormatResult:
         """Normalize spacing in pattern rules."""
-        formatted_lines = []
+        formatted_lines: list[str] = []
         changed = False
         errors: list[str] = []
         warnings: list[str] = []
 
         space_after_colon = config.get("space_after_colon", True)
 
-        for line in lines:
-            # Skip recipe lines, comments, and empty lines
-            if LineUtils.should_skip_line(
-                line, skip_recipe=True, skip_comments=True, skip_empty=True
-            ):
-                formatted_lines.append(line)
-                continue
-
+        def process_pattern_line(line: str, line_index: int) -> tuple[str, bool]:
+            """Process a single line for pattern rule spacing."""
             # Try to format pattern rule spacing
             new_line = PatternUtils.format_pattern_rule(line, space_after_colon)
             if new_line is not None:
-                changed = True
-                formatted_lines.append(new_line)
+                return new_line, True
             else:
-                formatted_lines.append(line)
+                return line, False
+
+        formatted_lines, changed = LineUtils.process_lines_with_standard_skipping(
+            lines=lines,
+            line_processor=process_pattern_line,
+            skip_recipe=True,
+            skip_comments=True,
+            skip_empty=True,
+            skip_define_blocks=False,
+        )
 
         return FormatResult(
             lines=formatted_lines,

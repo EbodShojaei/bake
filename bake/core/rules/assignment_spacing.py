@@ -16,36 +16,36 @@ class AssignmentSpacingRule(FormatterPlugin):
         self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
     ) -> FormatResult:
         """Normalize spacing around assignment operators."""
-        formatted_lines = []
+        formatted_lines: list[str] = []
         changed = False
         errors: list[str] = []
         warnings: list[str] = []
 
         space_around_assignment = config.get("space_around_assignment", True)
 
-        for _, line in enumerate(lines):
-            # Skip comments and empty lines
-            if LineUtils.should_skip_line(
-                line, skip_recipe=False, skip_comments=True, skip_empty=True
-            ):
-                formatted_lines.append(line)
-                continue
-
-            # Skip any assignments inside recipe lines (these are shell, not makefile)
-            if line.startswith("\t"):
-                formatted_lines.append(line)
-                continue
+        def process_assignment_line(line: str, line_index: int) -> tuple[str, bool]:
+            """Process a single line for assignment spacing."""
+            # Skip recipe lines completely - they're shell commands, not makefile assignments
+            if LineUtils.is_recipe_line(line, line_index, lines):
+                return line, False
 
             # Check if the trimmed line is actually an assignment (regardless of indentation)
             if PatternUtils.contains_assignment(line.strip()):
                 new_line = PatternUtils.apply_assignment_spacing(
                     line, space_around_assignment
                 )
-                if new_line != line:
-                    changed = True
-                formatted_lines.append(new_line)
+                return new_line, new_line != line
             else:
-                formatted_lines.append(line)
+                return line, False
+
+        formatted_lines, changed = LineUtils.process_lines_with_standard_skipping(
+            lines=lines,
+            line_processor=process_assignment_line,
+            skip_recipe=False,  # We handle recipe detection in our processor
+            skip_comments=True,
+            skip_empty=True,
+            skip_define_blocks=True,  # Skip assignment formatting inside define blocks
+        )
 
         return FormatResult(
             lines=formatted_lines,

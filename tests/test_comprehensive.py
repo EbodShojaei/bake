@@ -134,6 +134,49 @@ class TestVariableAssignments:
         assert not errors
         assert formatted_lines == expected_lines
 
+    def test_assignments_in_define_blocks_not_formatted(self):
+        """Test that assignments inside define blocks are not formatted with spaces."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_lines = [
+            "# Regular assignments should get spaces",
+            "CC=gcc",
+            "CFLAGS+=-Wall",
+            "",
+            "define first",
+            "    FIRST=$(word 1, $(subst _, ,$@))",
+            '    echo "$${FIRST}"',
+            "endef",
+            "",
+            "# More regular assignments",
+            "VERSION:=1.0.0",
+            "",
+            "define second",
+            "    SECOND=$(word 2, $(subst _, ,$@))",
+            "    OTHER=value",
+            "endef",
+        ]
+
+        formatted_lines, errors = formatter.format_lines(input_lines)
+
+        assert not errors
+
+        # Check that regular assignments outside define blocks get spaces
+        assert "CC = gcc" in formatted_lines
+        assert "CFLAGS += -Wall" in formatted_lines
+        assert "VERSION := 1.0.0" in formatted_lines
+
+        # Check that assignments inside define blocks do NOT get spaces
+        assert "    FIRST=$(word 1, $(subst _, ,$@))" in formatted_lines
+        assert "    SECOND=$(word 2, $(subst _, ,$@))" in formatted_lines
+        assert "    OTHER=value" in formatted_lines
+
+        # Ensure no incorrectly formatted assignments exist
+        assert "    FIRST = $(word 1, $(subst _, ,$@))" not in formatted_lines
+        assert "    SECOND = $(word 2, $(subst _, ,$@))" not in formatted_lines
+        assert "    OTHER = value" not in formatted_lines
+
 
 class TestConditionalBlocks:
     """Test conditional block formatting."""
