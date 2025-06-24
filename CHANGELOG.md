@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.3]
+
+<!-- markdownlint-disable MD024 -->
+### Fixes
+
+- Adaptive indentation for define blocks matches the most common indentation style within each block.
+- Centralized define block tracking, error formatting, and standard rule processing into utility functions.
+
 ## [1.2.2]
 
 <!-- markdownlint-disable MD024 -->
@@ -145,6 +153,7 @@ All notable changes to this project will be documented in this file.
 - **VSCode Extension**: Ready for Visual Studio Code Marketplace
 - **GitHub Actions**: Automated CI/CD and publishing workflows
 
+[1.2.3]: https://github.com/ebodshojaei/bake/releases/tag/v1.2.3
 [1.2.2]: https://github.com/ebodshojaei/bake/releases/tag/v1.2.2
 [1.2.1]: https://github.com/ebodshojaei/bake/releases/tag/v1.2.1
 [1.1.3]: https://github.com/ebodshojaei/bake/releases/tag/v1.1.3
