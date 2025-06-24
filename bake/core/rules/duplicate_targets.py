@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from bake.plugins.base import FormatResult, FormatterPlugin
-from bake.utils.line_utils import ConditionalTracker
+from bake.utils.line_utils import ConditionalTracker, LineUtils
 
 
 class DuplicateTargetRule(FormatterPlugin):
@@ -107,14 +107,10 @@ class DuplicateTargetRule(FormatterPlugin):
                             continue
 
                         # Format error message
-                        gnu_format = config.get("_global", {}).get(
-                            "gnu_error_format", True
+                        message = f"Duplicate target '{target_name}' defined at lines {prev_line} and {line_num}. Second definition will override the first."
+                        error_msg = LineUtils.format_error_message(
+                            message, line_num, config
                         )
-
-                        if gnu_format:
-                            error_msg = f"{line_num}: Error: Duplicate target '{target_name}' defined at lines {prev_line} and {line_num}. Second definition will override the first."
-                        else:
-                            error_msg = f"Error: Duplicate target '{target_name}' defined at lines {prev_line} and {line_num}. Second definition will override the first."
 
                         errors.append(error_msg)
                 else:

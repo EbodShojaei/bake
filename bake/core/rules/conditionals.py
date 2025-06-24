@@ -1,16 +1,16 @@
 """Conditional block formatting rule for Makefiles."""
 
-import re
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import LineUtils
 
 
 class ConditionalRule(FormatterPlugin):
     """Handles proper indentation of conditional blocks (ifeq, ifneq, etc.)."""
 
     def __init__(self) -> None:
-        super().__init__("conditionals", priority=35)
+        super().__init__("conditionals", priority=7)
 
     def format(
         self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
@@ -89,21 +89,47 @@ class ConditionalRule(FormatterPlugin):
                     changed = True
                 continue
             elif define_stack:
-                # Inside a define block - preserve original indentation relative to define
-                # but add conditional indentation if the define block is inside a conditional
+                # Inside a define block - normalize indentation within the block
                 if define_stack[-1] > 0:  # Define block is inside a conditional
-                    # Add conditional indentation to the content
+                    # Content inside define block gets same indentation as define keyword
                     formatted_line = base_indent * define_stack[-1] + stripped
                     formatted_lines.append(formatted_line)
                     if formatted_line != original_line.rstrip():
                         changed = True
                 else:
-                    # Top-level define block - preserve original indentation
-                    formatted_lines.append(line)
+                    # Top-level define block - use adaptive indentation
+                    if stripped:  # Don't add indentation to empty lines
+                        # Find the define start to determine adaptive indentation
+                        define_start = None
+                        for i in range(len(formatted_lines) - 1, -1, -1):
+                            if formatted_lines[i].strip().startswith("define "):
+                                define_start = i
+                                break
+
+                        if define_start is not None:
+                            # Get the remaining lines to analyze
+                            remaining_lines = (
+                                formatted_lines
+                                + [line]
+                                + lines[len(formatted_lines) + 1 :]
+                            )
+                            target_indent = LineUtils.detect_define_block_indentation(
+                                remaining_lines, define_start
+                            )
+                            formatted_line = target_indent + stripped
+                        else:
+                            # Fallback if we can't find the define start
+                            formatted_line = "    " + stripped
+
+                        formatted_lines.append(formatted_line)
+                        if formatted_line != original_line.rstrip():
+                            changed = True
+                    else:
+                        formatted_lines.append(line)
                 continue
 
             # Handle conditional keywords
-            if self._is_conditional_start(stripped):
+            if LineUtils.is_conditional_start(stripped):
                 # Conditional start: ifeq, ifneq, ifdef, ifndef
                 # Indent nested conditionals relative to their parent
                 formatted_line = base_indent * indent_level + stripped
@@ -111,7 +137,7 @@ class ConditionalRule(FormatterPlugin):
                 indent_level += 1
                 if formatted_line != original_line.rstrip():
                     changed = True
-            elif self._is_conditional_middle(stripped):
+            elif LineUtils.is_conditional_middle(stripped):
                 # Middle: else, else if
                 # Indent 'else' to match the corresponding 'if'
                 indent_for_else = max(indent_level - 1, 0)
@@ -119,7 +145,7 @@ class ConditionalRule(FormatterPlugin):
                 formatted_lines.append(formatted_line)
                 if formatted_line != original_line.rstrip():
                     changed = True
-            elif self._is_conditional_end(stripped):
+            elif LineUtils.is_conditional_end(stripped):
                 # Conditional end: endif
                 indent_level = max(0, indent_level - 1)
                 formatted_line = base_indent * indent_level + stripped
@@ -158,18 +184,6 @@ class ConditionalRule(FormatterPlugin):
             warnings=warnings,
             check_messages=[],
         )
-
-    def _is_conditional_start(self, line: str) -> bool:
-        """Check if line starts a conditional block."""
-        return bool(re.match(r"^(ifeq|ifneq|ifdef|ifndef)\s*\(", line))
-
-    def _is_conditional_middle(self, line: str) -> bool:
-        """Check if line is a conditional middle (else)."""
-        return bool(re.match(r"^else(\s|$)", line))
-
-    def _is_conditional_end(self, line: str) -> bool:
-        """Check if line ends a conditional block."""
-        return line == "endif"
 
     def _is_target_line(self, line: str) -> bool:
         """Check if line is a target definition."""
@@ -238,9 +252,3 @@ class ConditionalRule(FormatterPlugin):
         ]
 
         return any(content.startswith(indicator) for indicator in recipe_indicators)
-
-    def _is_variable_assignment(self, line: str) -> bool:
-        """Check if line is a variable assignment."""
-        # Match variable assignments but exclude target lines (which have : for dependencies)
-        # Look for pattern: VARIABLE_NAME [spaces] assignment_operator [spaces] value
-        return re.match(r"^[a-zA-Z0-9_]+\s*[:+?]?=\s*.*$", line) is not None

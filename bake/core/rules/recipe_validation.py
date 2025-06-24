@@ -23,7 +23,6 @@ class RecipeValidationRule(FormatterPlugin):
         check_messages: list[str] = []
 
         fix_missing_tabs = config.get("fix_missing_recipe_tabs", True)
-        gnu_error_format = config.get("_global", {}).get("gnu_error_format", False)
 
         for i, line in enumerate(lines):
             line_num = i + 1
@@ -33,10 +32,9 @@ class RecipeValidationRule(FormatterPlugin):
                 error_msg = "Missing required tab separator in recipe line"
 
                 if check_mode:
-                    if gnu_error_format:
-                        check_messages.append(f"{line_num}: Error: {error_msg}")
-                    else:
-                        check_messages.append(f"Line {line_num}: {error_msg}")
+                    check_messages.append(
+                        LineUtils.format_error_message(error_msg, line_num, config)
+                    )
                 else:
                     if fix_missing_tabs:
                         # Fix by replacing leading spaces with a tab
@@ -46,10 +44,9 @@ class RecipeValidationRule(FormatterPlugin):
                         changed = True
                     else:
                         # Report as error but don't fix
-                        if gnu_error_format:
-                            errors.append(f"{line_num}: Error: {error_msg}")
-                        else:
-                            errors.append(f"Line {line_num}: {error_msg}")
+                        errors.append(
+                            LineUtils.format_error_message(error_msg, line_num, config)
+                        )
                         formatted_lines.append(line)
             else:
                 formatted_lines.append(line)
@@ -103,6 +100,10 @@ class RecipeValidationRule(FormatterPlugin):
                 "endef",
             )
         ):
+            return False
+
+        # Skip content inside define blocks
+        if LineUtils.is_inside_define_block(line_index, all_lines):
             return False
 
         # Skip target lines themselves (they shouldn't start with tabs)

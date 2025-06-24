@@ -1,7 +1,7 @@
 """Utility functions for line processing in Makefile formatting."""
 
 import re
-from typing import Any
+from typing import Any, Callable
 
 
 class LineUtils:
@@ -26,16 +26,15 @@ class LineUtils:
         Returns:
             True if the line should be skipped
         """
-        # Skip recipe lines (start with tab or spaces)
-        if skip_recipe and line.startswith(("\t", " ")):
+        stripped = line.strip()
+
+        if skip_empty and not stripped:
             return True
 
-        # Skip comment lines
-        if skip_comments and line.strip().startswith("#"):
+        if skip_comments and stripped.startswith("#"):
             return True
 
-        # Skip empty lines
-        return bool(skip_empty and not line.strip())
+        return bool(skip_recipe and line.startswith(("\t", " ")))
 
     @staticmethod
     def should_skip_makefile_line(line: str) -> bool:
@@ -67,6 +66,211 @@ class LineUtils:
         )
 
     @staticmethod
+    def is_inside_define_block(line_index: int, all_lines: list[str]) -> bool:
+        """
+        Check if the current line is inside a define block.
+
+        Args:
+            line_index: Index of the current line
+            all_lines: All lines in the file
+
+        Returns:
+            True if the line is inside a define block
+        """
+        define_stack = []
+        for i in range(line_index):
+            check_line = all_lines[i].strip()
+            if check_line.startswith("define "):
+                define_stack.append(i)
+            elif check_line == "endef" and define_stack:
+                define_stack.pop()
+
+        # If define_stack is not empty, we're inside a define block
+        return bool(define_stack)
+
+    @staticmethod
+    def get_conditional_depth(line_index: int, all_lines: list[str]) -> int:
+        """
+        Get the current conditional block nesting depth at the given line.
+
+        Args:
+            line_index: Index of the current line
+            all_lines: All lines in the file
+
+        Returns:
+            The nesting depth (0 = not in any conditional, 1+ = nested depth)
+        """
+        conditional_depth = 0
+        for i in range(line_index):
+            check_line = all_lines[i].strip()
+            if check_line.startswith(("ifeq", "ifneq", "ifdef", "ifndef")):
+                conditional_depth += 1
+            elif check_line == "endif":
+                conditional_depth = max(0, conditional_depth - 1)
+
+        return conditional_depth
+
+    @staticmethod
+    def is_makefile_construct(line: str) -> bool:
+        """
+        Check if a line is a special Makefile construct that should be excluded
+        from recipe line detection.
+
+        Args:
+            line: The line to check
+
+        Returns:
+            True if the line is a special Makefile construct
+        """
+        stripped = line.strip()
+        return stripped.startswith(
+            (
+                "include",
+                "-include",
+                "ifeq",
+                "ifneq",
+                "ifdef",
+                "ifndef",
+                "define",
+                "endef",
+                ".PHONY",
+                "export",
+                "unexport",
+                "vpath",
+            )
+        ) or stripped in ("else", "endif")
+
+    @staticmethod
+    def is_conditional_start(line: str) -> bool:
+        """Check if line starts a conditional block."""
+        return bool(re.match(r"^(ifeq|ifneq|ifdef|ifndef)\s*\(", line.strip()))
+
+    @staticmethod
+    def is_conditional_middle(line: str) -> bool:
+        """Check if line is a conditional middle (else)."""
+        return bool(re.match(r"^else(\s|$)", line.strip()))
+
+    @staticmethod
+    def is_conditional_end(line: str) -> bool:
+        """Check if line ends a conditional block."""
+        return line.strip() == "endif"
+
+    @staticmethod
+    def detect_define_block_indentation(lines: list[str], define_start: int) -> str:
+        """
+        Detect the indentation pattern within a define block.
+
+        Args:
+            lines: All lines in the file
+            define_start: Index of the 'define' line
+
+        Returns:
+            The indentation string to use for content (e.g., '    ', '\t', '')
+        """
+        # Find the matching endef
+        define_end = None
+        for i in range(define_start + 1, len(lines)):
+            if lines[i].strip() == "endef":
+                define_end = i
+                break
+
+        if define_end is None:
+            # No matching endef found, default to no indentation
+            return ""
+
+        # Analyze indentation patterns in the define block content
+        indentations = []
+        non_indented_count = 0
+
+        for i in range(define_start + 1, define_end):
+            line = lines[i]
+            stripped = line.strip()
+
+            # Skip empty lines and comments
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Calculate indentation
+            indent_len = len(line) - len(line.lstrip())
+            if indent_len > 0:
+                indentations.append(line[:indent_len])
+            else:
+                non_indented_count += 1
+
+        # If there are no content lines, return no indentation
+        total_content_lines = len(indentations) + non_indented_count
+        if total_content_lines == 0:
+            return ""
+
+        # If all lines have no indentation, keep it that way
+        if len(indentations) == 0:
+            return ""
+
+        # If most lines have no indentation, don't add indentation
+        if non_indented_count > len(indentations):
+            return ""
+
+        # Find the most common indentation pattern among indented lines
+        from collections import Counter
+
+        indent_counts = Counter(indentations)
+
+        if indent_counts:
+            # Use the most common indentation
+            most_common_indent = indent_counts.most_common(1)[0][0]
+            return most_common_indent
+
+        # Fallback to no indentation
+        return ""
+
+    @staticmethod
+    def normalize_define_block_indentation(
+        lines: list[str], define_start: int
+    ) -> tuple[list[str], bool]:
+        """
+        Normalize indentation within a define block to be consistent.
+
+        Args:
+            lines: All lines in the file
+            define_start: Index of the 'define' line
+
+        Returns:
+            Tuple of (modified_lines, changed_flag)
+        """
+        # Find the matching endef
+        define_end = None
+        for i in range(define_start + 1, len(lines)):
+            if lines[i].strip() == "endef":
+                define_end = i
+                break
+
+        if define_end is None:
+            return lines, False
+
+        # Detect the target indentation pattern
+        target_indent = LineUtils.detect_define_block_indentation(lines, define_start)
+
+        # Apply consistent indentation to all content lines
+        modified_lines = lines.copy()
+        changed = False
+
+        for i in range(define_start + 1, define_end):
+            line = lines[i]
+            stripped = line.strip()
+
+            # Skip empty lines and comments
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Apply target indentation
+            new_line = target_indent + stripped
+            if new_line != line:
+                modified_lines[i] = new_line
+                changed = True
+
+        return modified_lines, changed
+
+    @staticmethod
     def is_recipe_line(line: str, line_index: int, all_lines: list[str]) -> bool:
         """
         Check if a line is a recipe line (indented line that belongs to a target).
@@ -79,7 +283,12 @@ class LineUtils:
         Returns:
             True if this is a recipe line
         """
-        return LineUtils._is_recipe_line_helper(line, line_index, all_lines, set())
+        # First check if it's already indented
+        if line.startswith(("\t", " ")) and line.strip():
+            return LineUtils._is_recipe_line_helper(line, line_index, all_lines, set())
+
+        # If not indented, check if it should be based on context
+        return LineUtils._should_be_recipe_line(line, line_index, all_lines)
 
     @staticmethod
     def _is_recipe_line_helper(
@@ -87,6 +296,24 @@ class LineUtils:
     ) -> bool:
         """Helper method to avoid infinite recursion."""
         if not (line.startswith(("\t", " ")) and line.strip()):
+            return False
+
+        # Don't treat makefile constructs as recipe lines even if indented
+        if LineUtils.is_makefile_construct(line):
+            return False
+
+            # Don't treat variable assignments inside conditional blocks as recipe lines
+        stripped = line.strip()
+        if (
+            LineUtils.is_variable_assignment(stripped)
+            and LineUtils.get_conditional_depth(line_index, all_lines) > 0
+        ):
+            # If we're inside a conditional block, this variable assignment
+            # should not be treated as a recipe line
+            return False
+
+        # Don't treat content inside define blocks as recipe lines
+        if LineUtils.is_inside_define_block(line_index, all_lines):
             return False
 
         # Avoid infinite recursion
@@ -120,9 +347,13 @@ class LineUtils:
                     return True
                 continue
 
+            # If previous line is detected as a recipe line by the new logic, this is also a recipe line
+            if LineUtils._should_be_recipe_line(prev_line, i, all_lines):
+                return True
+
             # Check if this is a target line (contains : but not an assignment)
             if ":" in prev_stripped and not prev_stripped.startswith("#"):
-                # Exclude variable assignments that contain colons
+                # Exclude variable assignments that contain colons (e.g., CC := gcc)
                 if "=" in prev_stripped and prev_stripped.find(
                     "="
                 ) < prev_stripped.find(":"):
@@ -133,14 +364,14 @@ class LineUtils:
                     ("ifeq", "ifneq", "ifdef", "ifndef", "define")
                 )
 
-            # If we find a variable assignment without colon, this is a continuation
-            if "=" in prev_stripped and not prev_stripped.startswith(
-                ("ifeq", "ifneq", "ifdef", "ifndef")
+            # If we find a variable assignment without colon, this is NOT a recipe
+            # BUT only if it's at the top level (not indented)
+            if (
+                "=" in prev_stripped
+                and not prev_stripped.startswith(("ifeq", "ifneq", "ifdef", "ifndef"))
+                and not prev_line.startswith(("\t", " "))
             ):
-                return False
-
-            # If we find a directive line, not a recipe
-            if prev_stripped.startswith((".PHONY", "include", "export", "unexport")):
+                # This is a top-level variable assignment
                 return False
 
             # If we reach a non-indented, non-target line, default to False
@@ -148,6 +379,106 @@ class LineUtils:
                 break
 
         # Default to not a recipe if we can't determine context
+        return False
+
+    @staticmethod
+    def _should_be_recipe_line(
+        line: str, line_index: int, all_lines: list[str]
+    ) -> bool:
+        """
+        Check if a non-indented line should be a recipe line based on context.
+
+        This handles cases where recipe lines are improperly formatted (not indented).
+        This function is very conservative to avoid false positives.
+        """
+        # Skip empty lines and comments
+        if not line.strip() or line.strip().startswith("#"):
+            return False
+
+        # Don't treat special makefile constructs as recipe lines
+        if LineUtils.is_makefile_construct(line) or LineUtils.is_target_line(line):
+            return False
+
+        # If we're inside a define block, this is not a recipe line
+        if LineUtils.is_inside_define_block(line_index, all_lines):
+            return False
+
+        # Check if we're inside a conditional block (but not followed by a target)
+        conditional_depth = LineUtils.get_conditional_depth(line_index, all_lines)
+        if conditional_depth > 0:
+            # Find the last non-conditional line to see if it was a target
+            last_non_conditional_line = None
+            for i in range(line_index):
+                check_line = all_lines[i].strip()
+                if (
+                    check_line
+                    and not check_line.startswith(
+                        ("ifeq", "ifneq", "ifdef", "ifndef", "else", "endif", "#")
+                    )
+                    and LineUtils.get_conditional_depth(i, all_lines) == 0
+                ):
+                    last_non_conditional_line = check_line
+
+            # If we're inside a conditional block and the last non-conditional line
+            # wasn't a target, then this is not a recipe
+            if last_non_conditional_line is None or not LineUtils.is_target_line(
+                last_non_conditional_line
+            ):
+                return False
+
+        # Look backward to find context - either direct target or through recipe lines
+        target_line_found = False
+        for i in range(line_index - 1, -1, -1):
+            prev_line = all_lines[i]
+            prev_stripped = prev_line.strip()
+
+            # Skip empty lines
+            if not prev_stripped:
+                continue
+
+            # If we find a target line, this could be a recipe
+            if LineUtils.is_target_line(prev_line):
+                target_line_found = True
+                break
+
+            # If we find another potential recipe line (with shell patterns), continue looking
+            if any(
+                pattern in prev_line for pattern in ["$(call ", "$@", "$<", "$^", "$$"]
+            ):
+                continue
+
+            # If we find a non-target, non-recipe line, this is not a recipe
+            if not prev_line.startswith(("\t", " ")):
+                break
+
+        # Only consider this a recipe line if:
+        # 1. We found a target line in the context above
+        # 2. AND this line looks like a shell command (not a typical makefile variable assignment)
+        if target_line_found:
+            # Additional heuristics to identify shell commands vs makefile variables:
+
+            # If it contains shell-specific patterns, likely a shell command
+            if any(pattern in line for pattern in ["$(call ", "$@", "$<", "$^", "$$"]):
+                return True
+
+            # If it's a simple variable assignment (no shell patterns),
+            # it's likely a makefile variable, not a shell command
+            if LineUtils.is_variable_assignment(line):
+                # Check for shell variable patterns vs makefile variable patterns
+                # Shell variables often have different naming conventions
+                var_name = line.split("=")[0].strip()
+
+                # Common makefile variable names (uppercase, with underscores)
+                if var_name.isupper() and (
+                    "_" in var_name
+                    or var_name in ["CC", "CXX", "CFLAGS", "LDFLAGS", "AR", "AS"]
+                ):
+                    return False
+
+                # Lowercase or mixed case more likely to be shell variables
+                if not var_name.isupper():
+                    return True
+
         return False
 
     @staticmethod
@@ -243,6 +574,117 @@ class LineUtils:
         if remove_trailing:
             return line.rstrip()
         return line
+
+    @staticmethod
+    def format_error_message(message: str, line_num: int, config: dict) -> str:
+        """
+        Format an error message according to GNU error format setting.
+
+        Args:
+            message: The error message content
+            line_num: Line number where error occurred
+            config: Configuration dictionary
+
+        Returns:
+            Formatted error message string
+        """
+        gnu_error_format = config.get("_global", {}).get("gnu_error_format", False)
+
+        if gnu_error_format:
+            return f"{line_num}: Error: {message}"
+        else:
+            return f"Line {line_num}: {message}"
+
+    @staticmethod
+    def create_define_block_processor() -> Callable[[str], bool]:
+        """
+        Create a define block processor for tracking define/endef blocks.
+
+        Returns:
+            A function that can be used to process lines and track define blocks
+        """
+        inside_define = False
+
+        def process_line(line: str) -> bool:
+            """
+            Process a line and return whether we're inside a define block.
+
+            Args:
+                line: The line to process
+
+            Returns:
+                True if inside a define block after processing this line
+            """
+            nonlocal inside_define
+
+            stripped = line.strip()
+
+            if stripped.startswith("define "):
+                inside_define = True
+            elif stripped == "endef":
+                inside_define = False
+
+            return inside_define
+
+        return process_line
+
+    @staticmethod
+    def process_lines_with_standard_skipping(
+        lines: list[str],
+        line_processor: Callable[[str, int], tuple[str, bool]],
+        skip_recipe: bool = True,
+        skip_comments: bool = True,
+        skip_empty: bool = True,
+        skip_define_blocks: bool = False,
+    ) -> tuple[list[str], bool]:
+        """
+        Process lines with standard skipping logic used across multiple rules.
+
+        Args:
+            lines: Lines to process
+            line_processor: Function that takes (line, line_index) and returns (new_line, changed)
+            skip_recipe: Whether to skip recipe lines
+            skip_comments: Whether to skip comment lines
+            skip_empty: Whether to skip empty lines
+            skip_define_blocks: Whether to skip content inside define blocks
+
+        Returns:
+            Tuple of (processed_lines, changed_flag)
+        """
+        formatted_lines = []
+        changed = False
+
+        # Optional define block processor
+        define_processor = (
+            LineUtils.create_define_block_processor() if skip_define_blocks else None
+        )
+
+        for i, line in enumerate(lines):
+            # Check if we should skip this line
+            should_skip = LineUtils.should_skip_line(
+                line,
+                skip_recipe=skip_recipe,
+                skip_comments=skip_comments,
+                skip_empty=skip_empty,
+            )
+
+            # Check define block status if needed
+            if define_processor and not should_skip:
+                inside_define = define_processor(line)
+                if inside_define and skip_define_blocks:
+                    should_skip = True
+
+            if should_skip:
+                formatted_lines.append(line)
+                continue
+
+            # Process the line
+            new_line, line_changed = line_processor(line, i)
+            if line_changed:
+                changed = True
+            formatted_lines.append(new_line)
+
+        return formatted_lines, changed
 
 
 class ShellUtils:
