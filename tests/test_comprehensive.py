@@ -134,6 +134,22 @@ class TestVariableAssignments:
         assert not errors
         assert formatted_lines == expected_lines
 
+    def test_define_endef_assignement_spacing(self):
+        """Ensure no assignement spacing is added inside define"""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/define_assignement_spacing/input.mk")
+        expected_file = Path("tests/fixtures/define_assignement_spacing/expected.mk")
+
+        input_lines = input_file.read_text(encoding="utf-8").splitlines()
+        expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+        formatted_lines, errors = formatter.format_lines(input_lines)
+
+        assert not errors
+        assert formatted_lines == expected_lines
+
 
 class TestConditionalBlocks:
     """Test conditional block formatting."""
