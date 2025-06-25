@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.4]
+
+<!-- markdownlint-disable MD024 -->
+### Added
+
+- Disabling formatting on a piece of code to turn off formatting within a region. This should suppress all changes (See [#26](https://github.com/EbodShojaei/bake/issues/26). Thanks @wsnyder!)
+
 ## [1.2.3]
 
 <!-- markdownlint-disable MD024 -->
@@ -162,6 +169,7 @@ All notable changes to this project will be documented in this file.
 - **VSCode Extension**: Ready for Visual Studio Code Marketplace
 - **GitHub Actions**: Automated CI/CD and publishing workflows
 
+[1.2.4]: https://github.com/ebodshojaei/bake/releases/tag/v1.2.4
 [1.2.3]: https://github.com/ebodshojaei/bake/releases/tag/v1.2.3
 [1.2.2]: https://github.com/ebodshojaei/bake/releases/tag/v1.2.2
 [1.2.1]: https://github.com/ebodshojaei/bake/releases/tag/v1.2.1
