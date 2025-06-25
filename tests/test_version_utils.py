@@ -18,14 +18,24 @@ class TestParseVersion:
 
     def test_simple_version(self):
         """Test parsing simple version numbers."""
-        assert parse_version("1.2.3") == (1, 2, 3)
-        assert parse_version("0.1.0") == (0, 1, 0)
-        assert parse_version("10.20.30") == (10, 20, 30)
+        assert parse_version("1.2.3") == (1, 2, 3, 0)
+        assert parse_version("0.1.0") == (0, 1, 0, 0)
+        assert parse_version("10.20.30") == (10, 20, 30, 0)
 
     def test_post_version(self):
         """Test parsing version with post suffix."""
-        assert parse_version("1.2.3.post1") == (1, 2, 3)
-        assert parse_version("1.0.0.post5") == (1, 0, 0)
+        assert parse_version("1.2.3.post1") == (1, 2, 3, 1)
+        assert parse_version("1.0.0.post5") == (1, 0, 0, 5)
+
+    def test_post_version_comparison(self):
+        """Test that post-release versions are considered newer."""
+        base_version = parse_version("1.2.3")
+        post_version = parse_version("1.2.3.post1")
+        post_version_2 = parse_version("1.2.3.post2")
+
+        assert post_version > base_version
+        assert post_version_2 > post_version
+        assert post_version_2 > base_version
 
     def test_invalid_version(self):
         """Test parsing invalid version strings."""
@@ -122,6 +132,30 @@ class TestCheckForUpdates:
         assert update_available is False
         assert latest is None
         assert current == "1.0.0"
+
+    @patch("bake.utils.version_utils.get_pypi_version")
+    @patch("bake.utils.version_utils.current_version", "1.2.3")
+    def test_post_release_update_available(self, mock_get_version):
+        """Test that post-release versions are detected as updates."""
+        mock_get_version.return_value = "1.2.3.post1"
+
+        update_available, latest, current = check_for_updates()
+
+        assert update_available is True
+        assert latest == "1.2.3.post1"
+        assert current == "1.2.3"
+
+    @patch("bake.utils.version_utils.get_pypi_version")
+    @patch("bake.utils.version_utils.current_version", "1.2.3.post1")
+    def test_current_is_post_release(self, mock_get_version):
+        """Test when current version is a post-release."""
+        mock_get_version.return_value = "1.2.3"
+
+        update_available, latest, current = check_for_updates()
+
+        assert update_available is False
+        assert latest == "1.2.3"
+        assert current == "1.2.3.post1"
 
 
 class TestIsDevelopmentInstall:

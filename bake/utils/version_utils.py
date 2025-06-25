@@ -24,12 +24,21 @@ def parse_version(version_str: str) -> tuple[int, ...]:
         version_str: Version string like '1.2.3' or '1.2.3.post1'
 
     Returns:
-        tuple of integers representing version components
+        tuple of integers representing version components (including post-release)
     """
-    # Remove .post suffixes for comparison
-    clean_version = version_str.split(".post")[0]
     try:
-        return tuple(map(int, clean_version.split(".")))
+        # Split on .post to handle post-release versions
+        if ".post" in version_str:
+            base_version, post_part = version_str.split(".post", 1)
+            base_tuple = tuple(map(int, base_version.split(".")))
+            post_number = int(post_part)
+            # Add the post-release number as an additional component
+            # This ensures 1.2.3.post1 > 1.2.3 (which becomes 1.2.3.0 internally)
+            return base_tuple + (post_number,)
+        else:
+            # For non-post versions, add 0 as the post component for comparison
+            base_tuple = tuple(map(int, version_str.split(".")))
+            return base_tuple + (0,)
     except ValueError as e:
         raise VersionError(f"Invalid version format: {version_str}") from e
 
