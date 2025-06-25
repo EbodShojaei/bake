@@ -5,10 +5,18 @@ All notable changes to this project will be documented in this file.
 ## [1.2.3]
 
 <!-- markdownlint-disable MD024 -->
+### Added
+
+- Provides error when config is explicitly specified but not found.
+
 ### Fixes
 
-- Adaptive indentation for define blocks matches the most common indentation style within each block.
+- Adaptive indentation for define blocks matches the indentation style within each block (Issue #24).
 - Centralized define block tracking, error formatting, and standard rule processing into utility functions.
+- Added support for Make patterns: `$< $@, $^ $@, command $@`.
+- Improved file vs. phony target identification (Issue #23).
+  - Avoids assumptions (e.g., removing hard-coded extensions).
+  - Variable references (e.g., `$(foo)`) are not incorrectly marked as .PHONY.
 
 ## [1.2.2]
 
