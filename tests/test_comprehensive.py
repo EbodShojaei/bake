@@ -1072,3 +1072,57 @@ class TestMultilineBackslashHandling:
 
             assert not errors
             assert formatted_lines == expected_lines
+
+
+class TestCommentOnlyTargets:
+    """Test that comment-only targets don't trigger duplicate errors."""
+
+    def test_comment_only_targets_fixture(self):
+        """Test comment-only targets fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/comment_only_targets/input.mk")
+        expected_file = Path("tests/fixtures/comment_only_targets/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            # Should not generate any duplicate target errors
+            duplicate_errors = [
+                error for error in errors if "Duplicate target" in error
+            ]
+            assert (
+                len(duplicate_errors) == 0
+            ), f"Unexpected duplicate target errors: {duplicate_errors}"
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_comment_target_variations(self):
+        """Test various comment target formats."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_lines = [
+            "# Real target",
+            "build:",
+            "\t$(CC) -o main main.c",
+            "",
+            "# Different comment formats",
+            "build: ## Simple comment",
+            "build: ##Comment without space",
+            "build: ## Comment with more details here",
+            "build: ##   Comment with leading spaces",
+        ]
+
+        formatted_lines, errors = formatter.format_lines(input_lines)
+
+        # Should not generate any duplicate target errors
+        duplicate_errors = [error for error in errors if "Duplicate target" in error]
+        assert (
+            len(duplicate_errors) == 0
+        ), f"Unexpected duplicate target errors: {duplicate_errors}"

@@ -52,6 +52,11 @@ class DuplicateTargetRule(FormatterPlugin):
                 is_double_colon = match.group(2) == ":"
                 target_body = match.group(3).strip()
 
+                # Skip comment-only targets (documentation targets)
+                # These are lines like "target: ## Comment" that are documentation only
+                if target_body.startswith("##"):
+                    continue
+
                 # Skip special targets that can be duplicated
                 # These targets should not be tracked at all, as they can legitimately appear multiple times
                 allowed_duplicates = {
