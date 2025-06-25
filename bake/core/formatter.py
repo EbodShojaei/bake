@@ -8,6 +8,7 @@ from typing import Any, Union
 
 from ..config import Config
 from ..plugins.base import FormatterPlugin
+from ..utils import FormatDisableHandler
 from .rules import (
     AssignmentSpacingRule,
     ConditionalRule,
@@ -45,6 +46,7 @@ class MakefileFormatter:
     def __init__(self, config: Config):
         """Initialize formatter with configuration."""
         self.config = config
+        self.format_disable_handler = FormatDisableHandler()
 
         # Initialize all formatting rules with correct priority order
         self.rules: list[FormatterPlugin] = [
@@ -144,6 +146,14 @@ class MakefileFormatter:
         original_content: Union[str, None] = None,
     ) -> tuple[list[str], list[str]]:
         """Format makefile lines and return formatted lines and errors."""
+        # Convert to list for easier manipulation
+        original_lines = list(lines)
+
+        # Find regions where formatting is disabled
+        disabled_regions = self.format_disable_handler.find_disabled_regions(
+            original_lines
+        )
+
         # Convert config to dict for rules
         config_dict = self.config.to_dict()["formatter"]
         # Add global config for rules that need it
@@ -160,7 +170,7 @@ class MakefileFormatter:
             )
             context["original_line_count"] = len(lines)
 
-        formatted_lines = list(lines)
+        formatted_lines = original_lines.copy()
         all_errors = []
 
         for rule in self.rules:
@@ -193,6 +203,12 @@ class MakefileFormatter:
 
         # Apply final cleanup
         formatted_lines = self._final_cleanup(formatted_lines, config_dict)
+
+        # Restore original content for disabled regions
+        if disabled_regions:
+            formatted_lines = self.format_disable_handler.apply_disabled_regions(
+                original_lines, formatted_lines, disabled_regions
+            )
 
         # Sort all errors by line number for consistent reporting
         if check_only:
