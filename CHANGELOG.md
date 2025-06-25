@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Disabling formatting on a piece of code to turn off formatting within a region. This should suppress all changes (See [#26](https://github.com/EbodShojaei/bake/issues/26). Thanks @wsnyder!)
+- Resolve `typer` install error (reproduced on version `0.16.0`) (See [#25](https://github.com/EbodShojaei/bake/issues/25). Thanks @Dobatymo!)
 
 ## [1.2.3]
 
