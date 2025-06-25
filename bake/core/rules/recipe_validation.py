@@ -131,8 +131,8 @@ class RecipeValidationRule(FormatterPlugin):
             prev_line = all_lines[i]
             prev_stripped = prev_line.strip()
 
-            # Skip empty lines
-            if not prev_stripped:
+            # Skip empty lines and comments (comments should not break context)
+            if not prev_stripped or prev_stripped.startswith("#"):
                 continue
 
             # If we find another indented line, check if it's a recipe line

@@ -333,8 +333,8 @@ class LineUtils:
             prev_line = all_lines[i]
             prev_stripped = prev_line.strip()
 
-            # Skip empty lines
-            if not prev_stripped:
+            # Skip empty lines and comments (comments should not break recipe context)
+            if not prev_stripped or prev_stripped.startswith("#"):
                 continue
 
             # If previous line is an indented line that ends with backslash,
@@ -404,8 +404,8 @@ class LineUtils:
             prev_line = all_lines[i]
             prev_stripped = prev_line.strip()
 
-            # Skip empty lines
-            if not prev_stripped:
+            # Skip empty lines and comments (comments should not break variable assignment context)
+            if not prev_stripped or prev_stripped.startswith("#"):
                 continue
 
             # If we find another indented line that ends with backslash,
@@ -480,8 +480,8 @@ class LineUtils:
             prev_line = all_lines[i]
             prev_stripped = prev_line.strip()
 
-            # Skip empty lines
-            if not prev_stripped:
+            # Skip empty lines and comments (comments should not break context)
+            if not prev_stripped or prev_stripped.startswith("#"):
                 continue
 
             # If we find a target line, this could be a recipe
