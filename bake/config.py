@@ -114,12 +114,22 @@ class Config:
         return cls(formatter=formatter_config, **global_data)
 
     @classmethod
-    def load_or_default(cls, config_path: Optional[Path] = None) -> "Config":
-        """Load config or return defaults if not found."""
+    def load_or_default(
+        cls, config_path: Optional[Path] = None, explicit: bool = False
+    ) -> "Config":
+        """Load config or return defaults if not found.
+
+        Args:
+            config_path: Path to config file, or None for default
+            explicit: True if config_path was explicitly specified by user
+        """
         try:
             return cls.load(config_path)
         except FileNotFoundError:
-            # Return default configuration
+            if explicit:
+                # If user explicitly specified a config file, error if it doesn't exist
+                raise
+            # Return default configuration for default path that doesn't exist
             return cls(formatter=FormatterConfig())
 
     def to_dict(self) -> dict[str, Any]:

@@ -277,7 +277,9 @@ def validate(
     setup_logging(verbose)
 
     try:
-        Config.load_or_default(config_file)  # Just check config is valid
+        Config.load_or_default(
+            config_file, explicit=config_file is not None
+        )  # Just check config is valid
 
         any_errors = False
 
@@ -350,7 +352,7 @@ def format(
 
     try:
         # Load configuration with fallback to defaults
-        config = Config.load_or_default(config_file)
+        config = Config.load_or_default(config_file, explicit=config_file is not None)
         config.verbose = verbose or config.verbose
         config.debug = debug or config.debug
 
