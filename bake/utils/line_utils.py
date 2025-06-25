@@ -1,7 +1,7 @@
 """Utility functions for line processing in Makefile formatting."""
 
 import re
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 
 class LineUtils:
@@ -316,6 +316,10 @@ class LineUtils:
         if LineUtils.is_inside_define_block(line_index, all_lines):
             return False
 
+        # Don't treat variable assignment continuation lines as recipe lines
+        if LineUtils._is_variable_assignment_continuation(line_index, all_lines):
+            return False
+
         # Avoid infinite recursion
         if line_index in visited:
             return False
@@ -379,6 +383,50 @@ class LineUtils:
                 break
 
         # Default to not a recipe if we can't determine context
+        return False
+
+    @staticmethod
+    def _is_variable_assignment_continuation(
+        line_index: int, all_lines: list[str]
+    ) -> bool:
+        """
+        Check if this line is a continuation of a variable assignment.
+
+        Args:
+            line_index: Index of the current line
+            all_lines: All lines in the file
+
+        Returns:
+            True if this line is part of a variable assignment continuation
+        """
+        # Look backward to find the start of the variable assignment
+        for i in range(line_index - 1, -1, -1):
+            prev_line = all_lines[i]
+            prev_stripped = prev_line.strip()
+
+            # Skip empty lines
+            if not prev_stripped:
+                continue
+
+            # If we find another indented line that ends with backslash,
+            # continue looking backward
+            if prev_line.startswith((" ", "\t")) and prev_stripped.endswith("\\"):
+                continue
+
+            # If we find a non-indented line, check if it's a variable assignment
+            if not prev_line.startswith((" ", "\t")):
+                # Check if this is a variable assignment line that ends with backslash
+                if (
+                    "=" in prev_stripped
+                    and prev_stripped.endswith("\\")
+                    and not prev_stripped.startswith(
+                        ("ifeq", "ifneq", "ifdef", "ifndef")
+                    )
+                ):
+                    return True
+                # If it's not a variable assignment, stop looking
+                break
+
         return False
 
     @staticmethod
@@ -685,6 +733,15 @@ class LineUtils:
             formatted_lines.append(new_line)
 
         return formatted_lines, changed
+
+    @staticmethod
+    def is_template_placeholder_target(target_name: str) -> bool:
+        """
+        Returns True if the target is a template placeholder like $(1), $(2), $(VAR), ${1}, ${VAR}, etc.
+        This includes both numeric and named variable references in either $() or ${} format.
+        """
+        # Match $(number), $(NAME), ${number}, ${NAME}
+        return bool(re.fullmatch(r"\$[({][^})]+[})]", target_name))
 
 
 class ShellUtils:
@@ -994,20 +1051,29 @@ class PhonyAnalyzer:
     """Utilities for analyzing whether targets are phony."""
 
     @staticmethod
-    def is_target_phony(target_name: str, recipe_lines: list[str]) -> bool:
+    def is_target_phony(
+        target_name: str, recipe_lines: list[str], all_lines: Optional[list[str]] = None
+    ) -> bool:
         """
         Determine if a target is phony by analyzing its recipe.
 
         Args:
             target_name: Name of the target
             recipe_lines: List of recipe command lines
+            all_lines: All lines in the Makefile for context analysis
 
         Returns:
             True if the target is likely phony
         """
         if not recipe_lines:
-            # No recipe usually means phony (like .PHONY: help)
-            return True
+            # No recipe could mean:
+            # 1. Phony target (like .PHONY: help)
+            # 2. Dependency-only rule (like header.h: source.c)
+            #
+            # File targets (especially .h, .o, .c, .cpp, etc.) with no recipe
+            # are typically dependency-only rules, not phony targets
+            # Otherwise assume it's phony (like help, clean, etc.)
+            return not PhonyAnalyzer._looks_like_file_target(target_name, all_lines)
 
         # Analyze recipe commands to determine if they create a file with target_name
         creates_target_file = False
@@ -1023,6 +1089,291 @@ class PhonyAnalyzer:
 
         # Target is phony if it doesn't create a file with its own name
         return not creates_target_file
+
+    @staticmethod
+    def _looks_like_file_target(
+        target_name: str, all_lines: Optional[list[str]] = None
+    ) -> bool:
+        """
+        Check if a target name looks like a file target using dynamic analysis.
+
+        Args:
+            target_name: Name of the target
+            all_lines: All lines in the Makefile for context analysis
+
+        Returns:
+            True if the target name looks like a file target
+        """
+        # If we have context, use dynamic analysis
+        if all_lines:
+            return PhonyAnalyzer._analyze_file_patterns_dynamically(
+                target_name, all_lines
+            )
+
+        # Fallback to basic heuristics if no context available
+        return PhonyAnalyzer._basic_file_target_heuristics(target_name)
+
+    @staticmethod
+    def _analyze_file_patterns_dynamically(
+        target_name: str, all_lines: list[str]
+    ) -> bool:
+        """
+        Dynamically analyze the Makefile to determine if target looks like a file.
+
+        Args:
+            target_name: Name of the target to analyze
+            all_lines: All lines in the Makefile
+
+        Returns:
+            True if target appears to be a file based on Makefile patterns
+        """
+        # First check if it looks like an action target by name
+        if PhonyAnalyzer._looks_like_action_target(target_name):
+            return False
+
+        # Extract all extensions used in the Makefile
+        discovered_extensions = PhonyAnalyzer._discover_file_extensions(all_lines)
+
+        # Check if target has an extension that appears elsewhere in the Makefile
+        if "." in target_name:
+            ext = "." + target_name.split(".")[-1].lower()
+            if ext in discovered_extensions:
+                return True
+
+        # Check if target appears in file-related contexts
+        if PhonyAnalyzer._appears_in_file_contexts(target_name, all_lines):
+            return True
+
+        # Check if target follows naming patterns of other file targets
+        if PhonyAnalyzer._matches_file_naming_patterns(target_name, all_lines):
+            return True
+
+        # Check if target's recipe suggests it's a file target
+        return PhonyAnalyzer._recipe_suggests_file_target(target_name, all_lines)
+
+    @staticmethod
+    def _recipe_suggests_file_target(target_name: str, all_lines: list[str]) -> bool:
+        """
+        Analyze target's recipe to determine if it creates a file.
+        Uses structural analysis, not semantic command knowledge.
+
+        Args:
+            target_name: Name of the target
+            all_lines: All lines in the Makefile
+
+        Returns:
+            True if recipe suggests target creates a file
+        """
+        # Find the target definition and its recipe
+        target_pattern = re.compile(rf"^{re.escape(target_name)}:")
+
+        for i, line in enumerate(all_lines):
+            if target_pattern.match(line.strip()):
+                # Get recipe lines for this target
+                recipe_lines = []
+                for j in range(i + 1, len(all_lines)):
+                    recipe_line = all_lines[j]
+                    if recipe_line.startswith("\t"):
+                        recipe_lines.append(recipe_line.strip())
+                    elif recipe_line.strip():  # Non-empty, non-recipe line
+                        break
+
+                # If no recipe, check if target has file-like characteristics
+                if not recipe_lines:
+                    # Targets with extensions are likely files even without recipes
+                    if "." in target_name and not target_name.startswith("."):
+                        return True
+                    # Targets with paths are likely files
+                    return "/" in target_name or "\\" in target_name
+
+                # Analyze recipe for file creation patterns
+                for recipe in recipe_lines:
+                    cleaned_recipe = PhonyAnalyzer._clean_command_for_analysis(recipe)
+
+                    # Check if command creates target file using structural patterns
+                    if PhonyAnalyzer._command_creates_target_file(
+                        cleaned_recipe, target_name
+                    ):
+                        return True
+
+                    # Output redirection patterns (structural, not command-specific)
+                    if any(op in recipe for op in [" > ", " >> ", " 2> "]):
+                        return True
+
+                    # Structural indicators of file creation (not semantic)
+                    # Look for patterns that suggest file output
+                    if any(
+                        pattern in recipe
+                        for pattern in [
+                            "$@",  # Make automatic variable for target
+                            "$< $@",  # Common Make pattern: input to output
+                        ]
+                    ):
+                        return True
+
+                break
+
+        return False
+
+    @staticmethod
+    def _discover_file_extensions(all_lines: list[str]) -> set[str]:
+        """
+        Discover file extensions used throughout the Makefile.
+        Completely dynamic - no hardcoded exclusions.
+
+        Args:
+            all_lines: All lines in the Makefile
+
+        Returns:
+            Set of discovered file extensions
+        """
+        extensions = set()
+
+        for line in all_lines:
+            # Skip comments and empty lines
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Find all words that look like filenames (contain dots)
+            import re
+
+            # Match words with extensions (word.ext pattern)
+            filename_pattern = r"\b\w+\.\w+\b"
+            matches = re.findall(filename_pattern, stripped)
+
+            for match in matches:
+                # Extract extension
+                if "." in match:
+                    ext = "." + match.split(".")[-1].lower()
+                    # No hardcoded exclusions - include all discovered extensions
+                    extensions.add(ext)
+
+        return extensions
+
+    @staticmethod
+    def _appears_in_file_contexts(target_name: str, all_lines: list[str]) -> bool:
+        """
+        Check if target appears in file-related contexts in the Makefile.
+        Completely dynamic - no hardcoded command patterns.
+
+        Args:
+            target_name: Name of the target
+            all_lines: All lines in the Makefile
+
+        Returns:
+            True if target appears in file contexts
+        """
+        # Only structural patterns, no hardcoded commands
+        file_context_patterns = [
+            r"\$\(wildcard.*" + re.escape(target_name),  # $(wildcard *.ext)
+            r"include\s+.*" + re.escape(target_name),  # include target
+            r"-o\s+" + re.escape(target_name),  # -o target
+            r">\s*" + re.escape(target_name),  # > target
+            r"rm\s+.*" + re.escape(target_name),  # rm target (file being removed)
+            r"rm\s+-[rf]*\s+.*" + re.escape(target_name),  # rm -f target
+        ]
+
+        for line in all_lines:
+            for pattern in file_context_patterns:
+                if re.search(pattern, line, re.IGNORECASE):
+                    return True
+
+        return False
+
+    @staticmethod
+    def _matches_file_naming_patterns(target_name: str, all_lines: list[str]) -> bool:
+        """
+        Check if target follows naming patterns of other file targets.
+
+        Args:
+            target_name: Name of the target
+            all_lines: All lines in the Makefile
+
+        Returns:
+            True if target matches file naming patterns
+        """
+        # Extract all target names from the Makefile
+        target_pattern = re.compile(r"^([^:=]+):(?!:)")
+        all_targets = []
+
+        for line in all_lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith(("#", "\t")):
+                continue
+
+            match = target_pattern.match(stripped)
+            if match:
+                target_list = match.group(1).strip()
+                targets = [t.strip() for t in target_list.split() if t.strip()]
+                all_targets.extend(targets)
+
+        # Analyze naming patterns
+        return PhonyAnalyzer._has_similar_naming_pattern(target_name, all_targets)
+
+    @staticmethod
+    def _has_similar_naming_pattern(target_name: str, all_targets: list[str]) -> bool:
+        """
+        Check if target has similar naming pattern to other targets.
+        Completely dynamic - no hardcoded patterns.
+
+        Args:
+            target_name: Name of the target to check
+            all_targets: List of all targets in the Makefile
+
+        Returns:
+            True if target has similar pattern to file targets
+        """
+        # If target has extension, check if other targets have same extension
+        if "." in target_name:
+            target_ext = "." + target_name.split(".")[-1].lower()
+            similar_targets = [t for t in all_targets if t.endswith(target_ext)]
+
+            # If we find multiple targets with same extension, likely file targets
+            if len(similar_targets) > 1:
+                return True
+
+        # Check for path-like patterns (contains slashes)
+        return "/" in target_name or "\\" in target_name
+
+    @staticmethod
+    def _basic_file_target_heuristics(target_name: str) -> bool:
+        """
+        Basic heuristics for file target detection when no context is available.
+        Conservative approach using only structural indicators.
+
+        Args:
+            target_name: Name of the target
+
+        Returns:
+            True if target looks like a file based on basic heuristics
+        """
+        # If it looks like an action target, it's not a file target
+        if PhonyAnalyzer._looks_like_action_target(target_name):
+            return False
+
+        # Has file extension (most reliable indicator)
+        if "." in target_name and not target_name.startswith("."):
+            return True
+
+        # Has path separators (likely a file path)
+        return "/" in target_name or "\\" in target_name
+
+    @staticmethod
+    def _looks_like_action_target(target_name: str) -> bool:
+        """
+        Check if target looks like an action target.
+        Completely dynamic - no hardcoded patterns at all.
+
+        Args:
+            target_name: Name of the target
+
+        Returns:
+            Always False - let recipe analysis determine everything
+        """
+        # No hardcoded patterns whatsoever
+        # All phony detection is now based purely on recipe analysis
+        return False
 
     @staticmethod
     def detect_phony_targets_excluding_conditionals(lines: list[str]) -> set[str]:
@@ -1127,7 +1478,7 @@ class PhonyAnalyzer:
                         continue
 
                     # Analyze if target is phony
-                    if PhonyAnalyzer.is_target_phony(target_name, recipe_lines):
+                    if PhonyAnalyzer.is_target_phony(target_name, recipe_lines, lines):
                         phony_targets.add(target_name)
 
         return phony_targets
@@ -1179,6 +1530,7 @@ class PhonyAnalyzer:
     def _command_creates_target_file(command: str, target_name: str) -> bool:
         """
         Check if command creates a file with the target name.
+        Uses structural patterns, not semantic command knowledge.
 
         Args:
             command: Cleaned command line
@@ -1187,17 +1539,20 @@ class PhonyAnalyzer:
         Returns:
             True if the command creates a file with the target name
         """
-        # Compilation patterns that create target file with -o flag
-        compile_patterns = [
-            rf"\b\w+\s+.*-o\s+{re.escape(target_name)}\b",  # gcc ... -o target
-            rf"\b\w+\s+.*-o\s*{re.escape(target_name)}\b",  # gcc ... -otarget
-            rf"-o\s+{re.escape(target_name)}\b",  # -o target (after variable cleaning)
-            rf"-o\s*{re.escape(target_name)}\b",  # -otarget (after variable cleaning)
+        # Check for -o flag patterns (structural, not command-specific)
+        output_flag_patterns = [
+            rf"-o\s+{re.escape(target_name)}\b",  # -o target
+            rf"-o\s*{re.escape(target_name)}\b",  # -otarget
         ]
 
-        for pattern in compile_patterns:
+        for pattern in output_flag_patterns:
             if re.search(pattern, command, re.IGNORECASE):
                 return True
+
+        # Check for Make automatic variables that represent the target
+        # $@ is the target name in Make
+        if "-o $@" in command or "-o$@" in command:
+            return True
 
         # Direct file creation with redirection to target name (exact match)
         redirect_patterns = [
@@ -1209,19 +1564,48 @@ class PhonyAnalyzer:
             if re.search(pattern, command):
                 return True
 
-        # Touch command creating target
-        if command.startswith("touch") and target_name in command:
+        # Make automatic variable patterns - very common in Makefiles
+        # Pattern: command $< $@ (input to output)
+        if "$< $@" in command:
             return True
 
-        # Check for Make-style implicit compilation (common case)
-        if target_name.endswith(".o"):
-            # Check if compiling a .c file to create this .o file
+        # Pattern: command $^ $@ (all prerequisites to output)
+        if "$^ $@" in command:
+            return True
+
+        # Pattern: command ... $@ (any command ending with target)
+        if command.strip().endswith(" $@"):
+            return True
+
+        # Structural patterns for common file creation (not semantic)
+        # These are based on command structure, not specific command names
+
+        # Pattern: any command that outputs to the target name
+        if f" {target_name}" in command and any(
+            indicator in command for indicator in ["-o", ">", ">"]
+        ):
+            return True
+
+        # Pattern: commands that explicitly mention creating the target
+        if target_name in command and any(
+            word in command.lower() for word in ["create", "generate", "build", "make"]
+        ):
+            return True
+
+        # Structural pattern: compilation to object files
+        # If target is .o file and command has -c flag, it's likely compilation
+        if target_name.endswith(".o") and "-c" in command:
+            # Check if source file with same base name is mentioned
             base_name = target_name[:-2]  # Remove .o
-            if f"{base_name}.c" in command and "-c" in command:
+            # Look for any file with the same base name (structural pattern)
+            if base_name in command and "." in command:
                 return True
-            if f"{base_name}.cpp" in command and "-c" in command:
-                return True
-            if f"{base_name}.cc" in command and "-c" in command:
+
+        # Structural pattern: general file transformation
+        # If target has extension and command mentions a file with same base name
+        if "." in target_name and not target_name.startswith("."):
+            base_name = target_name.rsplit(".", 1)[0]  # Remove extension
+            if base_name in command and base_name != target_name:
                 return True
 
         return False

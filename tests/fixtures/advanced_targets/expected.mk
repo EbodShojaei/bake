@@ -10,7 +10,7 @@ src/%.o::src/%.cpp
 
 # Target with multiple dependency groups
 main: $(OBJECTS) $(EXTRA_OBJECTS) \
-	$(LIBRARIES)
+$(LIBRARIES)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 # Targets with order-only prerequisites

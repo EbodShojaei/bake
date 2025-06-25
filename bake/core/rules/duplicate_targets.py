@@ -53,6 +53,7 @@ class DuplicateTargetRule(FormatterPlugin):
                 target_body = match.group(3).strip()
 
                 # Skip special targets that can be duplicated
+                # These targets should not be tracked at all, as they can legitimately appear multiple times
                 allowed_duplicates = {
                     ".PHONY",
                     ".SUFFIXES",
@@ -70,6 +71,10 @@ class DuplicateTargetRule(FormatterPlugin):
                     ".POSIX",
                 }
                 if target_name in allowed_duplicates:
+                    continue
+
+                # Suppress duplicate errors for template placeholder targets like $(1), $(2)
+                if LineUtils.is_template_placeholder_target(target_name):
                     continue
 
                 # Double-colon rules are allowed to have multiple definitions

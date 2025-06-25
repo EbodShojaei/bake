@@ -182,6 +182,9 @@ class TestAutoPhonyInsertion:
             "",
             "monitor:",
             "\ttail -f /var/log/myapp.log",
+            "",
+            "clean:",
+            "\trm -f *.o *.tmp",
         ]
 
         formatted_lines, errors = formatter.format_lines(lines)
@@ -190,9 +193,12 @@ class TestAutoPhonyInsertion:
         phony_line = next(
             line for line in formatted_lines if line.startswith(".PHONY:")
         )
+        # deploy and monitor are phony (no file creation)
         assert "deploy" in phony_line
-        assert "backup" in phony_line
         assert "monitor" in phony_line
+        assert "clean" in phony_line
+        # backup creates backup.sql file via redirection, so it should NOT be phony
+        assert "backup" not in phony_line
 
     def test_preserve_existing_phony_with_auto_detection(self):
         """Test that existing .PHONY is preserved and enhanced."""
