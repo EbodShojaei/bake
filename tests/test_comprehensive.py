@@ -316,7 +316,9 @@ class TestLineContinuations:
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
-            assert not errors
+            # Expect a duplicate target error for 'foo' at lines 17 and 29
+            expected_error = "29: Error: Duplicate target 'foo' defined at lines 17 and 29. Second definition will override the first."
+            assert expected_error in errors
             assert formatted_lines == expected_lines
 
     def test_multiline_variable_consolidation(self):
@@ -948,6 +950,107 @@ class TestDuplicateTargetsConditional:
             ]
             assert len(duplicate_errors) == 1
             assert "install" in duplicate_errors[0]
+
+
+class TestNumericTargets:
+    """Test that numeric targets in define blocks don't trigger duplicate errors."""
+
+    def test_variable_references_fixture(self):
+        """Test numeric targets fixture."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/variable_references/input.mk")
+        expected_file = Path("tests/fixtures/variable_references/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            # The key test: no duplicate target errors should be generated
+            duplicate_errors = [
+                error for error in errors if "Duplicate target" in error
+            ]
+            assert (
+                len(duplicate_errors) == 0
+            ), f"Unexpected duplicate target errors: {duplicate_errors}"
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_variable_references_no_duplicates_detected(self):
+        """Test that $(1), $(2), etc. in define blocks don't generate duplicate errors."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_lines = [
+            "define template1",
+            "$(1): $(1).c",
+            "\tgcc -o $(1) $(1).c",
+            "endef",
+            "",
+            "define template2",
+            "$(1): $(1).cpp",
+            "\tg++ -o $(1) $(1).cpp",
+            "endef",
+            "",
+            "$(foreach obj,$(OBJS),$(eval $(call template1,$(obj))))",
+            "$(foreach obj,$(CPPOBJS),$(eval $(call template2,$(obj))))",
+        ]
+
+        formatted_lines, errors = formatter.format_lines(input_lines)
+
+        # Should not generate any duplicate target errors for $(1)
+        duplicate_errors = [error for error in errors if "Duplicate target" in error]
+        assert (
+            len(duplicate_errors) == 0
+        ), f"Unexpected duplicate target errors: {duplicate_errors}"
+
+    def test_extended_variable_targets_no_duplicates(self):
+        """Test that extended variable formats (${}, named vars) don't generate duplicate errors."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_lines = [
+            "# Test ${} format with numeric variables",
+            "define curly_template",
+            "${1}: ${1}.c",
+            "\tgcc -o ${1} ${1}.c",
+            "endef",
+            "",
+            "# Test $(VAR) format with named variables",
+            "define named_template",
+            "$(VK_OBJS): $(SRC_FILES)",
+            "\t$(CC) $(CFLAGS) -o $(VK_OBJS) $(SRC_FILES)",
+            "endef",
+            "",
+            "# Test ${VAR} format with named variables",
+            "define curly_named_template",
+            "${VK_OBJS}: ${SRC_FILES}",
+            "\t${CC} ${CFLAGS} -o ${VK_OBJS} ${SRC_FILES}",
+            "endef",
+            "",
+            "# Another template using same variable references",
+            "define another_template",
+            "${1}: ${1}.cpp",
+            "\tg++ -o ${1} ${1}.cpp",
+            "endef",
+            "",
+            "define another_named_template",
+            "$(VK_OBJS): $(OTHER_FILES)",
+            "\t$(CC) $(CFLAGS) -o $(VK_OBJS) $(OTHER_FILES)",
+            "endef",
+        ]
+
+        formatted_lines, errors = formatter.format_lines(input_lines)
+
+        # Should not generate any duplicate target errors for any variable format
+        duplicate_errors = [error for error in errors if "Duplicate target" in error]
+        assert (
+            len(duplicate_errors) == 0
+        ), f"Unexpected duplicate target errors: {duplicate_errors}"
 
 
 class TestMultilineBackslashHandling:
