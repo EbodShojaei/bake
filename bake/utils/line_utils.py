@@ -918,10 +918,11 @@ class MakefileParser:
         """
         Find the best place to insert .PHONY declarations at the top.
 
-        Uses enhanced logic that respects comment blocks:
+        Uses enhanced logic that respects comment blocks and variable continuations:
         - Treats contiguous comments as file header
         - Inserts .PHONY after first blank line following header comments
         - Preserves section comments that come after variables/blank lines
+        - Properly handles multiline variable assignments
 
         Args:
             lines: List of lines from the Makefile
@@ -931,6 +932,7 @@ class MakefileParser:
         """
         in_header_comments = True
         last_comment_index = -1
+        in_variable_block = False
 
         for i, line in enumerate(lines):
             stripped = line.strip()
@@ -939,6 +941,8 @@ class MakefileParser:
                 if in_header_comments and last_comment_index >= 0:
                     # Found blank line after header comments - insert here
                     return i
+                # If we were in a variable block, this marks the end
+                in_variable_block = False
                 # Continue looking (empty line in middle of file)
                 continue
 
@@ -956,10 +960,19 @@ class MakefileParser:
             ):
                 # Variable assignment or include - part of declarations
                 in_header_comments = False
+                in_variable_block = True
+                continue
+
+            elif in_variable_block and stripped.endswith("\\"):
+                # We're in a variable continuation
+                continue
+
+            elif in_variable_block and i > 0 and lines[i - 1].strip().endswith("\\"):
+                # This line is part of a variable continuation
                 continue
 
             else:
-                # First rule/target found
+                # First rule/target found or end of variable block
                 return i
 
         # If we get here, insert at the end

@@ -1126,3 +1126,24 @@ class TestCommentOnlyTargets:
         assert (
             len(duplicate_errors) == 0
         ), f"Unexpected duplicate target errors: {duplicate_errors}"
+
+
+class TestFormatDisable:
+    """Test format disable/enable functionality."""
+
+    def test_format_disable_fixture(self):
+        """Test format disable fixture with multiple scenarios."""
+        config = Config(formatter=FormatterConfig())
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/format_disable/input.mk")
+        expected_file = Path("tests/fixtures/format_disable/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines

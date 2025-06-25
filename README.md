@@ -41,6 +41,7 @@
 - Rich terminal output with progress indicators
 - Syntax validation before and after formatting
 - Smart .PHONY detection with automatic insertion
+- Suppress formatting with special comments
 
 ---
 
@@ -368,18 +369,17 @@ clean:
 **Output** (with auto-insertion enabled):
 
 ```makefile
-.PHONY: clean setup test
-
 setup:
- docker compose up -d
- npm install
+	docker compose up -d
+	npm install
 
 test:
- npm test
+	npm test
 
 clean:
- docker compose down -v
- rm -rf node_modules
+	docker compose down -v
+	rm -rf node_modules
+
 ```
 
 ---
@@ -413,15 +413,18 @@ clean:
 # Clean, consistent formatting
 CC := gcc
 CFLAGS = -Wall -g
-SOURCES = main.c utils.c helper.c
+SOURCES = main.c \
+  utils.c \
+  helper.c
 
-.PHONY: all clean install
-
+.PHONY: clean
 all: $(TARGET)
- $(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^
 
+.PHONY: install
 clean:
- rm -f *.o
+	rm -f *.o
+
 ```
 
 ### Auto-Insertion Example
@@ -450,22 +453,45 @@ clean:
 
 ```makefile
 # Docker development workflow
-.PHONY: build clean setup test
+.PHONY: clean setup test
 
 setup:
- docker compose down -v
- docker compose up -d
- @echo "Services ready!"
+	docker compose down -v
+	docker compose up -d
+	@echo "Services ready!"
 
 build:
- docker compose build --no-cache
+	docker compose build --no-cache
 
 test:
- docker compose exec app npm test
+	docker compose exec app npm test
 
 clean:
- docker compose down -v
- docker system prune -af
+	docker compose down -v
+	docker system prune -af
+
+```
+
+### Disable Formatting Example
+
+Disable formatting within a region using special comments that switch formatting in a delimited range.
+
+Use `# bake-format off` to disable formatting for the lines until the next `#bake-format on`, which re-enables formatting.
+
+```makefile
+# bake-format off
+NO_FORMAT_1= \
+      1 \
+  45678 \
+
+#bake-format on
+
+# bake-format off : optional comment
+NO_FORMAT_2= \
+      1 \
+  45678 \
+
+#bake-format on
 ```
 
 ---
