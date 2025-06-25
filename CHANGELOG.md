@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Improved file vs. phony target identification (Issue #23).
   - Avoids assumptions (e.g., removing hard-coded extensions).
   - Variable references (e.g., `$(foo)`) are not incorrectly marked as .PHONY.
+- Avoids comment interference when parsing (Issue #24).
 
 ## [1.2.2]
 
