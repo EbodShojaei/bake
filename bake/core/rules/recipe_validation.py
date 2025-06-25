@@ -112,8 +112,8 @@ class RecipeValidationRule(FormatterPlugin):
         ):
             return False
 
-        # Look backward to see if this follows a target line
-        return self._follows_target_line(line_index, all_lines)
+        # Use the same logic as the formatter - check if this should be a recipe line
+        return LineUtils.is_recipe_line(line, line_index, all_lines)
 
     def _follows_target_line(self, line_index: int, all_lines: list[str]) -> bool:
         """

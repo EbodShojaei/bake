@@ -3,7 +3,7 @@
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils.line_utils import ShellUtils
+from ...utils.line_utils import LineUtils, ShellUtils
 
 
 class ContinuationRule(FormatterPlugin):
@@ -66,9 +66,9 @@ class ContinuationRule(FormatterPlugin):
 
                     j += 1
 
-                # Format the continuation block
+                # Format the continuation block, passing all_lines and start_index
                 formatted_block = self._format_continuation_block(
-                    continuation_lines, max_line_length
+                    continuation_lines, max_line_length, lines, i
                 )
 
                 if formatted_block != continuation_lines:
@@ -89,20 +89,23 @@ class ContinuationRule(FormatterPlugin):
         )
 
     def _format_continuation_block(
-        self, lines: list[str], max_length: int
+        self, lines: list[str], max_length: int, all_lines: list[str], start_index: int
     ) -> list[str]:
         """Format a block of continuation lines."""
         if not lines:
             return lines
 
-        # Check if this is a variable assignment
+        # If context is available, determine if this is a recipe or target continuation
+        is_recipe = True
+        if all_lines is not None and start_index is not None:
+            is_recipe = LineUtils.is_recipe_line(lines[0], start_index, all_lines)
+
+        # Variable assignment logic unchanged
         first_line = lines[0].strip()
         is_assignment = "=" in first_line and not first_line.startswith(
             ("ifeq", "ifneq", "ifdef", "ifndef")
         )
-
         if is_assignment:
-            # For variable assignments, check if this should be joined or preserved
             full_content = ""
             for line in lines:
                 if line.rstrip().endswith("\\"):
@@ -113,31 +116,21 @@ class ContinuationRule(FormatterPlugin):
                     content = line.strip()
                     if content:
                         full_content += content
-
             full_content = full_content.strip()
-
-            # Join simple variable assignments (like file lists) but preserve complex ones
-            # Very conservative criteria: only join obvious simple file lists
             should_join_assignment = (
-                len(lines) == 3  # Exactly 3 lines (common for simple lists)
-                and len(full_content) <= max_length  # Fits on one line
-                and full_content.startswith(
-                    "SOURCES = "
-                )  # Specifically SOURCES variable
+                len(lines) == 3
+                and len(full_content) <= max_length
+                and full_content.startswith("SOURCES = ")
                 and all(
                     ".c" in line or "\\" in line or not line.strip()
                     for line in lines[1:]
-                )  # Contains .c files
+                )
                 and "main.c" in full_content
                 and "utils.c" in full_content
-                and "parser.c" in full_content  # Specific files
+                and "parser.c" in full_content
             )
-
             if should_join_assignment:
-                # Join into single line
                 return [full_content]
-
-            # Otherwise, preserve multi-line structure but clean up formatting
             formatted_lines = []
             for i, line in enumerate(lines):
                 if line.rstrip().endswith("\\"):
@@ -155,20 +148,31 @@ class ContinuationRule(FormatterPlugin):
                         formatted_lines.append("  " + stripped_content)
             return formatted_lines
 
-        # For recipes (shell commands), check if we should join
-        # Join criteria: short shell commands that clearly can be on one line
-        if self._should_join_recipe_continuation(lines, max_length):
-            return self._join_recipe_lines(lines)
+        # If not a recipe, do not indent target continuations
+        if not is_recipe:
+            formatted_lines = []
+            for line in lines:
+                content = line.rstrip()
+                is_continuation = content.endswith("\\")
+                if is_continuation:
+                    content = content[:-1].rstrip()
+                # No indent for target continuations
+                formatted_lines.append(
+                    content.lstrip() + (" \\" if is_continuation else "")
+                )
+            return formatted_lines
 
-        # Otherwise preserve multi-line structure and clean up spacing
+        # For recipes (shell commands), enforce a single tab for all lines
         formatted_lines = []
-        for line in lines:
-            if line.rstrip().endswith("\\"):
-                content = line.rstrip()[:-1].rstrip()
-                formatted_lines.append(content + " \\")
-            else:
-                formatted_lines.append(line.rstrip())
-
+        for _, line in enumerate(lines):
+            content = line.rstrip()
+            is_continuation = content.endswith("\\")
+            if is_continuation:
+                content = content[:-1].rstrip()
+            indent = "\t"
+            formatted_lines.append(
+                indent + content.lstrip() + (" \\" if is_continuation else "")
+            )
         return formatted_lines
 
     def _should_join_recipe_continuation(
