@@ -123,6 +123,29 @@ class LineUtils:
             True if the line is a special Makefile construct
         """
         stripped = line.strip()
+
+        # Check for Make function calls that should be treated as constructs
+        # Note: $(call ...) is context-dependent and handled in recipe detection
+        if stripped.startswith("$(") and ")" in stripped:
+            # Make function calls that should never be treated as recipe lines
+            function_patterns = (
+                "$(error",
+                "$(warning",
+                "$(info",
+                "$(shell",
+                "$(eval",
+                "$(value",
+                "$(origin",
+                "$(flavor",
+                "$(foreach",
+                "$(if",
+                "$(or",
+                "$(and",
+                "$(file",
+            )
+            if any(stripped.startswith(pattern) for pattern in function_patterns):
+                return True
+
         return stripped.startswith(
             (
                 "include",
@@ -302,7 +325,7 @@ class LineUtils:
         if LineUtils.is_makefile_construct(line):
             return False
 
-            # Don't treat variable assignments inside conditional blocks as recipe lines
+        # Don't treat variable assignments inside conditional blocks as recipe lines
         stripped = line.strip()
         if (
             LineUtils.is_variable_assignment(stripped)
@@ -362,11 +385,15 @@ class LineUtils:
                     "="
                 ) < prev_stripped.find(":"):
                     return False
-                # Exclude conditional blocks and function definitions
+
+                # If this is a conditional block or function definition, skip it and continue looking
+                if prev_stripped.startswith(
+                    ("ifeq", "ifneq", "ifdef", "ifndef", "define", "else", "endif")
+                ):
+                    continue
+
                 # This is a target line (could be target:, target: prereq, or %.o: %.c)
-                return not prev_stripped.startswith(
-                    ("ifeq", "ifneq", "ifdef", "ifndef", "define")
-                )
+                return True
 
             # If we find a variable assignment without colon, this is NOT a recipe
             # BUT only if it's at the top level (not indented)
@@ -378,8 +405,14 @@ class LineUtils:
                 # This is a top-level variable assignment
                 return False
 
-            # If we reach a non-indented, non-target line, default to False
+            # If we reach a non-indented line, check if it's a conditional that we should skip
             if not prev_line.startswith(("\t", " ")):
+                # Skip conditional constructs and continue looking
+                if prev_stripped.startswith(
+                    ("ifeq", "ifneq", "ifdef", "ifndef", "else", "endif")
+                ):
+                    continue
+
                 break
 
         # Default to not a recipe if we can't determine context
@@ -571,7 +604,20 @@ class LineUtils:
             return False
 
         # Exclude conditional blocks
-        return not stripped.startswith(("ifeq", "ifneq", "ifdef", "ifndef"))
+        if stripped.startswith(("ifeq", "ifneq", "ifdef", "ifndef")):
+            return False
+
+        # Check for proper variable assignment patterns
+        # Look for patterns like: VAR = value, VAR := value, VAR += value, VAR ?= value
+        # The variable name should be at the start of the line and followed by an assignment operator
+        import re
+
+        # Pattern: optional export/override, variable name, assignment operator
+        var_assignment_pattern = (
+            r"^(?:export\s+|override\s+)?[A-Za-z_][A-Za-z0-9_]*\s*[+:?]?="
+        )
+
+        return bool(re.match(var_assignment_pattern, stripped))
 
     @staticmethod
     def is_variable_assignment_with_colon(line: str) -> bool:
