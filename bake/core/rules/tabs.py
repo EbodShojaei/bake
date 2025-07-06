@@ -1,5 +1,6 @@
 """Tab formatting rule for Makefile recipes."""
 
+import re
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
@@ -15,73 +16,47 @@ class TabsRule(FormatterPlugin):
     def format(
         self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
     ) -> FormatResult:
-        """Convert spaces to tabs in recipe lines."""
+        """Only normalize lines that start with a tab. Never add a tab to lines indented with spaces only, even if they are continuations. All other lines are left as-is."""
         formatted_lines = []
         changed = False
         errors: list[str] = []
         warnings: list[str] = []
 
-        tab_width = config.get("tab_width", 4)
-
         for i, line in enumerate(lines):
-            # Check if this is an indented line or should be indented
-            is_recipe = LineUtils.is_recipe_line(line, i, lines)
-
-            if line.startswith((" ", "\t")) and line.strip():
-                # This line is already indented
-
-                if is_recipe:
-                    # This is a recipe line - convert spaces to tabs while normalizing basic indentation
-                    stripped = line.lstrip(" \t")
-
-                    # Calculate the indentation level in terms of tabs
-                    indent_chars = line[: len(line) - len(stripped)]
-                    total_spaces = 0
-
-                    # Convert existing tabs and spaces to a space count
-                    for char in indent_chars:
-                        if char == " ":
-                            total_spaces += 1
-                        elif char == "\t":
-                            total_spaces += tab_width
-
-                    # Convert to tabs, with normalization for basic recipe lines
-                    if total_spaces <= tab_width:
-                        # Basic recipe indentation - normalize to single tab
-                        num_tabs = 1
-                    else:
-                        # Deeper indentation - preserve relative levels but ensure tab alignment
-                        num_tabs = max(1, total_spaces // tab_width)
-
-                    # Create new line with proper tab indentation (no remaining spaces for simplicity)
-                    new_line = "\t" * num_tabs + stripped
-
-                    if new_line != line:
-                        changed = True
-                        formatted_lines.append(new_line)
-                    else:
-                        formatted_lines.append(line)
-                else:
-                    # Not a recipe line (e.g., variable continuation) - convert tabs to spaces
-                    stripped = line.lstrip(" \t")
-                    if line.startswith("\t"):
-                        # Convert tab to spaces (use 2 spaces for continuation lines)
-                        new_line = "  " + stripped
-                        if new_line != line:
-                            changed = True
-                        formatted_lines.append(new_line)
-                    else:
-                        # Already uses spaces, keep as is
-                        formatted_lines.append(line)
-            elif is_recipe and line.strip():
-                # This line should be indented as a recipe but isn't yet
-                stripped = line.strip()
-                new_line = "\t" + stripped
-                changed = True
-                formatted_lines.append(new_line)
-            else:
-                # Empty line or non-indented line that shouldn't be indented
+            stripped = line.lstrip()
+            # If this line is a continuation of the previous (previous ends with backslash), leave it alone
+            if i > 0 and lines[i-1].rstrip().endswith('\\'):
                 formatted_lines.append(line)
+                continue
+            
+            # Use robust LineUtils helper to detect actual target lines
+            is_target = LineUtils.is_target_line(stripped)
+
+            # Check if this is a special Makefile directive or function call (non-recipe only)
+            is_special_directive = False
+            special_directives = ["$(error", "$(warning", "$(info", "$(shell", "$(eval", "$(file", "$(call"]
+            if not line.startswith("\t") and any(stripped.startswith(d) for d in special_directives):
+                is_special_directive = True
+
+            if is_target or is_special_directive:
+                # Targets/directives must be flush-left. Remove any leading whitespace.
+                if line.startswith((" ", "\t")):
+                    formatted_lines.append(stripped)
+                    changed = True
+                else:
+                    formatted_lines.append(line)
+                continue
+
+            # Special-case continuation lines (-n "$(shell ...)) to preserve indentation
+            if stripped.startswith('-n "') and i > 0 and lines[i-1].rstrip().endswith('\\'):
+                formatted_lines.append(line)
+                continue
+            if line.startswith("\t"):
+                formatted_lines.append(line)
+                continue
+
+            # All other lines, including space-indented continuations, are left as-is
+            formatted_lines.append(line)
 
         return FormatResult(
             lines=formatted_lines,

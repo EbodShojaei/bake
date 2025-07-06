@@ -7,6 +7,17 @@ from typing import Any, Callable, Optional
 class LineUtils:
     """Common line processing utilities used across formatting rules."""
 
+    # Regex patterns for improved parsing
+    DEFINE_START_PATTERN = re.compile(r"^\s*define\s+([^\s]+)")
+    DEFINE_END_PATTERN = re.compile(r"^\s*endef\s*$")
+    TARGET_PATTERN = re.compile(r"^([^:]+):\s*(.*)$")
+    VARIABLE_ASSIGNMENT_PATTERN = re.compile(r"^(?:export\s+|override\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*([:+?!]?=)\s*(.*)$")
+    CONDITIONAL_START_PATTERN = re.compile(r"^(ifeq|ifneq|ifdef|ifndef)\s*\(")
+    CONDITIONAL_MIDDLE_PATTERN = re.compile(r"^else(\s|$)")
+    CONDITIONAL_END_PATTERN = re.compile(r"^endif\s*$")
+    RECIPE_LIKE_PATTERN = re.compile(r"^\s*[^#\s].*")  # Non-comment, non-empty, potentially recipe
+    SHELL_COMMAND_PATTERN = re.compile(r"^\s*[\w\$@\-\+\(\)\[\]{}./\\]+")  # Common shell command starters
+
     @staticmethod
     def should_skip_line(
         line: str,
@@ -34,7 +45,10 @@ class LineUtils:
         if skip_comments and stripped.startswith("#"):
             return True
 
-        return bool(skip_recipe and line.startswith(("\t", " ")))
+        if skip_recipe and line.startswith(("\t", " ")) and stripped:
+            return True
+
+        return False
 
     @staticmethod
     def should_skip_makefile_line(line: str) -> bool:
@@ -80,13 +94,85 @@ class LineUtils:
         define_stack = []
         for i in range(line_index):
             check_line = all_lines[i].strip()
-            if check_line.startswith("define "):
+            if LineUtils.DEFINE_START_PATTERN.match(check_line):
                 define_stack.append(i)
-            elif check_line == "endef" and define_stack:
+            elif LineUtils.DEFINE_END_PATTERN.match(check_line) and define_stack:
                 define_stack.pop()
 
         # If define_stack is not empty, we're inside a define block
         return bool(define_stack)
+
+    @staticmethod
+    def get_define_block_context(line_index: int, all_lines: list[str]) -> Optional[dict]:
+        """
+        Get information about the define block context if the line is inside one.
+
+        Args:
+            line_index: Index of the current line
+            all_lines: All lines in the file
+
+        Returns:
+            Dictionary with define block info or None if not in a define block
+        """
+        define_stack = []
+        for i in range(line_index):
+            check_line = all_lines[i].strip()
+            match = LineUtils.DEFINE_START_PATTERN.match(check_line)
+            if match:
+                define_stack.append({"start_line": i, "name": match.group(1)})
+            elif LineUtils.DEFINE_END_PATTERN.match(check_line) and define_stack:
+                define_stack.pop()
+
+        if define_stack:
+            return define_stack[-1]  # Return the innermost define block
+        return None
+
+    @staticmethod
+    def is_recipe_line_in_define_template(line: str, line_index: int, all_lines: list[str]) -> bool:
+        """
+        Check if a line inside a define block is actually a recipe line for a target template.
+
+        Args:
+            line: The line to check
+            line_index: Index of the line in the file
+            all_lines: All lines in the file
+
+        Returns:
+            True if this is a recipe line within a target template in a define block
+        """
+        # Must be indented to be a recipe
+        if not line.startswith(("\t", " ")) or not line.strip():
+            return False
+
+        define_context = LineUtils.get_define_block_context(line_index, all_lines)
+        if not define_context:
+            return False
+
+        # Look backward within the define block to find a target line
+        define_start = define_context["start_line"]
+        
+        for i in range(line_index - 1, define_start, -1):
+            check_line = all_lines[i]
+            stripped = check_line.strip()
+
+            # Skip empty lines and comments
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # If we hit another indented line, continue looking for the target
+            if check_line.startswith(("\t", " ")):
+                continue
+
+            # Check if this is a target line
+            if LineUtils.TARGET_PATTERN.match(stripped):
+                return True
+
+            # If we hit a variable assignment or other construct, this is not a recipe
+            if (LineUtils.VARIABLE_ASSIGNMENT_PATTERN.match(stripped) or
+                LineUtils.is_makefile_construct(stripped)):
+                return False
+
+        return False
 
     @staticmethod
     def get_conditional_depth(line_index: int, all_lines: list[str]) -> int:
@@ -103,9 +189,9 @@ class LineUtils:
         conditional_depth = 0
         for i in range(line_index):
             check_line = all_lines[i].strip()
-            if check_line.startswith(("ifeq", "ifneq", "ifdef", "ifndef")):
+            if LineUtils.CONDITIONAL_START_PATTERN.match(check_line):
                 conditional_depth += 1
-            elif check_line == "endif":
+            elif LineUtils.CONDITIONAL_END_PATTERN.match(check_line):
                 conditional_depth = max(0, conditional_depth - 1)
 
         return conditional_depth
@@ -166,17 +252,17 @@ class LineUtils:
     @staticmethod
     def is_conditional_start(line: str) -> bool:
         """Check if line starts a conditional block."""
-        return bool(re.match(r"^(ifeq|ifneq|ifdef|ifndef)\s*\(", line.strip()))
+        return bool(LineUtils.CONDITIONAL_START_PATTERN.match(line.strip()))
 
     @staticmethod
     def is_conditional_middle(line: str) -> bool:
         """Check if line is a conditional middle (else)."""
-        return bool(re.match(r"^else(\s|$)", line.strip()))
+        return bool(LineUtils.CONDITIONAL_MIDDLE_PATTERN.match(line.strip()))
 
     @staticmethod
     def is_conditional_end(line: str) -> bool:
         """Check if line ends a conditional block."""
-        return line.strip() == "endif"
+        return bool(LineUtils.CONDITIONAL_END_PATTERN.match(line.strip()))
 
     @staticmethod
     def detect_define_block_indentation(lines: list[str], define_start: int) -> str:
@@ -325,6 +411,10 @@ class LineUtils:
         if LineUtils.is_makefile_construct(line):
             return False
 
+        # Don't treat target lines as recipe lines even if indented (targets in conditional blocks)
+        if LineUtils.is_target_line(line):
+            return False
+
         # Don't treat variable assignments inside conditional blocks as recipe lines
         stripped = line.strip()
         if (
@@ -335,8 +425,12 @@ class LineUtils:
             # should not be treated as a recipe line
             return False
 
-        # Don't treat content inside define blocks as recipe lines
+        # Check if this is inside a define block
         if LineUtils.is_inside_define_block(line_index, all_lines):
+            # Allow recipe lines within target templates in define blocks
+            if LineUtils.is_recipe_line_in_define_template(line, line_index, all_lines):
+                return True
+            # Otherwise, content in define blocks is not a recipe line
             return False
 
         # Don't treat variable assignment continuation lines as recipe lines
@@ -371,6 +465,10 @@ class LineUtils:
             # If previous line is an indented recipe line, this is also a recipe line
             if prev_line.startswith(("\t", " ")):
                 if LineUtils._is_recipe_line_helper(prev_line, i, all_lines, visited):
+                    return True
+                # If previous line is indented but not a recipe, check if it's a target line
+                # This handles targets in conditional blocks
+                if LineUtils.is_target_line(prev_stripped):
                     return True
                 continue
 
@@ -575,16 +673,48 @@ class LineUtils:
         """
         stripped = line.strip()
 
-        # Must contain a colon and not be a comment
-        if ":" not in stripped or stripped.startswith("#"):
+        # Skip comments and empty lines
+        if not stripped or stripped.startswith("#"):
             return False
 
-        # Exclude conditional blocks and function definitions
-        if stripped.startswith(("ifeq", "ifneq", "ifdef", "ifndef", "define", "endef")):
+        # If line is indented, it's very unlikely to be a target
+        # (targets are typically at the beginning of lines)
+        if line.startswith(("\t", " ")):
             return False
 
-        # Exclude variable assignments that contain colons
-        return not ("=" in stripped and stripped.find("=") < stripped.find(":"))
+        # If line starts with typical shell command indicators, it's likely a recipe line
+        if stripped.startswith(("@", "$", "echo", "mkdir", "rm", "cp", "mv", "cd", "make", "gcc", "g++", "python", "node", "npm", "go", "cargo", "docker", "kubectl")):
+            return False
+
+        # Use regex to match target pattern
+        target_match = LineUtils.TARGET_PATTERN.match(stripped)
+        if not target_match:
+            return False
+
+        # Check if this is actually a variable assignment with colon (e.g., VAR:=value)
+        if LineUtils.VARIABLE_ASSIGNMENT_PATTERN.match(stripped):
+            return False
+
+        # Exclude conditional constructs and define blocks
+        if (LineUtils.CONDITIONAL_START_PATTERN.match(stripped) or
+            LineUtils.DEFINE_START_PATTERN.match(stripped) or
+            LineUtils.DEFINE_END_PATTERN.match(stripped)):
+            return False
+
+        # Additional validation: check if the colon is inside quotes
+        # This helps distinguish between actual targets and shell commands with colons
+        colon_pos = stripped.find(":")
+        if colon_pos != -1:
+            # Check if the colon is inside quotes by counting quote pairs before it
+            before_colon = stripped[:colon_pos]
+            single_quotes = before_colon.count("'")
+            double_quotes = before_colon.count('"')
+            
+            # If there's an odd number of quotes before the colon, it's likely inside quotes
+            if single_quotes % 2 == 1 or double_quotes % 2 == 1:
+                return False
+
+        return True
 
     @staticmethod
     def is_variable_assignment(line: str) -> bool:
@@ -599,25 +729,16 @@ class LineUtils:
         """
         stripped = line.strip()
 
-        # Must contain an equals sign and not be a comment
-        if "=" not in stripped or stripped.startswith("#"):
+        # Skip comments and empty lines
+        if not stripped or stripped.startswith("#"):
             return False
 
         # Exclude conditional blocks
-        if stripped.startswith(("ifeq", "ifneq", "ifdef", "ifndef")):
+        if LineUtils.CONDITIONAL_START_PATTERN.match(stripped):
             return False
 
-        # Check for proper variable assignment patterns
-        # Look for patterns like: VAR = value, VAR := value, VAR += value, VAR ?= value
-        # The variable name should be at the start of the line and followed by an assignment operator
-        import re
-
-        # Pattern: optional export/override, variable name, assignment operator
-        var_assignment_pattern = (
-            r"^(?:export\s+|override\s+)?[A-Za-z_][A-Za-z0-9_]*\s*[+:?]?="
-        )
-
-        return bool(re.match(var_assignment_pattern, stripped))
+        # Use the regex pattern to match variable assignments
+        return bool(LineUtils.VARIABLE_ASSIGNMENT_PATTERN.match(stripped))
 
     @staticmethod
     def is_variable_assignment_with_colon(line: str) -> bool:
@@ -713,9 +834,9 @@ class LineUtils:
 
             stripped = line.strip()
 
-            if stripped.startswith("define "):
+            if LineUtils.DEFINE_START_PATTERN.match(stripped):
                 inside_define = True
-            elif stripped == "endef":
+            elif LineUtils.DEFINE_END_PATTERN.match(stripped):
                 inside_define = False
 
             return inside_define

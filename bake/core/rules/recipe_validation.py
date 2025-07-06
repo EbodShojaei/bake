@@ -79,8 +79,8 @@ class RecipeValidationRule(FormatterPlugin):
         if not stripped or stripped.startswith("#"):
             return False
 
-        # Skip lines that already start with tab (correctly formatted)
-        if line.startswith("\t"):
+        # Skip lines that already start with tab (correctly formatted) or space (continuations/intentional indent)
+        if line.startswith(("\t", " ")):
             return False
 
         # Skip variable assignments and directives

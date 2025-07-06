@@ -92,19 +92,18 @@ class ContinuationRule(FormatterPlugin):
         self, lines: list[str], max_length: int, all_lines: list[str], start_index: int
     ) -> list[str]:
         """Format a block of continuation lines."""
+        import re
         if not lines:
             return lines
 
-        # If context is available, determine if this is a recipe or target continuation
-        is_recipe = True
+        # Determine if this is a recipe continuation based on context
+        is_recipe = False
         if all_lines is not None and start_index is not None:
             is_recipe = LineUtils.is_recipe_line(lines[0], start_index, all_lines)
 
-        # Variable assignment logic unchanged
+        # Detect variable assignment continuations only if truly a var assignment
         first_line = lines[0].strip()
-        is_assignment = "=" in first_line and not first_line.startswith(
-            ("ifeq", "ifneq", "ifdef", "ifndef")
-        )
+        is_assignment = LineUtils.is_variable_assignment(first_line)
         if is_assignment:
             full_content = ""
             for line in lines:
@@ -148,32 +147,8 @@ class ContinuationRule(FormatterPlugin):
                         formatted_lines.append("  " + stripped_content)
             return formatted_lines
 
-        # If not a recipe, do not indent target continuations
-        if not is_recipe:
-            formatted_lines = []
-            for line in lines:
-                content = line.rstrip()
-                is_continuation = content.endswith("\\")
-                if is_continuation:
-                    content = content[:-1].rstrip()
-                # No indent for target continuations
-                formatted_lines.append(
-                    content.lstrip() + (" \\" if is_continuation else "")
-                )
-            return formatted_lines
-
-        # For recipes (shell commands), enforce a single tab for all lines
-        formatted_lines = []
-        for _, line in enumerate(lines):
-            content = line.rstrip()
-            is_continuation = content.endswith("\\")
-            if is_continuation:
-                content = content[:-1].rstrip()
-            indent = "\t"
-            formatted_lines.append(
-                indent + content.lstrip() + (" \\" if is_continuation else "")
-            )
-        return formatted_lines
+        # For all other continuation blocks (recipe or target), preserve original lines
+        return lines
 
     def _should_join_recipe_continuation(
         self, lines: list[str], max_length: int
