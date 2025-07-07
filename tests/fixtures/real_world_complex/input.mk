@@ -1,5 +1,6 @@
 # Real-world complex Makefile example
 # Project: Example C++ Application with multiple components
+.PHONY: all clean debug distclean docs format help install lint profile release test uninstall
 
 # Build configuration
 DEBUG ?= 0
@@ -9,34 +10,34 @@ STATIC ?= 0
 # Toolchain detection
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
-    PLATFORM = linux
-    CC = gcc
-    CXX = g++
+  PLATFORM = linux
+  CC = gcc
+  CXX = g++
 else ifeq ($(UNAME_S),Darwin)
-PLATFORM = macos
-CC = clang
-CXX = clang++
+  PLATFORM = macos
+  CC = clang
+  CXX = clang++
 else
-    $(error Unsupported platform: $(UNAME_S))
+$(error Unsupported platform: $(UNAME_S))
 endif
 
 # Version information
 VERSION = $(shell git describe --tags --dirty --always 2>/dev/null || echo "unknown")
-BUILD_DATE = $(shell date +'%Y-%m-%d %H:%M:%S')
+BUILD_DATE = $(shell date +'%Y-%m-%d %H: %M: %S')
 COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Directory structure
-SRCDIR   = src
-INCDIR   = include
+SRCDIR = src
+INCDIR = include
 BUILDDIR = build
-BINDIR   = bin
-LIBDIR   = lib
-TESTDIR  = tests
+BINDIR = bin
+LIBDIR = lib
+TESTDIR = tests
 
 # Source files discovery
 SOURCES = $(wildcard $(SRCDIR)/*.cpp) \
-          $(wildcard $(SRCDIR)/*/*.cpp) \
-    $(wildcard $(SRCDIR)/*/*/*.cpp)
+  $(wildcard $(SRCDIR)/*/*.cpp) \
+  $(wildcard $(SRCDIR)/*/*/*.cpp)
 HEADERS = $(wildcard $(INCDIR)/*.h) $(wildcard $(INCDIR)/*.hpp)
 TEST_SOURCES = $(wildcard $(TESTDIR)/*.cpp)
 
@@ -54,30 +55,29 @@ CPPFLAGS = -I$(INCDIR) -DVERSION=\"$(VERSION)\" -DBUILD_DATE=\"$(BUILD_DATE)\"
 CXXFLAGS = -std=c++17 -Wall -Wextra -Wpedantic
 
 ifeq ($(DEBUG),1)
-    CXXFLAGS += -g -O0 -DDEBUG
-    BUILDDIR := $(BUILDDIR)/debug
+  CXXFLAGS += -g -O0 -DDEBUG
+  BUILDDIR := $(BUILDDIR)/debug
 else
-CXXFLAGS += -O3 -DNDEBUG
-BUILDDIR := $(BUILDDIR)/release
+  CXXFLAGS += -O3 -DNDEBUG
+  BUILDDIR := $(BUILDDIR)/release
 endif
 
 ifeq ($(PROFILE),1)
-CXXFLAGS += -pg
-LDFLAGS += -pg
+  CXXFLAGS += -pg
+  LDFLAGS += -pg
 endif
 
 ifeq ($(STATIC),1)
-LDFLAGS += -static
+  LDFLAGS += -static
 endif
 
 # Library dependencies
 LIBS = -lpthread -lm
 ifeq ($(PLATFORM),linux)
-LIBS += -ldl -lrt
+  LIBS += -ldl -lrt
 endif
 
 # Phony targets declaration
-.PHONY: all clean test install uninstall debug release profile format lint docs help
 
 # Default target
 all: $(TARGET)
@@ -175,4 +175,4 @@ help:
 # Generate dependency files
 $(BUILDDIR)/%.d: $(SRCDIR)/%.cpp | $(BUILDDIR)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CPPFLAGS) -MM -MT $(BUILDDIR)/$*.o $< > $@ 
+	$(CXX) $(CPPFLAGS) -MM -MT $(BUILDDIR)/$*.o $< > $@

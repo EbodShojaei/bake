@@ -33,6 +33,10 @@ class PhonyRule(FormatterPlugin):
                 check_messages=[],
             )
 
+        # Get format-disabled line information from context
+        disabled_line_indices = context.get("disabled_line_indices", set())
+        block_start_index = context.get("block_start_index", 0)
+
         # Use ConditionalTracker to track which lines are inside conditional blocks
         conditional_tracker = ConditionalTracker()
 
@@ -73,6 +77,12 @@ class PhonyRule(FormatterPlugin):
 
         for i, line in enumerate(lines):
             stripped = line.strip()
+
+            # Check if this line is in a format-disabled region
+            absolute_line_index = block_start_index + i
+            if absolute_line_index in disabled_line_indices:
+                # Skip processing of format-disabled lines
+                continue
 
             # Get the conditional context this line is IN
             conditional_context = conditional_tracker.process_line(line, i)
@@ -149,6 +159,12 @@ class PhonyRule(FormatterPlugin):
         # Auto-detect obvious phony targets (only if we already have .PHONY declarations)
         if has_phony_declarations:
             for _i, line in enumerate(lines):
+                # Check if this line is in a format-disabled region
+                absolute_line_index = block_start_index + _i
+                if absolute_line_index in disabled_line_indices:
+                    # Skip processing of format-disabled lines
+                    continue
+
                 stripped = line.strip()
                 if (
                     ":" in stripped
@@ -173,8 +189,24 @@ class PhonyRule(FormatterPlugin):
                 check_messages=[],
             )
 
-        # Always make changes if we found malformed .PHONY or multiple top-level .PHONY lines
-        if len(top_level_phony_line_indices) <= 1 and not malformed_phony_found:
+        # Get configuration values
+        phony_at_top = config.get("phony_at_top", True)
+
+        # Check if we need to make changes
+        optimal_insertion_point = MakefileParser.find_phony_insertion_point(lines)
+        needs_changes = (
+            len(top_level_phony_line_indices) > 1  # Multiple PHONY lines to consolidate
+            or malformed_phony_found  # Malformed PHONY to fix
+            or (
+                phony_at_top
+                and top_level_phony_line_indices
+                and self._phony_is_in_problematic_location(
+                    top_level_phony_line_indices[0], optimal_insertion_point, lines
+                )
+            )
+        )
+
+        if not needs_changes:
             return FormatResult(
                 lines=lines,
                 changed=False,
@@ -183,19 +215,14 @@ class PhonyRule(FormatterPlugin):
                 check_messages=[],
             )
 
-        # If we have multiple top-level .PHONY lines or malformed ones, clean them up
-        phony_at_top = config.get("phony_at_top", True)
-
         # Create a single, clean .PHONY declaration for top-level targets
         sorted_targets = sorted(top_level_phony_targets)
         new_phony_line = f".PHONY: {' '.join(sorted_targets)}"
 
         # Replace all top-level .PHONY lines with a single clean one
         # Note: we only touch top_level_phony_line_indices, leaving conditional ones alone
-        if phony_at_top and (
-            len(top_level_phony_line_indices) > 1 or malformed_phony_found
-        ):
-            # Group multiple top-level .PHONY declarations at the top
+        if phony_at_top:
+            # Place .PHONY declaration at the top
             formatted_lines = []
             phony_inserted = False
             insert_index = MakefileParser.find_phony_insertion_point(lines)
@@ -242,6 +269,63 @@ class PhonyRule(FormatterPlugin):
             warnings=warnings,
             check_messages=[],
         )
+
+    def _phony_is_in_problematic_location(
+        self, phony_line_index: int, optimal_insertion_point: int, lines: list[str]
+    ) -> bool:
+        """
+        Determine if a PHONY declaration is in a problematic location that warrants moving it.
+
+        Args:
+            phony_line_index: Index of the current PHONY line
+            optimal_insertion_point: Where PHONY should ideally be placed
+            lines: All lines in the file
+
+        Returns:
+            True if the PHONY should be moved to a better location
+        """
+        # If PHONY is more than 15 lines away from optimal, consider it problematic
+        if abs(phony_line_index - optimal_insertion_point) > 15:
+            return True
+
+        # If PHONY comes after actual target definitions, it's problematic
+        in_define_block = False
+        for i in range(optimal_insertion_point, phony_line_index):
+            line = lines[i].strip()
+
+            # Track define/endef blocks
+            if line.startswith("define "):
+                in_define_block = True
+                continue
+            elif line == "endef":
+                in_define_block = False
+                continue
+
+            # Skip lines inside define blocks
+            if in_define_block:
+                continue
+
+            # Skip empty lines and comments
+            if not line or line.startswith("#"):
+                continue
+
+            # Skip variable assignments and special directives
+            if (
+                "=" in line
+                or line.startswith(".")
+                or line.startswith("include")
+                or line.startswith("-include")
+            ):
+                continue
+
+            # Check if this looks like a target definition
+            if ":" in line and not line.endswith(
+                ":"
+            ):  # Has colon but not ending with colon (like .ONESHELL:)
+                # This is likely a target - PHONY should come before targets
+                return True
+
+        return False
 
     def _extract_phony_targets(self, line: str) -> list[str]:
         """Extract target names from a .PHONY line."""

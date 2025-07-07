@@ -1,5 +1,6 @@
 # Real-world complex Makefile example
 # Project: Example C++ Application with multiple components
+.PHONY: all clean debug distclean docs format help install lint profile release test uninstall
 
 # Build configuration
 DEBUG ?= 0
@@ -77,7 +78,6 @@ ifeq ($(PLATFORM),linux)
 endif
 
 # Phony targets declaration
-.PHONY: all clean test install uninstall debug release profile format lint docs help
 
 # Default target
 all: $(TARGET)
@@ -142,7 +142,7 @@ format:
 
 lint:
 	cppcheck --enable=all --std=c++17 --suppress=missingIncludeSystem \
-  $(SRCDIR) $(INCDIR) $(TESTDIR)
+		$(SRCDIR) $(INCDIR) $(TESTDIR)
 
 docs:
 	doxygen Doxyfile

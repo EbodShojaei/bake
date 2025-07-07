@@ -159,10 +159,23 @@ class ConditionalRule(FormatterPlugin):
                 if LineUtils.is_target_line(stripped):
                     # Target lines should not be indented - they define new targets
                     formatted_lines.append(stripped)
+                    if stripped != original_line.rstrip():
+                        changed = True
                     continue
                 # Dot-directives (e.g., .PHONY) should not be indented
-                elif stripped.startswith('.'):
+                elif stripped.startswith("."):
                     formatted_lines.append(stripped)
+                    continue
+                # Include directives - preserve their existing indentation
+                elif stripped.startswith(("include ", "-include ", "vpath ")):
+                    formatted_lines.append(line)
+                    continue
+                # Export/unexport inside conditional blocks should be indented like other content
+                elif stripped.startswith(("export ", "unexport ")):
+                    formatted_line = base_indent * indent_level + stripped
+                    formatted_lines.append(formatted_line)
+                    if formatted_line != original_line.rstrip():
+                        changed = True
                     continue
                 # Recipe lines (start with tab) - keep as is
                 elif use_tabs and line.startswith("\t"):
@@ -177,22 +190,20 @@ class ConditionalRule(FormatterPlugin):
                     formatted_lines.append(line)
                     continue
                 # Comments should be indented
-                elif stripped.startswith('#'):
-                    formatted_line = base_indent * indent_level + stripped
-                    formatted_lines.append(formatted_line)
-                    if formatted_line != original_line.rstrip():
-                        changed = True
-                    continue
-                # Variable assignments should be indented
-                elif LineUtils.is_variable_assignment(stripped):
+                elif stripped.startswith("#") or LineUtils.is_variable_assignment(
+                    stripped
+                ):
                     formatted_line = base_indent * indent_level + stripped
                     formatted_lines.append(formatted_line)
                     if formatted_line != original_line.rstrip():
                         changed = True
                     continue
                 else:
-                    # Any other content inside conditional block should be flush-left
-                    formatted_lines.append(line)
+                    # Any other content inside conditional block should be indented
+                    formatted_line = base_indent * indent_level + stripped
+                    formatted_lines.append(formatted_line)
+                    if formatted_line != original_line.rstrip():
+                        changed = True
                     continue
             else:
                 # Regular line outside conditionals

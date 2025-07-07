@@ -25,7 +25,7 @@ target_with_underscores: dependency
 
 #Targets with variables in names
 $(TARGET).backup: $(TARGET)
-	cp $< $@
+		cp $< $@
 
 #Pattern rules with edge cases
 %.out: %.in
@@ -50,7 +50,7 @@ whitespace-only:
 
 #Long lines that might need wrapping
 very-long-target-name-that-might-cause-formatting-issues: very-long-dependency-name-that-also-might-cause-issues
-	very-long-command-line-that-extends-beyond-normal-width-and-might-need-special-handling-by-the-formatter
+    very-long-command-line-that-extends-beyond-normal-width-and-might-need-special-handling-by-the-formatter
 
 #Conditional assignments with complex conditions
 ifeq ($(origin CC),undefined)
@@ -91,8 +91,8 @@ CC = gcc#inline comment
 #Tab vs spaces in recipes (this tests tab handling)
 tab-test:
 	echo "This line uses tab"
-	echo "This line uses spaces (should be converted to tab)"
-		echo "This line uses mixed tab and spaces"
+		echo "This line uses spaces (should be converted to tab)"
+	    echo "This line uses mixed tab and spaces"
 
 #Function calls with complex arguments
 FILTERED = $(filter-out $(EXCLUDE_PATTERNS),$(ALL_FILES))

@@ -92,14 +92,16 @@ class ContinuationRule(FormatterPlugin):
         self, lines: list[str], max_length: int, all_lines: list[str], start_index: int
     ) -> list[str]:
         """Format a block of continuation lines."""
-        import re
+
         if not lines:
             return lines
 
         # Determine if this is a recipe continuation based on context
-        is_recipe = False
-        if all_lines is not None and start_index is not None:
-            is_recipe = LineUtils.is_recipe_line(lines[0], start_index, all_lines)
+        # Check if this is a recipe line for context (but don't use it for now)
+        # TODO: Use recipe context for better continuation handling
+        # is_recipe = False
+        # if all_lines is not None and start_index is not None:
+        #     is_recipe = LineUtils.is_recipe_line(lines[0], start_index, all_lines)
 
         # Detect variable assignment continuations only if truly a var assignment
         first_line = lines[0].strip()

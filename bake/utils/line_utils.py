@@ -11,12 +11,18 @@ class LineUtils:
     DEFINE_START_PATTERN = re.compile(r"^\s*define\s+([^\s]+)")
     DEFINE_END_PATTERN = re.compile(r"^\s*endef\s*$")
     TARGET_PATTERN = re.compile(r"^([^:]+):\s*(.*)$")
-    VARIABLE_ASSIGNMENT_PATTERN = re.compile(r"^(?:export\s+|override\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*([:+?!]?=)\s*(.*)$")
+    VARIABLE_ASSIGNMENT_PATTERN = re.compile(
+        r"^(?:export\s+|override\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*([:+?!]?=)\s*(.*)$"
+    )
     CONDITIONAL_START_PATTERN = re.compile(r"^(ifeq|ifneq|ifdef|ifndef)\s*\(")
     CONDITIONAL_MIDDLE_PATTERN = re.compile(r"^else(\s|$)")
     CONDITIONAL_END_PATTERN = re.compile(r"^endif\s*$")
-    RECIPE_LIKE_PATTERN = re.compile(r"^\s*[^#\s].*")  # Non-comment, non-empty, potentially recipe
-    SHELL_COMMAND_PATTERN = re.compile(r"^\s*[\w\$@\-\+\(\)\[\]{}./\\]+")  # Common shell command starters
+    RECIPE_LIKE_PATTERN = re.compile(
+        r"^\s*[^#\s].*"
+    )  # Non-comment, non-empty, potentially recipe
+    SHELL_COMMAND_PATTERN = re.compile(
+        r"^\s*[\w\$@\-\+\(\)\[\]{}./\\]+"
+    )  # Common shell command starters
 
     @staticmethod
     def should_skip_line(
@@ -45,10 +51,7 @@ class LineUtils:
         if skip_comments and stripped.startswith("#"):
             return True
 
-        if skip_recipe and line.startswith(("\t", " ")) and stripped:
-            return True
-
-        return False
+        return skip_recipe and line.startswith(("\t", " ")) and bool(stripped)
 
     @staticmethod
     def should_skip_makefile_line(line: str) -> bool:
@@ -103,7 +106,9 @@ class LineUtils:
         return bool(define_stack)
 
     @staticmethod
-    def get_define_block_context(line_index: int, all_lines: list[str]) -> Optional[dict]:
+    def get_define_block_context(
+        line_index: int, all_lines: list[str]
+    ) -> Optional[dict]:
         """
         Get information about the define block context if the line is inside one.
 
@@ -128,7 +133,9 @@ class LineUtils:
         return None
 
     @staticmethod
-    def is_recipe_line_in_define_template(line: str, line_index: int, all_lines: list[str]) -> bool:
+    def is_recipe_line_in_define_template(
+        line: str, line_index: int, all_lines: list[str]
+    ) -> bool:
         """
         Check if a line inside a define block is actually a recipe line for a target template.
 
@@ -150,7 +157,7 @@ class LineUtils:
 
         # Look backward within the define block to find a target line
         define_start = define_context["start_line"]
-        
+
         for i in range(line_index - 1, define_start, -1):
             check_line = all_lines[i]
             stripped = check_line.strip()
@@ -168,8 +175,9 @@ class LineUtils:
                 return True
 
             # If we hit a variable assignment or other construct, this is not a recipe
-            if (LineUtils.VARIABLE_ASSIGNMENT_PATTERN.match(stripped) or
-                LineUtils.is_makefile_construct(stripped)):
+            if LineUtils.VARIABLE_ASSIGNMENT_PATTERN.match(
+                stripped
+            ) or LineUtils.is_makefile_construct(stripped):
                 return False
 
         return False
@@ -428,10 +436,10 @@ class LineUtils:
         # Check if this is inside a define block
         if LineUtils.is_inside_define_block(line_index, all_lines):
             # Allow recipe lines within target templates in define blocks
-            if LineUtils.is_recipe_line_in_define_template(line, line_index, all_lines):
-                return True
-            # Otherwise, content in define blocks is not a recipe line
-            return False
+            # Allow recipe lines within target templates in define blocks
+            return LineUtils.is_recipe_line_in_define_template(
+                line, line_index, all_lines
+            )
 
         # Don't treat variable assignment continuation lines as recipe lines
         if LineUtils._is_variable_assignment_continuation(line_index, all_lines):
@@ -682,23 +690,62 @@ class LineUtils:
         if line.startswith(("\t", " ")):
             return False
 
-        # If line starts with typical shell command indicators, it's likely a recipe line
-        if stripped.startswith(("@", "$", "echo", "mkdir", "rm", "cp", "mv", "cd", "make", "gcc", "g++", "python", "node", "npm", "go", "cargo", "docker", "kubectl")):
-            return False
-
-        # Use regex to match target pattern
+        # Use regex to match target pattern first
         target_match = LineUtils.TARGET_PATTERN.match(stripped)
         if not target_match:
             return False
+
+        # If line starts with typical shell command indicators, it's likely a recipe line
+        # BUT: Allow lines that start with $ if they match the target pattern (e.g., $(VAR)_target:)
+        if stripped.startswith(
+            (
+                "@",
+                "echo",
+                "mkdir",
+                "rm",
+                "cp",
+                "mv",
+                "cd",
+                "make",
+                "gcc",
+                "g++",
+                "python",
+                "node",
+                "npm",
+                "go",
+                "cargo",
+                "docker",
+                "kubectl",
+            )
+        ):
+            return False
+
+        # Special handling for $ - only reject if it doesn't look like a target with variable reference
+        if stripped.startswith("$"):
+            # Allow $(VAR)something: patterns (target definitions with variable references)
+            if not (stripped.startswith("$(") and ")" in stripped and ":" in stripped):
+                return False
+
+            # Exclude makefile function calls like $(error ...), $(warning ...), $(info ...)
+            # These start with $(function_name and have spaces/content after the function name
+            if stripped.startswith("$(") and " " in stripped:
+                paren_close = stripped.find(")")
+                if paren_close == -1:  # No closing paren found
+                    return False
+                func_part = stripped[2:paren_close]  # Extract content between $( and )
+                if " " in func_part:  # If there's a space, it's likely a function call
+                    return False
 
         # Check if this is actually a variable assignment with colon (e.g., VAR:=value)
         if LineUtils.VARIABLE_ASSIGNMENT_PATTERN.match(stripped):
             return False
 
         # Exclude conditional constructs and define blocks
-        if (LineUtils.CONDITIONAL_START_PATTERN.match(stripped) or
-            LineUtils.DEFINE_START_PATTERN.match(stripped) or
-            LineUtils.DEFINE_END_PATTERN.match(stripped)):
+        if (
+            LineUtils.CONDITIONAL_START_PATTERN.match(stripped)
+            or LineUtils.DEFINE_START_PATTERN.match(stripped)
+            or LineUtils.DEFINE_END_PATTERN.match(stripped)
+        ):
             return False
 
         # Additional validation: check if the colon is inside quotes
@@ -709,7 +756,7 @@ class LineUtils:
             before_colon = stripped[:colon_pos]
             single_quotes = before_colon.count("'")
             double_quotes = before_colon.count('"')
-            
+
             # If there's an odd number of quotes before the colon, it's likely inside quotes
             if single_quotes % 2 == 1 or double_quotes % 2 == 1:
                 return False
@@ -1556,17 +1603,29 @@ class PhonyAnalyzer:
         return False
 
     @staticmethod
-    def detect_phony_targets_excluding_conditionals(lines: list[str]) -> set[str]:
-        """Detect phony targets excluding those inside conditional blocks."""
+    def detect_phony_targets_excluding_conditionals(
+        lines: list[str],
+        disabled_line_indices: Optional[set[int]] = None,
+        block_start_index: int = 0,
+    ) -> set[str]:
+        """Detect phony targets excluding those inside conditional blocks and format-disabled regions."""
         target_pattern = re.compile(r"^([^:=]+):(:?)\s*(.*)$")
         conditional_tracker = ConditionalTracker()
         phony_targets = set()
+
+        if disabled_line_indices is None:
+            disabled_line_indices = set()
 
         for i, line in enumerate(lines):
             stripped = line.strip()
 
             # Skip empty lines, comments, and lines that start with tab (recipes)
             if not stripped or stripped.startswith("#") or line.startswith("\t"):
+                continue
+
+            # Skip lines in format-disabled regions
+            absolute_line_index = block_start_index + i
+            if absolute_line_index in disabled_line_indices:
                 continue
 
             # Track conditional context

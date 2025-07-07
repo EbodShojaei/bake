@@ -246,12 +246,12 @@ class TestConditionalBlocks:
             "CFLAGS = -g -m64",
             ".PHONY: debug-linux-x64",
             "debug-linux-x64:",
-            "\t@echo 'Debug build for Linux x64'",
+            '\t@echo "Debug build for Linux x64"',
             "else",
             "CFLAGS = -O2 -m64",
             ".PHONY: release-linux-x64",
             "define BUILD_SCRIPT",
-            "echo 'Building optimized'",
+            'echo "Building optimized"',
             "endef",
             "endif",
             "else",
@@ -271,25 +271,25 @@ class TestConditionalBlocks:
             "  ifeq ($(ARCH),x86_64)",
             "    ifeq ($(DEBUG),yes)",
             "      CFLAGS = -g -m64",
-            "      .PHONY: debug-linux-x64",
+            ".PHONY: debug-linux-x64",
             "debug-linux-x64:",
-            "\t@echo 'Debug build for Linux x64'",
+            '\t@echo "Debug build for Linux x64"',
             "    else",
             "      CFLAGS = -O2 -m64",
-            "      .PHONY: release-linux-x64",
-            "      define BUILD_SCRIPT",
-            "      echo 'Building optimized'",
-            "      endef",
-            "    endif",
-            "  else",
-            "    ifeq ($(DEBUG),yes)",
-            "      CFLAGS = -g -m32",
-            "    else",
-            "      CFLAGS = -O2 -m32",
-            "    endif",
-            "  endif",
+            ".PHONY: release-linux-x64",
+            "define BUILD_SCRIPT",
+            'echo "Building optimized"',
+            "endef",
+            "endif",
             "else",
-            "  $(error Unsupported OS: $(OS))",
+            "ifeq ($(DEBUG),yes)",
+            "  CFLAGS = -g -m32",
+            "else",
+            "  CFLAGS = -O2 -m32",
+            "endif",
+            "endif",
+            "else",
+            "$(error Unsupported OS: $(OS))",
             "endif",
         ]
 
@@ -316,8 +316,8 @@ class TestLineContinuations:
 
             formatted_lines, errors = formatter.format_lines(input_lines)
 
-            # Expect a duplicate target error for 'foo' at lines 17 and 29
-            expected_error = "29: Error: Duplicate target 'foo' defined at lines 17 and 29. Second definition will override the first."
+            # Expect a duplicate target error for 'foo' at lines 15 and 27
+            expected_error = "27: Error: Duplicate target 'foo' defined at lines 15 and 27. Second definition will override the first."
             assert expected_error in errors
             assert formatted_lines == expected_lines
 

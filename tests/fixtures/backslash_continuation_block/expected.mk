@@ -26,3 +26,4 @@ PY_PROGRAMS = \
   nodist/fuzzer/generate_dictionary \
   nodist/install_test \
   nodist/log_changes \
+

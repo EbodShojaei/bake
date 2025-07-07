@@ -47,3 +47,4 @@ CPPCHECK_FLAGS = --enable=all --inline-suppr \
 CLANGTIDY_FLAGS = -config='' \
   -header-filter='.*' \
   -checks='-fuchsia-*,-cppcoreguidelines-avoid-c-arrays,-cppcoreguidelines-init-variables,-cppcoreguidelines-avoid-goto,-modernize-avoid-c-arrays,-readability-magic-numbers,-readability-simplify-boolean-expr,-cppcoreguidelines-macro-usage' \
+
