@@ -499,6 +499,251 @@ def format(
 
 
 @app.command()
+def completions(
+    shell: str = typer.Argument(
+        "bash",
+        help="Shell to generate completions for (bash, zsh, fish).",
+    ),
+) -> None:
+    """Generate shell completion scripts."""
+    if shell.lower() == "bash":
+        # Generate bash completion script
+        completion_script = """# bash completion for bake
+
+_bake_completion() {
+    local cur prev opts cmds
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    
+    # Available commands
+    cmds="init config validate format update completions"
+    
+    # Available options for main command
+    opts="--version --help"
+    
+    # Command-specific options
+    case "${prev}" in
+        init)
+            COMPREPLY=( $(compgen -W "--force --config --help" -- "${cur}") )
+            return 0
+            ;;
+        config)
+            COMPREPLY=( $(compgen -W "--path --config --help" -- "${cur}") )
+            return 0
+            ;;
+        validate)
+            COMPREPLY=( $(compgen -W "--config --verbose -v --help" -- "${cur}") )
+            return 0
+            ;;
+        format)
+            COMPREPLY=( $(compgen -W "--check -c --diff -d --verbose -v --debug --config --backup -b --validate --help" -- "${cur}") )
+            return 0
+            ;;
+        update)
+            COMPREPLY=( $(compgen -W "--force --check --yes -y --help" -- "${cur}") )
+            return 0
+            ;;
+        completions)
+            COMPREPLY=( $(compgen -W "bash zsh fish --help" -- "${cur}") )
+            return 0
+            ;;
+        --config)
+            # Complete with files
+            COMPREPLY=( $(compgen -f -- "${cur}") )
+            return 0
+            ;;
+        --version|--help)
+            return 0
+            ;;
+    esac
+    
+    # If completing the command itself
+    if [[ ${cur} == * ]] ; then
+        COMPREPLY=( $(compgen -W "${cmds} ${opts}" -- "${cur}") )
+        return 0
+    fi
+}
+
+complete -F _bake_completion bake
+complete -F _bake_completion mbake
+"""
+        console.print(completion_script)
+    elif shell.lower() == "zsh":
+        # Generate zsh completion script
+        completion_script = """# zsh completion for bake
+
+_bake() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    _arguments -C \\
+        '1: :->cmds' \\
+        '*:: :->args'
+
+    case $state in
+        cmds)
+            _values 'bake commands' \\
+                'init[Initialize configuration file]' \\
+                'config[Show current configuration]' \\
+                'validate[Validate Makefile syntax]' \\
+                'format[Format Makefiles]' \\
+                'update[Update mbake]' \\
+                'completions[Generate shell completions]'
+            ;;
+        args)
+            case $line[1] in
+                init)
+                    _arguments \\
+                        '--force[Overwrite existing config]' \\
+                        '--config[Path to configuration file]' \\
+                        '--help[Show help]'
+                    ;;
+                config)
+                    _arguments \\
+                        '--path[Show config file path]' \\
+                        '--config[Path to configuration file]' \\
+                        '--help[Show help]'
+                    ;;
+                validate)
+                    _arguments \\
+                        '--config[Path to configuration file]' \\
+                        '--verbose[Enable verbose output]' \\
+                        '-v[Enable verbose output]' \\
+                        '--help[Show help]'
+                    ;;
+                format)
+                    _arguments \\
+                        '--check[Check formatting without changes]' \\
+                        '-c[Check formatting without changes]' \\
+                        '--diff[Show diff of changes]' \\
+                        '-d[Show diff of changes]' \\
+                        '--verbose[Enable verbose output]' \\
+                        '-v[Enable verbose output]' \\
+                        '--debug[Enable debug output]' \\
+                        '--config[Path to configuration file]' \\
+                        '--backup[Create backup files]' \\
+                        '-b[Create backup files]' \\
+                        '--validate[Validate syntax after formatting]' \\
+                        '--help[Show help]'
+                    ;;
+                update)
+                    _arguments \\
+                        '--force[Force update]' \\
+                        '--check[Only check for updates]' \\
+                        '--yes[Skip confirmation]' \\
+                        '-y[Skip confirmation]' \\
+                        '--help[Show help]'
+                    ;;
+                completions)
+                    _values 'shell types' 'bash' 'zsh' 'fish'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+compdef _bake bake mbake
+"""
+        console.print(completion_script)
+    elif shell.lower() == "fish":
+        # Generate fish completion script
+        completion_script = """# fish completion for bake
+
+complete -c bake -n "__fish_use_subcommand" -s h -l help -d "Show this help message and exit"
+complete -c bake -n "__fish_use_subcommand" -l version -d "Show version and exit"
+
+complete -c bake -n "__fish_use_subcommand" -a init -d "Initialize configuration file with defaults"
+complete -c bake -n "__fish_use_subcommand" -a config -d "Show current configuration"
+complete -c bake -n "__fish_use_subcommand" -a validate -d "Validate Makefile syntax"
+complete -c bake -n "__fish_use_subcommand" -a format -d "Format Makefiles"
+complete -c bake -n "__fish_use_subcommand" -a update -d "Update mbake to the latest version from PyPI"
+complete -c bake -n "__fish_use_subcommand" -a completions -d "Generate shell completion scripts"
+
+# init command
+complete -c bake -n "__fish_seen_subcommand_from init" -l force -d "Overwrite existing config"
+complete -c bake -n "__fish_seen_subcommand_from init" -l config -r -d "Path to configuration file"
+complete -c bake -n "__fish_seen_subcommand_from init" -s h -l help -d "Show this help message and exit"
+
+# config command
+complete -c bake -n "__fish_seen_subcommand_from config" -l path -d "Show config file path"
+complete -c bake -n "__fish_seen_subcommand_from config" -l config -r -d "Path to configuration file"
+complete -c bake -n "__fish_seen_subcommand_from config" -s h -l help -d "Show this help message and exit"
+
+# validate command
+complete -c bake -n "__fish_seen_subcommand_from validate" -l config -r -d "Path to configuration file"
+complete -c bake -n "__fish_seen_subcommand_from validate" -l verbose -s v -d "Enable verbose output"
+complete -c bake -n "__fish_seen_subcommand_from validate" -s h -l help -d "Show this help message and exit"
+
+# format command
+complete -c bake -n "__fish_seen_subcommand_from format" -l check -s c -d "Check formatting without changes"
+complete -c bake -n "__fish_seen_subcommand_from format" -l diff -s d -d "Show diff of changes"
+complete -c bake -n "__fish_seen_subcommand_from format" -l verbose -s v -d "Enable verbose output"
+complete -c bake -n "__fish_seen_subcommand_from format" -l debug -d "Enable debug output"
+complete -c bake -n "__fish_seen_subcommand_from format" -l config -r -d "Path to configuration file"
+complete -c bake -n "__fish_seen_subcommand_from format" -l backup -s b -d "Create backup files"
+complete -c bake -n "__fish_seen_subcommand_from format" -l validate -d "Validate syntax after formatting"
+complete -c bake -n "__fish_seen_subcommand_from format" -s h -l help -d "Show this help message and exit"
+
+# update command
+complete -c bake -n "__fish_seen_subcommand_from update" -l force -d "Force update even if up to date"
+complete -c bake -n "__fish_seen_subcommand_from update" -l check -d "Only check, don't update"
+complete -c bake -n "__fish_seen_subcommand_from update" -l yes -s y -d "Skip confirmation prompt"
+complete -c bake -n "__fish_seen_subcommand_from update" -s h -l help -d "Show this help message and exit"
+
+# completions command
+complete -c bake -n "__fish_seen_subcommand_from completions" -a "bash zsh fish" -d "Shell type"
+complete -c bake -n "__fish_seen_subcommand_from completions" -s h -l help -d "Show this help message and exit"
+
+# Also add completions for mbake alias
+complete -c mbake -n "__fish_use_subcommand" -s h -l help -d "Show this help message and exit"
+complete -c mbake -n "__fish_use_subcommand" -l version -d "Show version and exit"
+
+complete -c mbake -n "__fish_use_subcommand" -a init -d "Initialize configuration file with defaults"
+complete -c mbake -n "__fish_use_subcommand" -a config -d "Show current configuration"
+complete -c mbake -n "__fish_use_subcommand" -a validate -d "Validate Makefile syntax"
+complete -c mbake -n "__fish_use_subcommand" -a format -d "Format Makefiles"
+complete -c mbake -n "__fish_use_subcommand" -a update -d "Update mbake to the latest version from PyPI"
+complete -c mbake -n "__fish_use_subcommand" -a completions -d "Generate shell completion scripts"
+
+# Copy all the subcommand completions for mbake
+complete -c mbake -n "__fish_seen_subcommand_from init" -l force -d "Overwrite existing config"
+complete -c mbake -n "__fish_seen_subcommand_from init" -l config -r -d "Path to configuration file"
+complete -c mbake -n "__fish_seen_subcommand_from init" -s h -l help -d "Show this help message and exit"
+
+complete -c mbake -n "__fish_seen_subcommand_from config" -l path -d "Show config file path"
+complete -c mbake -n "__fish_seen_subcommand_from config" -l config -r -d "Path to configuration file"
+complete -c mbake -n "__fish_seen_subcommand_from config" -s h -l help -d "Show this help message and exit"
+
+complete -c mbake -n "__fish_seen_subcommand_from validate" -l config -r -d "Path to configuration file"
+complete -c mbake -n "__fish_seen_subcommand_from validate" -l verbose -s v -d "Enable verbose output"
+complete -c mbake -n "__fish_seen_subcommand_from validate" -s h -l help -d "Show this help message and exit"
+
+complete -c mbake -n "__fish_seen_subcommand_from format" -l check -s c -d "Check formatting without changes"
+complete -c mbake -n "__fish_seen_subcommand_from format" -l diff -s d -d "Show diff of changes"
+complete -c mbake -n "__fish_seen_subcommand_from format" -l verbose -s v -d "Enable verbose output"
+complete -c mbake -n "__fish_seen_subcommand_from format" -l debug -d "Enable debug output"
+complete -c mbake -n "__fish_seen_subcommand_from format" -l config -r -d "Path to configuration file"
+complete -c mbake -n "__fish_seen_subcommand_from format" -l backup -s b -d "Create backup files"
+complete -c mbake -n "__fish_seen_subcommand_from format" -l validate -d "Validate syntax after formatting"
+complete -c mbake -n "__fish_seen_subcommand_from format" -s h -l help -d "Show this help message and exit"
+
+complete -c mbake -n "__fish_seen_subcommand_from update" -l force -d "Force update even if up to date"
+complete -c mbake -n "__fish_seen_subcommand_from update" -l check -d "Only check, don't update"
+complete -c mbake -n "__fish_seen_subcommand_from update" -l yes -s y -d "Skip confirmation prompt"
+complete -c mbake -n "__fish_seen_subcommand_from update" -s h -l help -d "Show this help message and exit"
+
+complete -c mbake -n "__fish_seen_subcommand_from completions" -a "bash zsh fish" -d "Shell type"
+complete -c mbake -n "__fish_seen_subcommand_from completions" -s h -l help -d "Show this help message and exit"
+"""
+        console.print(completion_script)
+    else:
+        console.print(f"[red]Error:[/red] Unsupported shell '{shell}'")
+        console.print("Supported shells: bash, zsh, fish")
+        raise typer.Exit(1)
+
+
+@app.command()
 def update(
     force: bool = typer.Option(
         False, "--force", help="Force update even if up to date."

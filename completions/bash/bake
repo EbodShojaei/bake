@@ -1,0 +1,59 @@
+# bash completion for bake
+
+_bake_completion() {
+    local cur prev opts cmds
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    
+    # Available commands
+    cmds="init config validate format update completions"
+    
+    # Available options for main command
+    opts="--version --help"
+    
+    # Command-specific options
+    case "${prev}" in
+        init)
+            COMPREPLY=( $(compgen -W "--force --config --help" -- "${cur}") )
+            return 0
+            ;;
+        config)
+            COMPREPLY=( $(compgen -W "--path --config --help" -- "${cur}") )
+            return 0
+            ;;
+        validate)
+            COMPREPLY=( $(compgen -W "--config --verbose -v --help" -- "${cur}") )
+            return 0
+            ;;
+        format)
+            COMPREPLY=( $(compgen -W "--check -c --diff -d --verbose -v --debug --config --backup -b --validate --help" -- "${cur}") )
+            return 0
+            ;;
+        update)
+            COMPREPLY=( $(compgen -W "--force --check --yes -y --help" -- "${cur}") )
+            return 0
+            ;;
+        completions)
+            COMPREPLY=( $(compgen -W "bash zsh fish --help" -- "${cur}") )
+            return 0
+            ;;
+        --config)
+            # Complete with files
+            COMPREPLY=( $(compgen -f -- "${cur}") )
+            return 0
+            ;;
+        --version|--help)
+            return 0
+            ;;
+    esac
+    
+    # If completing the command itself
+    if [[ ${cur} == * ]] ; then
+        COMPREPLY=( $(compgen -W "${cmds} ${opts}" -- "${cur}") )
+        return 0
+    fi
+}
+
+complete -F _bake_completion bake
+complete -F _bake_completion mbake 

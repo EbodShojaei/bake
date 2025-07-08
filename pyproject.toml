@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mbake"
-version = "1.2.4.post1"
+version = "1.2.4.post2"
 description = "A Python-based Makefile formatter and linter"
 readme = "README.md"
 license = "MIT"
@@ -59,6 +59,9 @@ mbake = "bake.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["bake"]
+include = [
+    "completions/**/*",
+]
 
 [tool.black]
 line-length = 88
