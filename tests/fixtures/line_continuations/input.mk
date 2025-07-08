@@ -1,15 +1,13 @@
 # Test line continuation formatting
-SOURCES = main.c \  
-    utils.c \	
-    parser.c
+SOURCES = main.c utils.c parser.c
 
 # Line continuation in recipe with trailing spaces
 build:
-	echo "Starting build" && \ 
-	mkdir -p $(BUILD_DIR) && \ 	
-	$(CC) $(CFLAGS) \  
+	echo "Starting build" && \
+	mkdir -p $(BUILD_DIR) && \
+	$(CC) $(CFLAGS) \
 		-o $(TARGET) \
-		$(SOURCES) 
+		$(SOURCES)
 
 # Minimal test for tab/space/continuation issues
 
@@ -27,4 +25,4 @@ endif
 # Comments at left margin should not affect indentation
 # This is a left comment
 foo:
-	@echo "Should still be tabbed" 
+	@echo "Should still be tabbed"

@@ -7,10 +7,10 @@ SHELL := bash
 
 .PHONY: test_split
 test_split:
-	files=$(call ls)
-	$(call first)
+files=$(call ls)
+$(call first)
 
 define first
     FIRST=$(word 1, $(subst _, ,$@))
-    echo "$${FIRST}"
+echo "$${FIRST}"
 endef

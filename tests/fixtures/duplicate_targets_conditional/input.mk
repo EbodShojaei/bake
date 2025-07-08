@@ -7,15 +7,15 @@ endif
 
 # Nested conditionals with same target names
 ifeq ($(OS),Windows)
-ifeq ($(ARCH),x64)
+  ifeq ($(ARCH),x64)
 build: build-windows-x64
-else
+  else
 build: build-windows-x86
-endif
+  endif
 else
-ifeq ($(OS),Linux)
+  ifeq ($(OS),Linux)
 build: build-linux
-endif
+  endif
 endif
 
 # Targets after conditional blocks
@@ -33,4 +33,4 @@ install:
 	echo "First install"
 
 install:
-	echo "Second install" 
+	echo "Second install"

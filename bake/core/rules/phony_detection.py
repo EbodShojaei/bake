@@ -31,6 +31,10 @@ class PhonyDetectionRule(FormatterPlugin):
                 check_messages=check_messages,
             )
 
+        # Get format-disabled line information from context
+        disabled_line_indices = context.get("disabled_line_indices", set())
+        block_start_index = context.get("block_start_index", 0)
+
         # Check if .PHONY already exists
         if not MakefileParser.has_phony_declarations(lines):
             return FormatResult(
@@ -46,7 +50,7 @@ class PhonyDetectionRule(FormatterPlugin):
 
         # Detect phony targets using conditional-aware analysis (same as PhonyInsertionRule)
         detected_targets = PhonyAnalyzer.detect_phony_targets_excluding_conditionals(
-            lines
+            lines, disabled_line_indices, block_start_index
         )
 
         # Only add newly detected targets that weren't already in .PHONY

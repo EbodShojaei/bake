@@ -20,11 +20,11 @@ find $(TEST_SNAP_DIR)/obj_$(1) \( $(TEST_SNAP_IGNORE:%=-name "%" -o) \
 endef
 
 ifeq ($(FOO),yes)
-  define FOO_template
-  something
-  endef
+define FOO_template
+something
+endef
 else
-  define FOO_template
-  something_else
-  endef
+define FOO_template
+something_else
+endef
 endif

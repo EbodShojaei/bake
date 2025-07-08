@@ -14,15 +14,15 @@ all: build test#Build and test everything
 #Comments mixed with code
 build: #Build the project
 	$(CC) $(CFLAGS) -o main main.c#Compile main
-	#This comment has no space
-	# This comment has weird indentation
+    #This comment has no space
+      # This comment has weird indentation
 
 #Commented out code
 #OLD_CFLAGS=-O2 -g
 #OLD_TARGET=old_main
 
 test: #Test target
-	./main --test#Run tests
+      ./main --test#Run tests
 
 #Multi-line comment block
 ################################
@@ -33,11 +33,11 @@ test: #Test target
 
 clean:
 	rm -f *.o main#Clean up files
-	#Another comment
-		#Indented comment
+      #Another comment
+         #Indented comment
 
 #Comment with trailing spaces
 install: #Install target
-	cp main /usr/local/bin/#Copy binary
+		cp main /usr/local/bin/#Copy binary
 
 #EOF comment

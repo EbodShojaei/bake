@@ -77,6 +77,10 @@ class PatternUtils:
         Returns:
             Formatted line or None if no changes needed
         """
+        # Skip recipe lines (they start with tab or space)
+        if line.startswith(("\t", " ")):
+            return None
+
         # Handle target colons (but not in conditionals, functions, assignments, or pattern rules)
         if (
             ":" in line

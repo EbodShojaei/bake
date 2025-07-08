@@ -8,7 +8,7 @@ from typing import Any, Union
 
 from ..config import Config
 from ..plugins.base import FormatterPlugin
-from ..utils import FormatDisableHandler
+from ..utils import FormatDisableHandler, FormatRegion
 from .rules import (
     AssignmentSpacingRule,
     ConditionalRule,
@@ -110,11 +110,35 @@ class MakefileFormatter:
 
             # Check if content changed
             formatted_content = "\n".join(formatted_lines)
-            if (
+
+            # Find disabled regions to check if content is mostly disabled
+            disabled_regions = self.format_disable_handler.find_disabled_regions(lines)
+
+            # Check if the file is mostly or entirely in disabled regions
+            total_lines = len(lines)
+            disabled_line_count = 0
+            for region in disabled_regions:
+                disabled_line_count += region.end_line - region.start_line
+
+            # If most content is disabled, preserve original newline behavior
+            mostly_disabled = disabled_line_count >= (
+                total_lines - 1
+            )  # -1 to account for the format disable comment itself
+
+            # Only add final newline if ensure_final_newline is true AND content isn't mostly disabled
+            should_add_newline = (
                 self.config.formatter.ensure_final_newline
                 and not formatted_content.endswith("\n")
-            ):
+                and not mostly_disabled
+            )
+
+            if should_add_newline and formatted_lines:
                 formatted_content += "\n"
+            elif mostly_disabled:
+                # For mostly disabled files, preserve original newline behavior exactly
+                original_ends_with_newline = original_content.endswith("\n")
+                if original_ends_with_newline and not formatted_content.endswith("\n"):
+                    formatted_content += "\n"
 
             changed = formatted_content != original_content
 
@@ -154,15 +178,12 @@ class MakefileFormatter:
             original_lines
         )
 
-        # Convert config to dict for rules
         config_dict = self.config.to_dict()["formatter"]
-        # Add global config for rules that need it
         config_dict["_global"] = {
             "gnu_error_format": self.config.gnu_error_format,
             "wrap_error_messages": self.config.wrap_error_messages,
         }
 
-        # Prepare context for rules that need original file information
         context: dict[str, Any] = {}
         if original_content is not None:
             context["original_content_ends_with_newline"] = original_content.endswith(
@@ -170,51 +191,199 @@ class MakefileFormatter:
             )
             context["original_line_count"] = len(lines)
 
-        formatted_lines = original_lines.copy()
+        # --- PATCH START ---
+        # Split lines into blocks: outside and inside define/endef
+        formatted_lines = []
         all_errors = []
+        in_define = False
+        block: list[str] = []
+        current_line_index = 0
+        block_start_index = 0
 
-        for rule in self.rules:
-            result = rule.format(
-                formatted_lines, config_dict, check_mode=check_only, **context
+        for line in original_lines:
+            if line.strip().startswith("define ") or line.strip() == "define":
+                in_define = True
+                if block:
+                    # Format previous block
+                    block_lines, block_errors = self._format_block(
+                        block,
+                        check_only,
+                        config_dict,
+                        context,
+                        disabled_regions,
+                        original_lines,
+                        block_start_index,
+                    )
+                    formatted_lines.extend(block_lines)
+                    all_errors.extend(block_errors)
+                    block = []
+                formatted_lines.append(line)
+                current_line_index += 1
+                block_start_index = current_line_index
+                continue
+            if line.strip() == "endef":
+                in_define = False
+                formatted_lines.append(line)
+                current_line_index += 1
+                block_start_index = current_line_index
+                continue
+            if in_define:
+                # Do not format lines inside define/endef
+                formatted_lines.append(line)
+            else:
+                block.append(line)
+            current_line_index += 1
+
+        if block:
+            block_lines, block_errors = self._format_block(
+                block,
+                check_only,
+                config_dict,
+                context,
+                disabled_regions,
+                original_lines,
+                block_start_index,
             )
-
-            if result.changed:
-                formatted_lines = result.lines
-
-            # Always add any explicit errors from the rule (like duplicate targets)
-            # Apply centralized formatting to these errors too
-            for error in result.errors:
-                # Check if error already has line number format (like "5: Error: ...")
-                if ":" in error and error.split(":")[0].isdigit():
-                    # Error already has line number, just apply formatting consistency
-                    line_num = int(error.split(":")[0])
-                    message = ":".join(
-                        error.split(":")[2:]
-                    ).strip()  # Remove "line: Error: " prefix
-                    formatted_error = self._format_error(message, line_num, config_dict)
-                    all_errors.append(formatted_error)
-                else:
-                    # Error without line number
-                    all_errors.append(error)
-
-            # In check mode, add check messages from rules as errors for CLI reporting
-            if check_only:
-                all_errors.extend(result.check_messages)
-
-        # Apply final cleanup
-        formatted_lines = self._final_cleanup(formatted_lines, config_dict)
-
-        # Restore original content for disabled regions
-        if disabled_regions:
-            formatted_lines = self.format_disable_handler.apply_disabled_regions(
-                original_lines, formatted_lines, disabled_regions
-            )
-
-        # Sort all errors by line number for consistent reporting
-        if check_only:
-            all_errors = self._sort_errors_by_line_number(all_errors)
+            formatted_lines.extend(block_lines)
+            all_errors.extend(block_errors)
+        # --- PATCH END ---
 
         return formatted_lines, all_errors
+
+    def _format_block(
+        self,
+        block_lines: list[str],
+        check_only: bool,
+        config_dict: dict,
+        context: dict,
+        disabled_regions: list[FormatRegion],
+        original_lines: list[str],
+        block_start_index: int,
+    ) -> tuple[list[str], list[str]]:
+        lines = block_lines.copy()
+        errors: list[str] = []
+
+        # Create a mapping of lines in disabled regions
+        disabled_line_indices = set()
+        for region in disabled_regions:
+            for i in range(region.start_line, region.end_line):
+                disabled_line_indices.add(i)
+
+        # Check if this entire block is within a disabled region
+        block_disabled_lines = []
+        for i, _line in enumerate(block_lines):
+            line_index = block_start_index + i
+            if line_index in disabled_line_indices:
+                block_disabled_lines.append(i)
+
+        # If entire block is disabled, skip formatting
+        if len(block_disabled_lines) == len(block_lines):
+            return block_lines, errors
+
+        # Apply formatting rules in priority order
+        for rule in self.rules:
+            if self.config.debug:
+                logger.debug(f"Applying rule: {rule.name}")
+
+            try:
+                # Handle format disable regions - only format lines not in disabled regions
+                if disabled_line_indices:
+                    lines_to_format: list[str] = []
+                    line_mapping = {}  # Track original line indices
+
+                    # Group consecutive non-disabled lines into segments
+                    segments = []
+                    current_segment: list[str] = []
+                    for line_index, line in enumerate(lines):
+                        global_line_index = block_start_index + line_index
+                        if global_line_index not in disabled_line_indices:
+                            # This line is not disabled
+                            if not current_segment:
+                                pass  # Start new segment
+                            current_segment.append(line)
+                            line_mapping[len(lines_to_format)] = line_index
+                            lines_to_format.append(line)
+                        else:
+                            # This line is disabled
+                            if current_segment:
+                                segments.append(
+                                    (
+                                        current_segment.copy(),
+                                        len(lines_to_format) - len(current_segment),
+                                    )
+                                )
+                                current_segment = []
+
+                    # Don't forget the last segment
+                    if current_segment:
+                        segments.append(
+                            (
+                                current_segment.copy(),
+                                len(lines_to_format) - len(current_segment),
+                            )
+                        )
+
+                    if lines_to_format:
+                        # Format only the non-disabled lines
+                        result = rule.format(
+                            lines_to_format, config_dict, check_only, **context
+                        )
+
+                        # Process errors with proper line number formatting
+                        for error in result.errors:
+                            if ":" in error and error.split(":")[0].isdigit():
+                                line_num = int(error.split(":")[0])
+                                message = ":".join(error.split(":")[2:]).strip()
+                                formatted_error = self._format_error(
+                                    message, line_num, config_dict
+                                )
+                                errors.append(formatted_error)
+                            else:
+                                errors.append(error)
+
+                        # Also collect check_messages when in check mode
+                        if check_only:
+                            for check_message in result.check_messages:
+                                errors.append(check_message)
+
+                        # Merge formatted lines back into original positions
+                        formatted_lines_to_format = result.lines
+                        new_lines = lines.copy()
+                        for formatted_index, original_index in line_mapping.items():
+                            if formatted_index < len(formatted_lines_to_format):
+                                new_lines[original_index] = formatted_lines_to_format[
+                                    formatted_index
+                                ]
+
+                        lines = new_lines
+                else:
+                    # No disabled regions, format normally
+                    result = rule.format(lines, config_dict, check_only, **context)
+                    lines = result.lines
+
+                    # Process errors with proper line number formatting
+                    for error in result.errors:
+                        if ":" in error and error.split(":")[0].isdigit():
+                            line_num = int(error.split(":")[0])
+                            message = ":".join(error.split(":")[2:]).strip()
+                            formatted_error = self._format_error(
+                                message, line_num, config_dict
+                            )
+                            errors.append(formatted_error)
+                        else:
+                            errors.append(error)
+
+                    # Also collect check_messages when in check mode
+                    if check_only:
+                        for check_message in result.check_messages:
+                            errors.append(check_message)
+
+            except Exception as e:
+                error_msg = f"Error in rule {rule.name}: {e}"
+                logger.error(error_msg)
+                errors.append(error_msg)
+
+        return lines, errors
 
     def _format_error(self, message: str, line_num: int, config: dict) -> str:
         """Format an error message with consistent GNU or traditional format."""
@@ -311,11 +480,25 @@ class MakefileFormatter:
 
         # Join lines back to content
         formatted_content = "\n".join(formatted_lines)
-        if (
+
+        # Only add final newline if ensure_final_newline is true AND
+        # the final line is not a format disable comment (which should be preserved exactly)
+        should_add_newline = (
             self.config.formatter.ensure_final_newline
             and not formatted_content.endswith("\n")
-        ):
-            formatted_content += "\n"
+        )
+
+        if should_add_newline and formatted_lines:
+            # Check if the final line is a format disable comment
+            final_line = formatted_lines[-1]
+            if self.format_disable_handler.is_format_disabled_line(final_line):
+                # For format disable comments, preserve original file's newline behavior
+                original_ends_with_newline = content.endswith("\n")
+                if original_ends_with_newline:
+                    formatted_content += "\n"
+            else:
+                # Regular line, apply ensure_final_newline setting
+                formatted_content += "\n"
 
         changed = formatted_content != content
 

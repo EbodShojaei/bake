@@ -27,8 +27,8 @@ silent-build:
 # Commands with complex error handling
 deploy:
 	if ! [ -f main ]; then \
-	echo "Binary not found" >&2; \
-	exit 1; \
+		echo "Binary not found" >&2; \
+		exit 1; \
 	fi
 	@cp main /usr/local/bin/ || { echo "Install failed"; exit 1; }
 

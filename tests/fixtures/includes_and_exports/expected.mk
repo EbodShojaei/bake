@@ -5,7 +5,7 @@ include build/common.mk
 
 # Conditional includes with poor spacing
 ifeq ($(PLATFORM),linux)
-  include   platform/linux.mk
+include   platform/linux.mk
 endif
 
 ifneq ($(TOOLCHAIN),)
@@ -15,7 +15,7 @@ endif
 # Optional includes
 -include  local.mk
 -include	.env
-  -include $(wildcard *.local)
+	-include $(wildcard *.local)
 
 # Export statements with inconsistent formatting
 export CC CXX
