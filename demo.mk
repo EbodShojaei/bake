@@ -1,4 +1,5 @@
 # Quick test
+# make -f demo.mk all
 CC = gcc
-all: main
+all:
 	echo test
