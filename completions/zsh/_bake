@@ -1,0 +1,73 @@
+#compdef bake mbake
+
+_bake() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    _arguments -C \
+        '1: :->cmds' \
+        '*:: :->args'
+
+    case $state in
+        cmds)
+            _values 'bake commands' \
+                'init[Initialize configuration file]' \
+                'config[Show current configuration]' \
+                'validate[Validate Makefile syntax]' \
+                'format[Format Makefiles]' \
+                'update[Update mbake]' \
+                'completions[Generate shell completions]'
+            ;;
+        args)
+            case $line[1] in
+                init)
+                    _arguments \
+                        '--force[Overwrite existing config]' \
+                        '--config[Path to configuration file]' \
+                        '--help[Show help]'
+                    ;;
+                config)
+                    _arguments \
+                        '--path[Show config file path]' \
+                        '--config[Path to configuration file]' \
+                        '--help[Show help]'
+                    ;;
+                validate)
+                    _arguments \
+                        '--config[Path to configuration file]' \
+                        '--verbose[Enable verbose output]' \
+                        '-v[Enable verbose output]' \
+                        '--help[Show help]'
+                    ;;
+                format)
+                    _arguments \
+                        '--check[Check formatting without changes]' \
+                        '-c[Check formatting without changes]' \
+                        '--diff[Show diff of changes]' \
+                        '-d[Show diff of changes]' \
+                        '--verbose[Enable verbose output]' \
+                        '-v[Enable verbose output]' \
+                        '--debug[Enable debug output]' \
+                        '--config[Path to configuration file]' \
+                        '--backup[Create backup files]' \
+                        '-b[Create backup files]' \
+                        '--validate[Validate syntax after formatting]' \
+                        '--help[Show help]'
+                    ;;
+                update)
+                    _arguments \
+                        '--force[Force update]' \
+                        '--check[Only check for updates]' \
+                        '--yes[Skip confirmation]' \
+                        '-y[Skip confirmation]' \
+                        '--help[Show help]'
+                    ;;
+                completions)
+                    _values 'shell types' 'bash' 'zsh' 'fish'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_bake "$@" 
