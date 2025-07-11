@@ -1,6 +1,6 @@
-#compdef bake mbake
+#compdef mbake
 
-_bake() {
+_mbake() {
     local curcontext="$curcontext" state line
     typeset -A opt_args
 
@@ -10,7 +10,7 @@ _bake() {
 
     case $state in
         cmds)
-            _values 'bake commands' \
+            _values 'mbake commands' \
                 'init[Initialize configuration file]' \
                 'config[Show current configuration]' \
                 'validate[Validate Makefile syntax]' \
@@ -70,4 +70,4 @@ _bake() {
     esac
 }
 
-_bake "$@" 
+_mbake "$@" 

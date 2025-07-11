@@ -27,40 +27,60 @@ def get_command_name() -> str:
 
 def get_bash_completion(command_name: str) -> str:
     """Get bash completion script for the specified command name."""
-    return f"""
+    return f"""# bash completion for {command_name}
+
 _{command_name}_completion() {{
-    local cur prev opts
+    local cur prev opts cmds
     COMPREPLY=()
     cur="${{COMP_WORDS[COMP_CWORD]}}"
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
-    opts="format validate init config update completions --version --help"
-
-    # Handle subcommand options
+    
+    # Available commands
+    cmds="init config validate format update completions"
+    
+    # Available options for main command
+    opts="--version --help"
+    
+    # Command-specific options
     case "${{prev}}" in
-        format)
-            local format_opts="--check --diff --backup --validate --verbose --config"
-            COMPREPLY=( $(compgen -W "${{format_opts}}" -- ${{cur}}) )
+        init)
+            COMPREPLY=( $(compgen -W "--force --config --help" -- "${{cur}}") )
+            return 0
+            ;;
+        config)
+            COMPREPLY=( $(compgen -W "--path --config --help" -- "${{cur}}") )
             return 0
             ;;
         validate)
-            local validate_opts="--verbose --config"
-            COMPREPLY=( $(compgen -W "${{validate_opts}}" -- ${{cur}}) )
+            COMPREPLY=( $(compgen -W "--config --verbose -v --help" -- "${{cur}}") )
+            return 0
+            ;;
+        format)
+            COMPREPLY=( $(compgen -W "--check -c --diff -d --verbose -v --debug --config --backup -b --validate --help" -- "${{cur}}") )
+            return 0
+            ;;
+        update)
+            COMPREPLY=( $(compgen -W "--force --check --yes -y --help" -- "${{cur}}") )
             return 0
             ;;
         completions)
-            local shell_opts="bash zsh fish"
-            COMPREPLY=( $(compgen -W "${{shell_opts}}" -- ${{cur}}) )
+            COMPREPLY=( $(compgen -W "bash zsh fish --help" -- "${{cur}}") )
             return 0
             ;;
-        *)
+        --config)
+            # Complete with files
+            COMPREPLY=( $(compgen -f -- "${{cur}}") )
+            return 0
+            ;;
+        --version|--help)
+            return 0
             ;;
     esac
-
-    # Complete main commands if no specific completion
-    if [[ ${{cur}} == -* ]]; then
-        COMPREPLY=( $(compgen -W "--version --help" -- ${{cur}}) )
-    else
-        COMPREPLY=( $(compgen -W "${{opts}}" -- ${{cur}}) )
+    
+    # If completing the command itself
+    if [[ ${{cur}} == * ]] ; then
+        COMPREPLY=( $(compgen -W "${{cmds}} ${{opts}}" -- "${{cur}}") )
+        return 0
     fi
 }}
 
