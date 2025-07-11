@@ -1,6 +1,6 @@
-# bash completion for bake
+# bash completion for mbake
 
-_bake_completion() {
+_mbake_completion() {
     local cur prev opts cmds
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -55,5 +55,4 @@ _bake_completion() {
     fi
 }
 
-complete -F _bake_completion bake
-complete -F _bake_completion mbake 
+complete -F _mbake_completion mbake 
