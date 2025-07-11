@@ -3,8 +3,8 @@
 import re
 from typing import Any
 
-from bake.plugins.base import FormatResult, FormatterPlugin
-from bake.utils.line_utils import ConditionalTracker, LineUtils
+from mbake.plugins.base import FormatResult, FormatterPlugin
+from mbake.utils.line_utils import ConditionalTracker, LineUtils
 
 
 class DuplicateTargetRule(FormatterPlugin):

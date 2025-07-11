@@ -11,6 +11,18 @@ else:
     import tomli as tomllib
 
 
+def get_active_command_name() -> str:
+    """Get the active command name for completions and messages.
+
+    Always returns 'mbake' since that's the actual command file.
+    User aliases will work with mbake completions automatically.
+
+    Returns:
+        The command name to use for completions: 'mbake'
+    """
+    return "mbake"
+
+
 @dataclass
 class FormatterConfig:
     """Configuration for Makefile formatting rules."""

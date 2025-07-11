@@ -125,9 +125,9 @@ def get_installed_location() -> Optional[Path]:
         Path to the package installation, or None if not found
     """
     try:
-        import bake
+        import mbake
 
-        package_path = Path(bake.__file__).parent
+        package_path = Path(mbake.__file__).parent
         return package_path
     except (ImportError, AttributeError):
         return None

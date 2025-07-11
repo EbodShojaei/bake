@@ -1,8 +1,8 @@
 """Tests for the Makefile formatter."""
 
-from bake.config import Config, FormatterConfig
-from bake.core.formatter import MakefileFormatter
-from bake.core.rules import (
+from mbake.config import Config, FormatterConfig
+from mbake.core.formatter import MakefileFormatter
+from mbake.core.rules import (
     AssignmentSpacingRule,
     ContinuationRule,
     PhonyRule,
@@ -114,7 +114,7 @@ class TestFinalNewlineRule:
     """Test the final newline rule."""
 
     def test_detects_missing_final_newline(self):
-        from bake.core.rules.final_newline import FinalNewlineRule
+        from mbake.core.rules.final_newline import FinalNewlineRule
 
         rule = FinalNewlineRule()
         config = {"ensure_final_newline": True, "_global": {"gnu_error_format": True}}
@@ -129,7 +129,7 @@ class TestFinalNewlineRule:
         assert "3: Error: Missing final newline" in result.check_messages[0]
 
     def test_skips_when_disabled(self):
-        from bake.core.rules.final_newline import FinalNewlineRule
+        from mbake.core.rules.final_newline import FinalNewlineRule
 
         rule = FinalNewlineRule()
         config = {"ensure_final_newline": False}
@@ -141,7 +141,7 @@ class TestFinalNewlineRule:
         assert len(result.check_messages) == 0
 
     def test_skips_when_original_has_newline(self):
-        from bake.core.rules.final_newline import FinalNewlineRule
+        from mbake.core.rules.final_newline import FinalNewlineRule
 
         rule = FinalNewlineRule()
         config = {"ensure_final_newline": True, "_global": {"gnu_error_format": True}}

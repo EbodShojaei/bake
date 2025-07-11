@@ -28,6 +28,7 @@
 
 - [Features](#features)
 - [Installation](#installation)
+- [Migration from v1.x](#migration-from-v1x)
 - [Usage](#usage)
 - [Configuration](#configuration)
 - [Examples](#examples-1)
@@ -100,6 +101,67 @@ cd mbake
 pip install -e ".[dev]"
 ```
 
+### Package Manager Installation
+
+For system package managers and AUR packagers, mbake supports configurable command names to avoid namespace conflicts.
+
+**For AUR packagers**: The default behavior already avoids conflicts with `ruby-bake` - no additional configuration needed!
+
+---
+
+## Migration to v1.3.x
+
+**⚠️ Breaking Change**: Version 1.3.0 introduces a module rename from `bake` to `mbake` for consistency.
+
+### What Changed
+
+- **Python module**: `bake` → `mbake` (for consistency with command name)
+- **Command name**: Still `mbake` (unchanged)
+- **Configuration**: Still `~/.bake.toml` (unchanged)
+
+### Migration Steps
+
+1. **Update the package**:
+
+   ```bash
+   pip install --upgrade mbake
+   ```
+
+2. **If you have shell aliases**, they will continue working:
+
+   ```bash
+   # Your existing alias will still work
+   alias bake='mbake'
+   bake --version  # ✅ Still works
+   ```
+
+3. **If you have Python scripts** that import from `bake`, update them:
+
+   ```python
+   # Old (v1.x)
+   from bake.config import Config
+   
+   # New (v2.0+)
+   from mbake.config import Config
+   ```
+
+4. **If you have CI/CD scripts**, update import statements:
+
+   ```bash
+   # Old (v1.x)
+   python -c "from bake.cli import main; main()"
+   
+   # New (v2.0+)
+   python -c "from mbake.cli import main; main()"
+   ```
+
+### Backward Compatibility
+
+- **CLI commands**: All commands work exactly the same
+- **Configuration files**: No changes needed
+- **Shell aliases**: Continue working without modification
+- **Python imports**: Require updating to use `mbake` module
+
 ---
 
 ## Usage
@@ -110,16 +172,19 @@ mbake uses a subcommand-based CLI. All commands support both `bake` and `mbake` 
 
 ```bash
 # Check version
-bake --version
+mbake --version
+
+# Set up your preferred command name (optional)
+mbake setup-command mbake  # or 'bake' (creates alias) or 'both' (creates alias)
 
 # Initialize configuration (optional)
-bake init
+mbake init
 
 # Format a Makefile
-bake format Makefile
+mbake format Makefile
 
 # Validate Makefile syntax
-bake validate Makefile
+mbake validate Makefile
 ```
 
 ### Configuration Management
@@ -370,15 +435,15 @@ clean:
 
 ```makefile
 setup:
-	docker compose up -d
-	npm install
+ docker compose up -d
+ npm install
 
 test:
-	npm test
+ npm test
 
 clean:
-	docker compose down -v
-	rm -rf node_modules
+ docker compose down -v
+ rm -rf node_modules
 
 ```
 
@@ -419,11 +484,11 @@ SOURCES = main.c \
 
 .PHONY: clean
 all: $(TARGET)
-	$(CC) $(CFLAGS) -o $@ $^
+ $(CC) $(CFLAGS) -o $@ $^
 
 .PHONY: install
 clean:
-	rm -f *.o
+ rm -f *.o
 
 ```
 
@@ -456,19 +521,19 @@ clean:
 .PHONY: clean setup test
 
 setup:
-	docker compose down -v
-	docker compose up -d
-	@echo "Services ready!"
+ docker compose down -v
+ docker compose up -d
+ @echo "Services ready!"
 
 build:
-	docker compose build --no-cache
+ docker compose build --no-cache
 
 test:
-	docker compose exec app npm test
+ docker compose exec app npm test
 
 clean:
-	docker compose down -v
-	docker system prune -af
+ docker compose down -v
+ docker system prune -af
 
 ```
 
