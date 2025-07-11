@@ -1,7 +1,7 @@
 """Tests for GNU error format functionality."""
 
-from bake.config import Config, FormatterConfig
-from bake.core.formatter import MakefileFormatter
+from mbake.config import Config, FormatterConfig
+from mbake.core.formatter import MakefileFormatter
 
 
 class TestGNUErrorFormat:

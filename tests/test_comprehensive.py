@@ -6,9 +6,9 @@ import tempfile
 import time
 from pathlib import Path
 
-from bake.config import Config, FormatterConfig
-from bake.core.formatter import MakefileFormatter
-from bake.core.rules import (
+from mbake.config import Config, FormatterConfig
+from mbake.core.formatter import MakefileFormatter
+from mbake.core.rules import (
     AssignmentSpacingRule,
     ConditionalRule,
     ContinuationRule,

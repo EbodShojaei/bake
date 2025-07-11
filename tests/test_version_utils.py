@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bake.utils.version_utils import (
+from mbake.utils.version_utils import (
     VersionError,
     check_for_updates,
     get_pypi_version,
@@ -85,8 +85,8 @@ class TestGetPypiVersion:
 class TestCheckForUpdates:
     """Test update checking functionality."""
 
-    @patch("bake.utils.version_utils.get_pypi_version")
-    @patch("bake.utils.version_utils.current_version", "1.0.0")
+    @patch("mbake.utils.version_utils.get_pypi_version")
+    @patch("mbake.utils.version_utils.current_version", "1.0.0")
     def test_update_available(self, mock_get_version):
         """Test when update is available."""
         mock_get_version.return_value = "1.1.0"
@@ -97,8 +97,8 @@ class TestCheckForUpdates:
         assert latest == "1.1.0"
         assert current == "1.0.0"
 
-    @patch("bake.utils.version_utils.get_pypi_version")
-    @patch("bake.utils.version_utils.current_version", "1.1.0")
+    @patch("mbake.utils.version_utils.get_pypi_version")
+    @patch("mbake.utils.version_utils.current_version", "1.1.0")
     def test_no_update_needed(self, mock_get_version):
         """Test when no update is needed."""
         mock_get_version.return_value = "1.1.0"
@@ -109,8 +109,8 @@ class TestCheckForUpdates:
         assert latest == "1.1.0"
         assert current == "1.1.0"
 
-    @patch("bake.utils.version_utils.get_pypi_version")
-    @patch("bake.utils.version_utils.current_version", "1.1.0")
+    @patch("mbake.utils.version_utils.get_pypi_version")
+    @patch("mbake.utils.version_utils.current_version", "1.1.0")
     def test_current_newer(self, mock_get_version):
         """Test when current version is newer than PyPI."""
         mock_get_version.return_value = "1.0.0"
@@ -121,8 +121,8 @@ class TestCheckForUpdates:
         assert latest == "1.0.0"
         assert current == "1.1.0"
 
-    @patch("bake.utils.version_utils.get_pypi_version")
-    @patch("bake.utils.version_utils.current_version", "1.0.0")
+    @patch("mbake.utils.version_utils.get_pypi_version")
+    @patch("mbake.utils.version_utils.current_version", "1.0.0")
     def test_network_error(self, mock_get_version):
         """Test handling of network errors."""
         mock_get_version.return_value = None
@@ -133,8 +133,8 @@ class TestCheckForUpdates:
         assert latest is None
         assert current == "1.0.0"
 
-    @patch("bake.utils.version_utils.get_pypi_version")
-    @patch("bake.utils.version_utils.current_version", "1.2.3")
+    @patch("mbake.utils.version_utils.get_pypi_version")
+    @patch("mbake.utils.version_utils.current_version", "1.2.3")
     def test_post_release_update_available(self, mock_get_version):
         """Test that post-release versions are detected as updates."""
         mock_get_version.return_value = "1.2.3.post1"
@@ -145,8 +145,8 @@ class TestCheckForUpdates:
         assert latest == "1.2.3.post1"
         assert current == "1.2.3"
 
-    @patch("bake.utils.version_utils.get_pypi_version")
-    @patch("bake.utils.version_utils.current_version", "1.2.3.post1")
+    @patch("mbake.utils.version_utils.get_pypi_version")
+    @patch("mbake.utils.version_utils.current_version", "1.2.3.post1")
     def test_current_is_post_release(self, mock_get_version):
         """Test when current version is a post-release."""
         mock_get_version.return_value = "1.2.3"
@@ -161,7 +161,7 @@ class TestCheckForUpdates:
 class TestIsDevelopmentInstall:
     """Test development installation detection."""
 
-    @patch("bake.utils.version_utils.get_installed_location")
+    @patch("mbake.utils.version_utils.get_installed_location")
     def test_development_install_detected(self, mock_get_location):
         """Test detection of development installation."""
         # Mock a path that has pyproject.toml in parent directory
@@ -172,7 +172,7 @@ class TestIsDevelopmentInstall:
         result = is_development_install()
         assert isinstance(result, bool)
 
-    @patch("bake.utils.version_utils.get_installed_location")
+    @patch("mbake.utils.version_utils.get_installed_location")
     def test_no_install_location(self, mock_get_location):
         """Test when installation location cannot be determined."""
         mock_get_location.return_value = None

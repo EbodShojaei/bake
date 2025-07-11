@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-from bake.utils.line_utils import ConditionalTracker, MakefileParser
+from mbake.utils.line_utils import ConditionalTracker, MakefileParser
 
 from ...plugins.base import FormatResult, FormatterPlugin
 

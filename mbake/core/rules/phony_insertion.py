@@ -2,8 +2,8 @@
 
 from typing import Any
 
-from bake.plugins.base import FormatResult, FormatterPlugin
-from bake.utils.line_utils import MakefileParser, PhonyAnalyzer
+from mbake.plugins.base import FormatResult, FormatterPlugin
+from mbake.utils.line_utils import MakefileParser, PhonyAnalyzer
 
 
 class PhonyInsertionRule(FormatterPlugin):

@@ -147,7 +147,7 @@ class TabsRule(FormatterPlugin):
         """Determine if a line looks like a shell command recipe."""
 
         # First check if this is actually a target line - targets should not be treated as recipes
-        from bake.utils.line_utils import LineUtils
+        from mbake.utils.line_utils import LineUtils
 
         if LineUtils.is_target_line(stripped_line):
             return False

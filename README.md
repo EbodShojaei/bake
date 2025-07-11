@@ -100,6 +100,12 @@ cd mbake
 pip install -e ".[dev]"
 ```
 
+### Package Manager Installation
+
+For system package managers and AUR packagers, mbake supports configurable command names to avoid namespace conflicts. See [BUILD_CONFIGURATION.md](BUILD_CONFIGURATION.md) for details.
+
+**For AUR packagers**: The default behavior already avoids conflicts with `ruby-bake` - no additional configuration needed!
+
 ---
 
 ## Usage
@@ -110,16 +116,19 @@ mbake uses a subcommand-based CLI. All commands support both `bake` and `mbake` 
 
 ```bash
 # Check version
-bake --version
+mbake --version
+
+# Set up your preferred command name (optional)
+mbake setup-command mbake  # or 'bake' (creates alias) or 'both' (creates alias)
 
 # Initialize configuration (optional)
-bake init
+mbake init
 
 # Format a Makefile
-bake format Makefile
+mbake format Makefile
 
 # Validate Makefile syntax
-bake validate Makefile
+mbake validate Makefile
 ```
 
 ### Configuration Management
