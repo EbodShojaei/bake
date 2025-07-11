@@ -1,5 +1,6 @@
 """Command-line interface for bake."""
 
+import importlib.util
 import logging
 import os
 import subprocess
@@ -19,6 +20,23 @@ from .utils.version_utils import (
     is_development_install,
     update_package,
 )
+
+# Show upgrade warning if both 'bake' and 'mbake' are importable (for v1.3.0 only)
+try:
+    import mbake
+
+    if (
+        getattr(mbake, "__version__", "") == "1.3.0"
+        and importlib.util.find_spec("bake") is not None
+    ):
+        print(
+            "\033[93m[mbake upgrade notice]\033[0m\n"
+            "To ensure a clean upgrade, please run:\n"
+            "    pip install --force-reinstall mbake\n"
+            "This will remove any old 'bake' module and prevent import conflicts.\n"
+        )
+except ImportError:
+    pass
 
 
 def get_command_name() -> str:
