@@ -31,8 +31,8 @@ class TabsRule(FormatterPlugin):
                 continue
 
             # Use robust LineUtils helper to detect actual target lines
-            # Only check the original line - if it's indented, it's not a target
-            is_target = LineUtils.is_target_line(line)
+            # Check the original line - if it's a target, it should not be indented
+            is_target = LineUtils.is_target_line(line, i, lines)
 
             # Check if this is a special Makefile directive or function call (non-recipe only)
             is_special_directive = False
@@ -57,6 +57,30 @@ class TabsRule(FormatterPlugin):
                     changed = True
                 else:
                     formatted_lines.append(line)
+                continue
+
+            # Special case: indented lines that contain colons but are actually recipe lines
+            # (like shell commands with arguments containing colons)
+            if (
+                line.startswith((" ", "\t"))
+                and ":" in stripped
+                and LineUtils.is_recipe_line(line, i, lines)
+            ):
+                # This is a recipe line, not a target line - treat it as a recipe
+                is_target = False
+                # Otherwise, let the normal target detection handle it
+
+            # Special case: indented lines that look like targets (inside conditional blocks)
+            if (
+                line.startswith((" ", "\t"))
+                and ":" in stripped
+                and not is_target
+                and LineUtils.is_target_line(stripped, i, lines)
+            ):
+                # This is a target line that was indented (probably in a conditional block)
+                # Left-align it by removing all indentation
+                formatted_lines.append(stripped)
+                changed = True
                 continue
 
             # Check if this is a conditional directive (preserve 2-space indentation)
@@ -85,7 +109,7 @@ class TabsRule(FormatterPlugin):
                 # Only convert to tab if this is clearly a recipe comment (previous line was a target)
                 if (
                     i > 0
-                    and LineUtils.is_target_line(lines[i - 1].lstrip())
+                    and LineUtils.is_target_line(lines[i - 1].lstrip(), i - 1, lines)
                     and line.startswith(" ")
                 ):
                     new_line = "\t" + stripped
@@ -102,9 +126,9 @@ class TabsRule(FormatterPlugin):
                     formatted_lines.append(line)
                     continue
 
-                # Check if this looks like a recipe line (shell command)
-                # Recipe lines typically contain shell commands, not variable assignments
-                if self._looks_like_recipe_line(stripped):
+                # Use LineUtils.is_recipe_line for proper context-based detection
+                # This is more robust than pattern matching
+                if LineUtils.is_recipe_line(line, i, lines):
                     # Convert spaces to tabs for recipe lines
                     if line.startswith(" "):
                         # Count leading spaces
@@ -142,100 +166,3 @@ class TabsRule(FormatterPlugin):
             warnings=warnings,
             check_messages=[],
         )
-
-    def _looks_like_recipe_line(self, stripped_line: str) -> bool:
-        """Determine if a line looks like a shell command recipe."""
-
-        # First check if this is actually a target line - targets should not be treated as recipes
-        from mbake.utils.line_utils import LineUtils
-
-        if LineUtils.is_target_line(stripped_line):
-            return False
-
-        # Common shell commands and patterns
-        shell_commands = [
-            "echo",
-            "cp",
-            "mv",
-            "rm",
-            "mkdir",
-            "cd",
-            "ln",
-            "chmod",
-            "chown",
-            "gcc",
-            "g++",
-            "clang",
-            "make",
-            "cmake",
-            "python",
-            "pip",
-            "npm",
-            "git",
-            "svn",
-            "tar",
-            "zip",
-            "unzip",
-            "wget",
-            "curl",
-            "ssh",
-            "scp",
-            "sed",
-            "awk",
-            "grep",
-            "find",
-            "sort",
-            "cat",
-            "head",
-            "tail",
-            "touch",
-            "test",
-            "which",
-            "whereis",
-            "ps",
-            "kill",
-            "sleep",
-            "@echo",
-            "@cp",
-            "@mv",
-            "@rm",
-            "@mkdir",
-            "@cd",
-            "@ln",
-            "@chmod",
-            "@gcc",
-            "@g++",
-            "@clang",
-            "@make",
-            "@cmake",
-            "@python",
-            "@pip",
-            "-",
-            "+",
-            "$(",
-            "${",
-            "if",
-            "for",
-            "while",
-            "case",
-            "done",
-            "fi",
-        ]
-
-        # Check if line starts with common shell command patterns
-        for cmd in shell_commands:
-            if stripped_line.startswith(cmd):
-                return True
-
-        # Check for variable references that are typically in recipes
-        # Exclude target lines which also start with $( but contain colons
-        if (
-            stripped_line.startswith("$(")
-            and "=" not in stripped_line
-            and ":" not in stripped_line
-        ):
-            return True
-
-        # Check for shell operators
-        shell_operators = ["&&", "||", "|", ";", ">>", ">", "<", "2>"]
-        return any(op in stripped_line for op in shell_operators)

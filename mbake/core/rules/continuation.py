@@ -105,7 +105,7 @@ class ContinuationRule(FormatterPlugin):
 
         # Detect variable assignment continuations only if truly a var assignment
         first_line = lines[0].strip()
-        is_assignment = LineUtils.is_variable_assignment(first_line)
+        is_assignment = LineUtils.is_variable_assignment(first_line, lines[0])
         if is_assignment:
             full_content = ""
             for line in lines:

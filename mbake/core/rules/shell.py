@@ -92,9 +92,19 @@ class ShellFormattingRule(FormatterPlugin):
         formatted = []
         indent_level = 0
 
-        # Use consistent base indentation (1 tab) for all recipe lines
-        # This ensures consistency within the same target
-        base_tabs = 1
+        # Determine the base indentation level from the first line
+        # This preserves the original indentation level instead of forcing it to 1 tab
+        base_tabs = 1  # Default fallback
+        if block and block[0].startswith("\t"):
+            # Count leading tabs in the first line
+            base_tabs = 0
+            for char in block[0]:
+                if char == "\t":
+                    base_tabs += 1
+                else:
+                    break
+            if base_tabs == 0:
+                base_tabs = 1  # Fallback if no tabs found
 
         for line in block:
             if not line.strip():
@@ -128,8 +138,8 @@ class ShellFormattingRule(FormatterPlugin):
                 # Primary recipe level - use base tabs from original indentation
                 new_line = "\t" * base_tabs + stripped + trailing
             else:
-                # Nested shell level - add extra indentation
-                new_line = "\t" * base_tabs + "  " * indent_level + stripped + trailing
+                # Nested shell level - add extra tabs instead of mixing tabs and spaces
+                new_line = "\t" * (base_tabs + indent_level) + stripped + trailing
 
             formatted.append(new_line)
 

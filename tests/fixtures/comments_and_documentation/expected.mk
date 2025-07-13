@@ -22,7 +22,7 @@ build: #Build the project
 #OLD_TARGET=old_main
 
 test: #Test target
-      ./main --test#Run tests
+	./main --test#Run tests
 
 #Multi-line comment block
 ################################

@@ -3,6 +3,9 @@
 import re
 from typing import Any, Callable, Optional
 
+from ..constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS, DECLARATIVE_TARGETS
+from ..constants.shell_commands import SHELL_COMMAND_INDICATORS
+
 
 class LineUtils:
     """Common line processing utilities used across formatting rules."""
@@ -240,22 +243,30 @@ class LineUtils:
             if any(stripped.startswith(pattern) for pattern in function_patterns):
                 return True
 
-        return stripped.startswith(
-            (
-                "include",
-                "-include",
-                "ifeq",
-                "ifneq",
-                "ifdef",
-                "ifndef",
-                "define",
-                "endef",
-                ".PHONY",
-                "export",
-                "unexport",
-                "vpath",
+        # Special handling for export/unexport commands
+        # If the line is indented (starts with tab or space), export/unexport are shell commands, not makefile constructs
+        if stripped.startswith(("export", "unexport")):
+            # If line is indented, it's a shell command in a recipe, not a makefile construct
+            # If not indented, it's a makefile construct
+            return not line.startswith(("\t", " "))
+
+        return (
+            stripped.startswith(
+                (
+                    "include",
+                    "-include",
+                    "ifeq",
+                    "ifneq",
+                    "ifdef",
+                    "ifndef",
+                    "define",
+                    "endef",
+                    "vpath",
+                )
             )
-        ) or stripped in ("else", "endif")
+            or stripped in ("else", "endif")
+            or stripped in ALL_SPECIAL_MAKE_TARGETS
+        )
 
     @staticmethod
     def is_conditional_start(line: str) -> bool:
@@ -420,13 +431,13 @@ class LineUtils:
             return False
 
         # Don't treat target lines as recipe lines even if indented (targets in conditional blocks)
-        if LineUtils.is_target_line(line):
+        if LineUtils.is_target_line(line, line_index, all_lines):
             return False
 
         # Don't treat variable assignments inside conditional blocks as recipe lines
         stripped = line.strip()
         if (
-            LineUtils.is_variable_assignment(stripped)
+            LineUtils.is_variable_assignment(stripped, line)
             and LineUtils.get_conditional_depth(line_index, all_lines) > 0
         ):
             # If we're inside a conditional block, this variable assignment
@@ -476,7 +487,7 @@ class LineUtils:
                     return True
                 # If previous line is indented but not a recipe, check if it's a target line
                 # This handles targets in conditional blocks
-                if LineUtils.is_target_line(prev_stripped):
+                if LineUtils.is_target_line(prev_stripped, i, all_lines):
                     return True
                 continue
 
@@ -583,7 +594,9 @@ class LineUtils:
             return False
 
         # Don't treat special makefile constructs as recipe lines
-        if LineUtils.is_makefile_construct(line) or LineUtils.is_target_line(line):
+        if LineUtils.is_makefile_construct(line) or LineUtils.is_target_line(
+            line, line_index, all_lines
+        ):
             return False
 
         # If we're inside a define block, this is not a recipe line
@@ -609,7 +622,7 @@ class LineUtils:
             # If we're inside a conditional block and the last non-conditional line
             # wasn't a target, then this is not a recipe
             if last_non_conditional_line is None or not LineUtils.is_target_line(
-                last_non_conditional_line
+                last_non_conditional_line, line_index, all_lines
             ):
                 return False
 
@@ -624,7 +637,7 @@ class LineUtils:
                 continue
 
             # If we find a target line, this could be a recipe
-            if LineUtils.is_target_line(prev_line):
+            if LineUtils.is_target_line(prev_line, i, all_lines):
                 target_line_found = True
                 break
 
@@ -650,7 +663,7 @@ class LineUtils:
 
             # If it's a simple variable assignment (no shell patterns),
             # it's likely a makefile variable, not a shell command
-            if LineUtils.is_variable_assignment(line):
+            if LineUtils.is_variable_assignment(line, line):
                 # Check for shell variable patterns vs makefile variable patterns
                 # Shell variables often have different naming conventions
                 var_name = line.split("=")[0].strip()
@@ -669,15 +682,18 @@ class LineUtils:
         return False
 
     @staticmethod
-    def is_target_line(line: str) -> bool:
+    def is_target_line(
+        line: str,
+        line_index: Optional[int] = None,
+        all_lines: Optional[list[str]] = None,
+    ) -> bool:
         """
         Check if a line defines a target.
 
         Args:
             line: The line to check
-
-        Returns:
-            True if this is a target definition line
+            line_index: Index of the line in the file (optional, for context)
+            all_lines: All lines in the file (optional, for context)
         """
         stripped = line.strip()
 
@@ -686,8 +702,24 @@ class LineUtils:
             return False
 
         # If line is indented, it's very unlikely to be a target
-        # (targets are typically at the beginning of lines)
+        # BUT: if we're inside a conditional block, indented target lines are valid
         if line.startswith(("\t", " ")):
+            # If we have context, check if we're inside a conditional block
+            if line_index is not None and all_lines is not None:
+                conditional_depth = LineUtils.get_conditional_depth(
+                    line_index, all_lines
+                )
+                # Inside a conditional block, indented target lines are valid
+                # Check if this looks like a target line
+                if (
+                    conditional_depth > 0
+                    and ":" in stripped
+                    and not LineUtils.VARIABLE_ASSIGNMENT_PATTERN.match(stripped)
+                ):
+                    # This is a target line inside a conditional block
+                    # It IS a target, but it should be flush-left for proper Make syntax
+                    return True
+            # Outside conditional blocks, indented lines are not targets
             return False
 
         # Use regex to match target pattern first
@@ -695,45 +727,41 @@ class LineUtils:
         if not target_match:
             return False
 
-        # If line starts with typical shell command indicators, it's likely a recipe line
-        # BUT: Allow lines that start with $ if they match the target pattern (e.g., $(VAR)_target:)
-        if stripped.startswith(
-            (
-                "@",
-                "echo",
-                "mkdir",
-                "rm",
-                "cp",
-                "mv",
-                "cd",
-                "make",
-                "gcc",
-                "g++",
-                "python",
-                "node",
-                "npm",
-                "go",
-                "cargo",
-                "docker",
-                "kubectl",
-            )
-        ):
+        # Only use built-in shell commands for direct match
+        first_word = stripped.split()[0] if stripped.split() else ""
+        if first_word in SHELL_COMMAND_INDICATORS:
             return False
 
         # Special handling for $ - only reject if it doesn't look like a target with variable reference
         if stripped.startswith("$"):
-            # Allow $(VAR)something: patterns (target definitions with variable references)
-            if not (stripped.startswith("$(") and ")" in stripped and ":" in stripped):
+            if stripped.startswith("$(") and ")" in stripped and ":" in stripped:
+                paren_close = stripped.find(")")
+                if paren_close != -1:
+                    after_paren = stripped[paren_close + 1 :].strip()
+                    if (
+                        after_paren
+                        and " " in after_paren
+                        and (
+                            "$(" in after_paren
+                            or "${" in after_paren
+                            or any(
+                                char in after_paren
+                                for char in ["&&", "||", ";", "|", ">", "<", "`"]
+                            )
+                            or after_paren.startswith(
+                                ("if ", "for ", "while ", "case ", "until ")
+                            )
+                        )
+                    ):
+                        return False
+            else:
                 return False
-
-            # Exclude makefile function calls like $(error ...), $(warning ...), $(info ...)
-            # These start with $(function_name and have spaces/content after the function name
             if stripped.startswith("$(") and " " in stripped:
                 paren_close = stripped.find(")")
-                if paren_close == -1:  # No closing paren found
+                if paren_close == -1:
                     return False
-                func_part = stripped[2:paren_close]  # Extract content between $( and )
-                if " " in func_part:  # If there's a space, it's likely a function call
+                func_part = stripped[2:paren_close]
+                if " " in func_part:
                     return False
 
         # Check if this is actually a variable assignment with colon (e.g., VAR:=value)
@@ -749,27 +777,24 @@ class LineUtils:
             return False
 
         # Additional validation: check if the colon is inside quotes
-        # This helps distinguish between actual targets and shell commands with colons
         colon_pos = stripped.find(":")
         if colon_pos != -1:
-            # Check if the colon is inside quotes by counting quote pairs before it
             before_colon = stripped[:colon_pos]
             single_quotes = before_colon.count("'")
             double_quotes = before_colon.count('"')
-
-            # If there's an odd number of quotes before the colon, it's likely inside quotes
             if single_quotes % 2 == 1 or double_quotes % 2 == 1:
                 return False
 
         return True
 
     @staticmethod
-    def is_variable_assignment(line: str) -> bool:
+    def is_variable_assignment(line: str, context_line: Optional[str] = None) -> bool:
         """
         Check if a line is a variable assignment.
 
         Args:
             line: The line to check
+            context_line: The original line with indentation (optional, for context)
 
         Returns:
             True if this is a variable assignment
@@ -784,8 +809,17 @@ class LineUtils:
         if LineUtils.CONDITIONAL_START_PATTERN.match(stripped):
             return False
 
-        # Use the regex pattern to match variable assignments
-        return bool(LineUtils.VARIABLE_ASSIGNMENT_PATTERN.match(stripped))
+        # Check if this looks like a variable assignment
+        if not LineUtils.VARIABLE_ASSIGNMENT_PATTERN.match(stripped):
+            return False
+
+            # If this is an export/unexport command in a recipe context (indented),
+        # it's a shell command, not a makefile variable assignment
+        return not (
+            stripped.startswith(("export ", "unexport "))
+            and context_line
+            and context_line.startswith(("\t", " "))
+        )
 
     @staticmethod
     def is_variable_assignment_with_colon(line: str) -> bool:
@@ -1085,7 +1119,8 @@ class MakefileParser:
             True if this target should be skipped
         """
         return (
-            target_part.startswith(".")
+            target_part in ALL_SPECIAL_MAKE_TARGETS
+            or target_part.startswith(".")
             or "%" in target_part
             or "$" in target_part
             or " " in target_part  # Multiple targets
@@ -1108,8 +1143,14 @@ class MakefileParser:
         for line in lines:
             stripped = line.strip()
             if stripped.startswith(".PHONY:"):
-                targets_part = stripped[7:].strip()  # Remove '.PHONY:'
-                targets = [t.strip() for t in targets_part.split() if t.strip()]
+                # Remove .PHONY: prefix and any line continuation
+                content = stripped[7:].strip()  # Remove '.PHONY:'
+
+                # Handle continuation character
+                if content.endswith("\\"):
+                    content = content[:-1].strip()
+
+                targets = [t.strip() for t in content.split() if t.strip()]
                 phony_targets.update(targets)
 
         return phony_targets
@@ -1509,32 +1550,17 @@ class PhonyAnalyzer:
         return False
 
     @staticmethod
-    def _matches_file_naming_patterns(target_name: str, all_lines: list[str]) -> bool:
+    def _matches_file_naming_patterns(target_name: str, all_targets: list[str]) -> bool:
         """
         Check if target follows naming patterns of other file targets.
 
         Args:
             target_name: Name of the target
-            all_lines: All lines in the Makefile
+            all_targets: List of all targets in the Makefile
 
         Returns:
-            True if target matches file naming patterns
+            True if target follows file naming patterns
         """
-        # Extract all target names from the Makefile
-        target_pattern = re.compile(r"^([^:=]+):(?!:)")
-        all_targets = []
-
-        for line in all_lines:
-            stripped = line.strip()
-            if not stripped or stripped.startswith(("#", "\t")):
-                continue
-
-            match = target_pattern.match(stripped)
-            if match:
-                target_list = match.group(1).strip()
-                targets = [t.strip() for t in target_list.split() if t.strip()]
-                all_targets.extend(targets)
-
         # Analyze naming patterns
         return PhonyAnalyzer._has_similar_naming_pattern(target_name, all_targets)
 
@@ -1667,24 +1693,6 @@ class PhonyAnalyzer:
                 # Handle multiple targets on one line
                 target_names = [t.strip() for t in target_list.split() if t.strip()]
 
-                # Skip special targets that can be duplicated
-                allowed_duplicates = {
-                    ".PHONY",
-                    ".SUFFIXES",
-                    ".DEFAULT",
-                    ".PRECIOUS",
-                    ".INTERMEDIATE",
-                    ".SECONDARY",
-                    ".DELETE_ON_ERROR",
-                    ".IGNORE",
-                    ".LOW_RESOLUTION_TIME",
-                    ".SILENT",
-                    ".EXPORT_ALL_VARIABLES",
-                    ".NOTPARALLEL",
-                    ".ONESHELL",
-                    ".POSIX",
-                }
-
                 # Double-colon rules are allowed to have multiple definitions
                 if is_double_colon:
                     continue
@@ -1702,7 +1710,7 @@ class PhonyAnalyzer:
 
                 # Process each target name
                 for target_name in target_names:
-                    if target_name in allowed_duplicates:
+                    if target_name in DECLARATIVE_TARGETS:
                         continue
 
                     # Skip targets that contain quotes or special characters that shouldn't be in target names

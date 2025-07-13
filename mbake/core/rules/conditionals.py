@@ -34,7 +34,7 @@ class ConditionalRule(FormatterPlugin):
         use_tabs = config.get("use_tabs", True)
         tab_width = config.get("tab_width", 4)
 
-        for line in lines:
+        for i, line in enumerate(lines):
             stripped = line.strip()
             original_line = line
 
@@ -46,7 +46,7 @@ class ConditionalRule(FormatterPlugin):
                 or (
                     not use_tabs
                     and line.startswith(" " * tab_width)
-                    and self._looks_like_recipe_line(line, tab_width)
+                    and LineUtils.is_recipe_line(line, i, lines)
                 )
             ):
                 formatted_lines.append(line)
@@ -156,7 +156,7 @@ class ConditionalRule(FormatterPlugin):
             elif indent_level > 0:
                 # Inside conditional block - indent content
                 # Use robust LineUtils.is_target_line for target detection
-                if LineUtils.is_target_line(stripped):
+                if LineUtils.is_target_line(stripped, i, lines):
                     # Target lines should not be indented - they define new targets
                     formatted_lines.append(stripped)
                     if stripped != original_line.rstrip():
@@ -184,14 +184,14 @@ class ConditionalRule(FormatterPlugin):
                 elif (
                     not use_tabs
                     and line.startswith(" " * tab_width)
-                    and self._looks_like_recipe_line(line, tab_width)
+                    and LineUtils.is_recipe_line(line, i, lines)
                 ):
                     # Recipe lines when using spaces - keep as is
                     formatted_lines.append(line)
                     continue
                 # Comments should be indented
                 elif stripped.startswith("#") or LineUtils.is_variable_assignment(
-                    stripped
+                    stripped, line
                 ):
                     formatted_line = base_indent * indent_level + stripped
                     formatted_lines.append(formatted_line)
@@ -216,71 +216,3 @@ class ConditionalRule(FormatterPlugin):
             warnings=warnings,
             check_messages=[],
         )
-
-    def _is_target_line(self, line: str) -> bool:
-        """Check if line is a target definition."""
-        # Target lines have : for dependencies, but not := for assignments
-        # Also exclude conditional statements, dot directives, and Make function calls
-        if line.startswith(("ifeq", "ifneq", "ifdef", "ifndef")):
-            return False
-
-        # Exclude dot directives like .PHONY, .SUFFIXES, etc.
-        if line.startswith("."):
-            return False
-
-        # Exclude Make function calls like $(error...), $(warning...), etc.
-        if line.startswith("$("):
-            return False
-
-        # Check for target pattern: target: dependencies
-        # But exclude variable assignments like BUILDDIR := value
-        colon_pos = line.find(":")
-        if colon_pos == -1:
-            return False
-
-        # If there's a = after the colon, it's likely an assignment, not a target
-        return not (colon_pos < len(line) - 1 and line[colon_pos + 1] == "=")
-
-    def _should_indent_as_content(self, line: str) -> bool:
-        """Check if line should be indented as conditional content."""
-        # Include directives and other makefile constructs that should be indented
-        return (
-            line.startswith(("include", "-include", "export", "unexport"))
-            or line.startswith(".")  # Other dot directives like .PHONY, .SUFFIXES, etc.
-            or line.startswith(
-                "$("
-            )  # Make function calls like $(error...), $(warning...), etc.
-            or line.startswith(("define", "endef"))  # Define blocks
-        )
-
-    def _looks_like_recipe_line(self, line: str, tab_width: int) -> bool:
-        """Check if a line looks like a recipe line when using spaces."""
-        # This is a heuristic - recipe lines typically have specific patterns
-        if not line.startswith(" " * tab_width):
-            return False
-
-        # Look for common recipe patterns
-        content = line.strip()
-        # Commands often start with common shell commands or make functions
-        recipe_indicators = [
-            "@",
-            "$",
-            "echo",
-            "mkdir",
-            "rm",
-            "cp",
-            "mv",
-            "cd",
-            "make",
-            "gcc",
-            "g++",
-            "python",
-            "node",
-            "npm",
-            "go",
-            "cargo",
-            "docker",
-            "kubectl",
-        ]
-
-        return any(content.startswith(indicator) for indicator in recipe_indicators)
