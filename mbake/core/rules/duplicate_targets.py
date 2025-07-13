@@ -3,8 +3,9 @@
 import re
 from typing import Any
 
-from mbake.plugins.base import FormatResult, FormatterPlugin
-from mbake.utils.line_utils import ConditionalTracker, LineUtils
+from ...constants.makefile_targets import DECLARATIVE_TARGETS
+from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import ConditionalTracker, LineUtils
 
 
 class DuplicateTargetRule(FormatterPlugin):
@@ -59,23 +60,7 @@ class DuplicateTargetRule(FormatterPlugin):
 
                 # Skip special targets that can be duplicated
                 # These targets should not be tracked at all, as they can legitimately appear multiple times
-                allowed_duplicates = {
-                    ".PHONY",
-                    ".SUFFIXES",
-                    ".DEFAULT",
-                    ".PRECIOUS",
-                    ".INTERMEDIATE",
-                    ".SECONDARY",
-                    ".DELETE_ON_ERROR",
-                    ".IGNORE",
-                    ".LOW_RESOLUTION_TIME",
-                    ".SILENT",
-                    ".EXPORT_ALL_VARIABLES",
-                    ".NOTPARALLEL",
-                    ".ONESHELL",
-                    ".POSIX",
-                }
-                if target_name in allowed_duplicates:
+                if target_name in DECLARATIVE_TARGETS:
                     continue
 
                 # Suppress duplicate errors for template placeholder targets like $(1), $(2)

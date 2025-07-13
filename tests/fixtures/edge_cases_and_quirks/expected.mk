@@ -50,7 +50,7 @@ whitespace-only:
 
 #Long lines that might need wrapping
 very-long-target-name-that-might-cause-formatting-issues: very-long-dependency-name-that-also-might-cause-issues
-    very-long-command-line-that-extends-beyond-normal-width-and-might-need-special-handling-by-the-formatter
+	very-long-command-line-that-extends-beyond-normal-width-and-might-need-special-handling-by-the-formatter
 
 #Conditional assignments with complex conditions
 ifeq ($(origin CC),undefined)
@@ -64,10 +64,10 @@ endif
 #Complex shell constructs in recipes
 complex-shell:
 	for i in 1 2 3; do \
-	  echo "Processing $$i"; \
-	  if [ $$i -eq 2 ]; then \
-	    continue; \
-	  fi; \
+		echo "Processing $$i"; \
+		if [ $$i -eq 2 ]; then \
+			continue; \
+		fi; \
 	echo "Done with $$i"; \
 	done
 
@@ -99,5 +99,5 @@ FILTERED = $(filter-out $(EXCLUDE_PATTERNS),$(ALL_FILES))
 TRANSFORMED = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SOURCES))
 
 #Export with complex expressions
-export PATH := $(PATH):$(shell pwd)/bin
-export CFLAGS += $(if $(DEBUG),-g -O0,-O2)
+export PATH:=$(PATH):$(shell pwd)/bin
+export CFLAGS+=$(if $(DEBUG),-g -O0,-O2)

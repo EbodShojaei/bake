@@ -28,7 +28,7 @@
 
 - [Features](#features)
 - [Installation](#installation)
-- [Migration from v1.x](#migration-from-v1x)
+- [Migration to v1.3.x](#migration-to-v13x)
 - [Usage](#usage)
 - [Configuration](#configuration)
 - [Examples](#examples-1)
@@ -138,20 +138,20 @@ For system package managers and AUR packagers, mbake supports configurable comma
 3. **If you have Python scripts** that import from `bake`, update them:
 
    ```python
-   # Old (v1.x)
+   # Old (v1.2.x)
    from bake.config import Config
    
-   # New (v2.0+)
+   # New (v1.3.x)
    from mbake.config import Config
    ```
 
 4. **If you have CI/CD scripts**, update import statements:
 
    ```bash
-   # Old (v1.x)
+   # Old (v1.2.x)
    python -c "from bake.cli import main; main()"
    
-   # New (v2.0+)
+   # New (v1.3.x)
    python -c "from mbake.cli import main; main()"
    ```
 

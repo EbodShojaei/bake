@@ -34,6 +34,12 @@ class PatternUtils:
         Returns:
             True if line contains assignment operators
         """
+        # Check for shell export/unexport commands first - these are not assignments
+        stripped = line.strip()
+        if stripped.startswith(("export ", "unexport ")):
+            # Export/unexport commands are shell commands, not makefile assignments
+            return False
+
         # Check for assignment operators, but exclude shell comparison operators like !=, <=, >=
         return bool(
             re.search(r"[^:+=?!<>]*[=]", line) and not re.search(r"[!<>=]=", line)

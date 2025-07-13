@@ -1,7 +1,8 @@
-"""Recipe validation rule for Makefile recipes."""
+"""Rule for validating recipe line formatting."""
 
 from typing import Any
 
+from ...constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils
 
@@ -84,21 +85,24 @@ class RecipeValidationRule(FormatterPlugin):
             return False
 
         # Skip variable assignments and directives
-        if "=" in stripped or stripped.startswith(
-            (
-                ".PHONY",
-                "include",
-                "export",
-                "unexport",
-                "define",
-                "ifeq",
-                "ifneq",
-                "ifdef",
-                "ifndef",
-                "else",
-                "endif",
-                "endef",
+        if (
+            "=" in stripped
+            or stripped.startswith(
+                (
+                    "include",
+                    "export",
+                    "unexport",
+                    "define",
+                    "ifeq",
+                    "ifneq",
+                    "ifdef",
+                    "ifndef",
+                    "else",
+                    "endif",
+                    "endef",
+                )
             )
+            or stripped in ALL_SPECIAL_MAKE_TARGETS
         ):
             return False
 
@@ -145,7 +149,7 @@ class RecipeValidationRule(FormatterPlugin):
                 continue
 
             # If we find a target line, this should be a recipe
-            if LineUtils.is_target_line(prev_line):
+            if LineUtils.is_target_line(prev_line, i, all_lines):
                 return True
 
             # If we find a non-target, non-recipe line, this is not a recipe

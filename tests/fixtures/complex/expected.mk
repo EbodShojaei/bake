@@ -20,11 +20,11 @@ endif
 
 test: $(TARGET)
 	if [ -f $(TARGET) ]; then \
-	  echo "Running tests"; \
-	  ./$(TARGET) --test; \
+		echo "Running tests"; \
+		./$(TARGET) --test; \
 	else \
-	  echo "Binary not found"; \
-	  exit 1; \
+		echo "Binary not found"; \
+		exit 1; \
 	fi
 
 clean:

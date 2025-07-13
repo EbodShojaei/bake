@@ -3,9 +3,9 @@
 import re
 from typing import Any
 
-from mbake.utils.line_utils import ConditionalTracker, MakefileParser
-
+from ...constants.phony_targets import COMMON_PHONY_TARGETS
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import ConditionalTracker, MakefileParser
 
 
 class PhonyRule(FormatterPlugin):
@@ -50,31 +50,10 @@ class PhonyRule(FormatterPlugin):
         has_phony_declarations = False
         has_conditional_phony = False
 
-        # Common phony target names that should be automatically detected
-        common_phony_targets = {
-            "all",
-            "clean",
-            "install",
-            "uninstall",
-            "test",
-            "check",
-            "help",
-            "build",
-            "rebuild",
-            "debug",
-            "release",
-            "dist",
-            "distclean",
-            "docs",
-            "doc",
-            "lint",
-            "format",
-            "setup",
-            "run",
-            "docker",
-            "package",
-        }
+        # Conservative list of phony targets for auto-detection
+        common_phony_targets = COMMON_PHONY_TARGETS
 
+        # Process all lines to find .PHONY declarations
         for i, line in enumerate(lines):
             stripped = line.strip()
 
@@ -84,27 +63,23 @@ class PhonyRule(FormatterPlugin):
                 # Skip processing of format-disabled lines
                 continue
 
-            # Get the conditional context this line is IN
-            conditional_context = conditional_tracker.process_line(line, i)
-            is_in_conditional = bool(conditional_context)
+            # Track conditional context
+            current_context = conditional_tracker.process_line(line, i)
+            is_in_conditional = bool(current_context)
 
-            # Check for .PHONY declaration
             if stripped.startswith(".PHONY:"):
                 has_phony_declarations = True
 
                 if is_in_conditional:
-                    # This .PHONY is inside a conditional block - don't consolidate it
-                    conditional_phony_line_indices.append(i)
+                    # This .PHONY is inside a conditional block - preserve as-is
                     has_conditional_phony = True
+                    conditional_phony_line_indices.append(i)
                 else:
                     # This .PHONY is at top level - can be consolidated
                     top_level_phony_line_indices.append(i)
 
-                    # Extract targets from this PHONY line
-                    targets_part = stripped[7:].strip()  # Remove '.PHONY:'
-
-                    # Normal .PHONY line - extract targets
-                    targets = [t.strip() for t in targets_part.split() if t.strip()]
+                    # Extract targets from this PHONY line using utils
+                    targets = list(MakefileParser.extract_phony_targets([stripped]))
                     if not is_in_conditional:
                         top_level_phony_targets.update(targets)
 
@@ -126,10 +101,7 @@ class PhonyRule(FormatterPlugin):
                             or original_line.startswith(
                                 "\t\\ \\"
                             )  # Match "tab backslash space backslash"
-                            or next_line.replace("\\", "").strip()
-                            in common_phony_targets
                         ):
-
                             malformed_phony_found = True
                             # Extract targets, removing backslashes and excess whitespace
                             clean_line = next_line.replace("\\", "").strip()
@@ -326,15 +298,3 @@ class PhonyRule(FormatterPlugin):
                 return True
 
         return False
-
-    def _extract_phony_targets(self, line: str) -> list[str]:
-        """Extract target names from a .PHONY line."""
-        # Remove .PHONY: prefix and any line continuation
-        content = line.strip()
-        if content.startswith(".PHONY:"):
-            content = content[7:].strip()
-
-        if content.endswith("\\"):
-            content = content[:-1].strip()
-
-        return [target.strip() for target in content.split() if target.strip()]

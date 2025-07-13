@@ -50,7 +50,7 @@ unicode-demo: # Target with Unicode: 你好世界 🌍
 # Complex Unicode in shell commands
 unicode-test:
 	for lang in "English" "中文" "日本語" "Русский"; do \
-	  echo "Testing $$lang support"; \
+		echo "Testing $$lang support"; \
 	done
 
 # Unicode in file operations

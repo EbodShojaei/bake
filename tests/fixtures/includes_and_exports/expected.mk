@@ -15,19 +15,19 @@ endif
 # Optional includes
 -include  local.mk
 -include	.env
-	-include $(wildcard *.local)
+  -include $(wildcard *.local)
 
 # Export statements with inconsistent formatting
 export CC CXX
 export    CFLAGS CXXFLAGS
-export LDFLAGS = "-L/usr/local/lib"
+export LDFLAGS="-L/usr/local/lib"
 
 # Unexport statements
 unexport  DEBUG_FLAGS
 unexport	TEMP_VAR
 
 # Export with assignment
-export PATH := /usr/local/bin:$(PATH)
+export PATH:=/usr/local/bin:$(PATH)
 export    PKG_CONFIG_PATH += /usr/local/lib/pkgconfig
 
 # VPATH with poor formatting
