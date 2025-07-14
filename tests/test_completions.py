@@ -127,6 +127,7 @@ def test_completion_script_content():
         "--validate",
         "--verbose",
         "--config",
+        "--stdin",
     ]
     for opt in format_options:
         assert opt in bash_script
@@ -154,3 +155,25 @@ def test_completion_script_handles_errors():
     # Test writing to invalid file (direct function call)
     with pytest.raises(OSError, match="No such file or directory"):
         write_completion_script(ShellType.BASH, Path("/nonexistent/path/completions"))
+
+
+def test_stdin_flag_in_completions():
+    """Test that --stdin flag is included in all shell completion scripts."""
+    # Test bash completion script
+    bash_script = get_completion_script(ShellType.BASH)
+    assert "--stdin" in bash_script
+    assert "format" in bash_script  # Ensure it's in the format command context
+
+    # Test zsh completion script
+    zsh_script = get_completion_script(ShellType.ZSH)
+    assert "--stdin" in zsh_script
+    assert "Read from stdin and write to stdout" in zsh_script
+
+    # Test fish completion script (Fish uses -l stdin, not --stdin)
+    fish_script = get_completion_script(ShellType.FISH)
+    assert "-l stdin" in fish_script
+    assert "Read from stdin and write to stdout" in fish_script
+
+    # Verify --stdin is only in format command context, not in other commands
+    assert "validate.*--stdin" not in bash_script
+    assert "init.*--stdin" not in bash_script

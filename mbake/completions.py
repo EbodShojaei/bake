@@ -56,7 +56,7 @@ _{command_name}_completion() {{
             return 0
             ;;
         format)
-            COMPREPLY=( $(compgen -W "--check -c --diff -d --verbose -v --debug --config --backup -b --validate --help" -- "${{cur}}") )
+            COMPREPLY=( $(compgen -W "--check -c --diff -d --verbose -v --debug --config --backup -b --validate --stdin --help" -- "${{cur}}") )
             return 0
             ;;
         update)
@@ -109,6 +109,7 @@ _{command_name}() {{
         '--validate[Validate syntax after formatting]'
         '--verbose[Enable verbose output]'
         '--config[Path to configuration file]'
+        '--stdin[Read from stdin and write to stdout]'
     )
     validate_opts=(
         '--verbose[Enable verbose output]'
@@ -120,10 +121,10 @@ _{command_name}() {{
         'fish:Generate Fish completion script'
     )
 
-    _arguments -C \\
-        '--version[Show version and exit]' \\
-        '--help[Show help message and exit]' \\
-        '1: :{{_describe 'command' commands}}' \\
+    _arguments -C \
+        '--version[Show version and exit]' \
+        '--help[Show help message and exit]' \
+        '1: :_describe "command" commands' \
         '*:: :->args'
 
     case $state in
@@ -171,6 +172,7 @@ complete -c {command_name} -n "__fish_seen_subcommand_from format" -l backup -d 
 complete -c {command_name} -n "__fish_seen_subcommand_from format" -l validate -d "Validate syntax after formatting"
 complete -c {command_name} -n "__fish_seen_subcommand_from format" -l verbose -d "Enable verbose output"
 complete -c {command_name} -n "__fish_seen_subcommand_from format" -l config -d "Path to configuration file"
+complete -c {command_name} -n "__fish_seen_subcommand_from format" -l stdin -d "Read from stdin and write to stdout"
 
 # Validate command options
 complete -c {command_name} -n "__fish_seen_subcommand_from validate" -l verbose -d "Enable verbose output"
