@@ -713,11 +713,9 @@ class LineUtils:
                 # Check if this looks like a target line
                 if (
                     conditional_depth > 0
-                    and ":" in stripped
+                    and LineUtils.colon_is_target_separator(stripped)
                     and not LineUtils.VARIABLE_ASSIGNMENT_PATTERN.match(stripped)
                 ):
-                    # This is a target line inside a conditional block
-                    # It IS a target, but it should be flush-left for proper Make syntax
                     return True
             # Outside conditional blocks, indented lines are not targets
             return False
@@ -990,6 +988,29 @@ class LineUtils:
         """
         # Match $(number), $(NAME), ${number}, ${NAME}
         return bool(re.fullmatch(r"\$[({][^})]+[})]", target_name))
+
+    @staticmethod
+    def colon_is_target_separator(line: str) -> bool:
+        """
+        Returns True if the colon in the line is likely a target separator,
+        not part of a variable reference or inside quotes.
+        """
+        in_single = in_double = False
+        i = 0
+        while i < len(line):
+            c = line[i]
+            if c == '"' and not in_single:
+                in_double = not in_double
+            elif c == "'" and not in_double:
+                in_single = not in_single
+            elif c == ":" and not in_single and not in_double:
+                # Check if colon is part of a variable reference like $@
+                if i > 0 and line[i - 1] == "$":
+                    pass  # skip, part of variable
+                else:
+                    return True
+            i += 1
+        return False
 
 
 class ShellUtils:
