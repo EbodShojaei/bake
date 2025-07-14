@@ -359,7 +359,9 @@ def validate(
 
 @app.command()
 def format(
-    files: list[Path] = typer.Argument(..., help="Makefile(s) to format."),
+    files: list[Path] = typer.Argument(
+        None, help="Makefile(s) to format (not needed with --stdin)."
+    ),
     check: bool = typer.Option(
         False,
         "--check",
@@ -382,6 +384,9 @@ def format(
     validate_syntax: bool = typer.Option(
         False, "--validate", help="Validate syntax after formatting."
     ),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read from stdin and write to stdout."
+    ),
 ) -> None:
     """Format Makefiles according to style rules (use 'validate' command for syntax checking)."""
     setup_logging(verbose, debug)
@@ -397,6 +402,35 @@ def format(
 
         # Initialize formatter
         formatter = MakefileFormatter(config)
+
+        # Handle stdin mode
+        if stdin:
+            if files:
+                console.print(
+                    "[red]Error:[/red] Cannot specify files when using --stdin"
+                )
+                raise typer.Exit(1)
+
+            import sys
+
+            content = sys.stdin.read()
+            result = formatter.format(content)
+
+            if result.errors:
+                for error in result.errors:
+                    print(f"Error: {error}", file=sys.stderr)
+                raise typer.Exit(2)
+
+            # Write formatted content to stdout
+            sys.stdout.write(result.content)
+            return
+
+        # Validate that files are provided when not using stdin
+        if not files:
+            console.print(
+                "[red]Error:[/red] No files specified. Use --stdin to read from stdin or provide file paths."
+            )
+            raise typer.Exit(1)
 
         # Process files with progress indication
         any_changed = False
@@ -484,13 +518,13 @@ def format(
                         # Validate syntax if requested
                         if validate_syntax:
                             try:
-                                result = subprocess.run(
+                                proc = subprocess.run(
                                     ["make", "-f", str(file_path), "--dry-run"],
                                     capture_output=True,
                                     text=True,
                                     timeout=5,
                                 )
-                                if result.returncode != 0:
+                                if proc.returncode != 0:
                                     output_console.print(
                                         "[red]Warning:[/red] Formatted file has syntax errors"
                                     )
