@@ -1,7 +1,7 @@
 """Utility functions for line processing in Makefile formatting."""
 
 import re
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 from ..constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS, DECLARATIVE_TARGETS
 from ..constants.shell_commands import SHELL_COMMAND_INDICATORS
@@ -1083,8 +1083,8 @@ class MakefileParser:
         Returns:
             List of tuples containing (target_name, recipe_lines)
         """
-        targets = []
-        current_target = None
+        targets: list[tuple[str, list[str]]] = []
+        current_target: Union[str, None] = None
         current_recipe: list[str] = []
 
         for line in lines:

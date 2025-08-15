@@ -421,6 +421,10 @@ def format(
                     print(f"Error: {error}", file=sys.stderr)
                 raise typer.Exit(2)
 
+            if check and content != result.content:
+                output_console.print("[yellow]Would reformat stdin[/yellow]")
+                raise typer.Exit(1)
+
             # Write formatted content to stdout
             sys.stdout.write(result.content)
             return
