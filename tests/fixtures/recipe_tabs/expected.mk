@@ -4,14 +4,14 @@ all: build test
 build:
 	echo "This line should use a tab, not spaces"
 	gcc -o hello hello.c \
-			-Wall \
-			-Werror
+	-Wall \
+	-Werror
 
 test: build
 	echo "This line already has a tab"
 	echo "This line has spaces but should be converted to tab" \
-		--long-arg \
-		--another-arg
+	--long-arg \
+	--another-arg
 
 clean:
 	rm -f hello
@@ -20,6 +20,6 @@ clean:
 # Test shell command indentation preservation
 complex-cmd:
 	perl -p -i -e 'use File::Spec;' \
-               -e' $$path = File::Spec->abs2rel("$(path)");' \
+	-e' $$path = File::Spec->abs2rel("$(path)");' \
                -e's/my \$$var = .*/my \$$var = "$$path";/g' \
-			-- "$(file)"
+               -- "$(file)"

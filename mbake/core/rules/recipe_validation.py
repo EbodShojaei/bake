@@ -1,10 +1,9 @@
 """Rule for validating recipe line formatting."""
 
+import re
 from typing import Any
 
-from ...constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils.line_utils import LineUtils
 
 
 class RecipeValidationRule(FormatterPlugin):
@@ -33,9 +32,13 @@ class RecipeValidationRule(FormatterPlugin):
                 error_msg = "Missing required tab separator in recipe line"
 
                 if check_mode:
-                    check_messages.append(
-                        LineUtils.format_error_message(error_msg, line_num, config)
-                    )
+                    gnu_format = config.get("gnu_error_format", False)
+                    if gnu_format:
+                        check_messages.append(
+                            f"Makefile:{line_num}: Error: {error_msg}"
+                        )
+                    else:
+                        check_messages.append(f"Line {line_num}: Error: {error_msg}")
                 else:
                     if fix_missing_tabs:
                         # Fix by replacing leading spaces with a tab
@@ -45,9 +48,11 @@ class RecipeValidationRule(FormatterPlugin):
                         changed = True
                     else:
                         # Report as error but don't fix
-                        errors.append(
-                            LineUtils.format_error_message(error_msg, line_num, config)
-                        )
+                        gnu_format = config.get("gnu_error_format", False)
+                        if gnu_format:
+                            errors.append(f"Makefile:{line_num}: Error: {error_msg}")
+                        else:
+                            errors.append(f"Line {line_num}: Error: {error_msg}")
                         formatted_lines.append(line)
             else:
                 formatted_lines.append(line)
@@ -102,12 +107,12 @@ class RecipeValidationRule(FormatterPlugin):
                     "endef",
                 )
             )
-            or stripped in ALL_SPECIAL_MAKE_TARGETS
+            or stripped in self._get_special_make_targets()
         ):
             return False
 
         # Skip content inside define blocks
-        if LineUtils.is_inside_define_block(line_index, all_lines):
+        if self._is_inside_define_block(line_index, all_lines):
             return False
 
         # Skip target lines themselves (they shouldn't start with tabs)
@@ -116,20 +121,51 @@ class RecipeValidationRule(FormatterPlugin):
         ):
             return False
 
-        # Use the same logic as the formatter - check if this should be a recipe line
-        return LineUtils.is_recipe_line(line, line_index, all_lines)
+        # Check if this should be a recipe line based on context
+        return self._should_be_recipe_line(line, line_index, all_lines)
 
-    def _follows_target_line(self, line_index: int, all_lines: list[str]) -> bool:
-        """
-        Check if this line follows a target definition (directly or through other recipe lines).
+    def _get_special_make_targets(self) -> set[str]:
+        """Get all special Makefile targets."""
+        return {
+            ".PHONY",
+            ".SUFFIXES",
+            ".PRECIOUS",
+            ".INTERMEDIATE",
+            ".SECONDARY",
+            ".DELETE_ON_ERROR",
+            ".IGNORE",
+            ".SILENT",
+            ".EXPORT_ALL_VARIABLES",
+            ".NOTPARALLEL",
+            ".ONESHELL",
+            ".POSIX",
+            ".LOW_RESOLUTION_TIME",
+            ".SECOND_EXPANSION",
+            ".SECONDEXPANSION",
+            ".VARIABLES",
+            ".MAKE",
+            ".WAIT",
+            ".INCLUDE_DIRS",
+            ".LIBPATTERNS",
+        }
 
-        Args:
-            line_index: Index of the current line
-            all_lines: All lines in the file
+    def _is_inside_define_block(self, line_index: int, all_lines: list[str]) -> bool:
+        """Check if the current line is inside a define block."""
+        define_stack = []
+        for i in range(line_index):
+            check_line = all_lines[i].strip()
+            if check_line.startswith("define "):
+                define_stack.append(i)
+            elif check_line == "endef" and define_stack:
+                define_stack.pop()
 
-        Returns:
-            True if this line should be part of a recipe
-        """
+        # If define_stack is not empty, we're inside a define block
+        return bool(define_stack)
+
+    def _should_be_recipe_line(
+        self, line: str, line_index: int, all_lines: list[str]
+    ) -> bool:
+        """Check if a line should be a recipe line based on context."""
         # Look backward to find what this line belongs to
         for i in range(line_index - 1, -1, -1):
             prev_line = all_lines[i]
@@ -149,10 +185,59 @@ class RecipeValidationRule(FormatterPlugin):
                 continue
 
             # If we find a target line, this should be a recipe
-            if LineUtils.is_target_line(prev_line, i, all_lines):
+            if self._is_target_line(prev_line, i, all_lines):
                 return True
 
             # If we find a non-target, non-recipe line, this is not a recipe
             break
+
+        return False
+
+    def _is_target_line(self, line: str, line_index: int, all_lines: list[str]) -> bool:
+        """Check if a line is a target definition."""
+        stripped = line.strip()
+
+        # Skip empty lines and comments
+        if not stripped or stripped.startswith("#"):
+            return False
+
+        # Skip variable assignments
+        if "=" in stripped and (
+            ":" not in stripped
+            or ":=" in stripped
+            or "+=" in stripped
+            or "?=" in stripped
+        ):
+            return False
+
+        # Skip export variable assignments
+        if stripped.startswith("export ") and "=" in stripped:
+            return False
+
+        # Skip function calls and other constructs
+        if stripped.startswith("$(") and stripped.endswith(")"):
+            return False
+
+        # Skip lines that are clearly not target definitions
+        if stripped.startswith("@") or "$(" in stripped:
+            return False
+
+        # Check for target pattern: name: prerequisites
+        target_pattern = re.compile(r"^([^:=]+):(:?)\s*(.*)$")
+        match = target_pattern.match(stripped)
+        if match:
+            target_name = match.group(1).strip()
+            target_body = match.group(3).strip()
+
+            # Skip comment-only targets (documentation targets)
+            if target_body.startswith("##"):
+                return False
+
+            # Skip target-specific variable assignments
+            if re.match(r"^\s*[A-Z_][A-Z0-9_]*\s*[+:?]?=", target_body):
+                return False
+
+            # Skip template placeholders
+            return not re.fullmatch(r"\$[({][^})]+[})]", target_name)
 
         return False

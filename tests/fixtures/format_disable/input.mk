@@ -23,8 +23,8 @@ NO_FORMAT_1= \
   45678 \
 
 badly_spaced_target:
-  echo 'these spaces will NOT become tabs'
-    echo 'even weird indentation is preserved'
+	echo 'these spaces will NOT become tabs'
+	echo 'even weird indentation is preserved'
 .PHONY:not_grouped
 #bake-format on
 
@@ -40,4 +40,4 @@ ANOTHER_UNFORMATTED_VAR:=no_spaces_added_here
 # Back to normal formatting
 VAR3:=value3
 target3:
-    echo 'back to normal' 
+	echo 'back to normal'

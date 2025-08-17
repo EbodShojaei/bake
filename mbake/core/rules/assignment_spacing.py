@@ -1,9 +1,9 @@
 """Assignment operator spacing rule for Makefiles."""
 
+import re
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils import LineUtils, PatternUtils
 
 
 class AssignmentSpacingRule(FormatterPlugin):
@@ -16,43 +16,62 @@ class AssignmentSpacingRule(FormatterPlugin):
         self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
     ) -> FormatResult:
         """Normalize spacing around assignment operators."""
-        formatted_lines: list[str] = []
+        formatted_lines = []
         changed = False
         errors: list[str] = []
         warnings: list[str] = []
 
         space_around_assignment = config.get("space_around_assignment", True)
 
-        def process_assignment_line(line: str, line_index: int) -> tuple[str, bool]:
-            """Process a single line for assignment spacing."""
-            # Skip recipe lines completely - they're shell commands, not makefile assignments
-            if LineUtils.is_recipe_line(line, line_index, lines):
-                return line, False
+        for line in lines:
+            # Skip recipe lines (lines starting with tab)
+            if line.startswith("\t"):
+                formatted_lines.append(line)
+                continue
 
-            # Skip continuation lines (part of a multi-line assignment value)
-            if line_index > 0:
-                prev_line = lines[line_index - 1]
-                # If the previous line is a continuation, skip this line
-                if LineUtils.is_continuation_line(prev_line):
-                    return line, False
+            # Skip comments and empty lines
+            if line.strip().startswith("#") or not line.strip():
+                formatted_lines.append(line)
+                continue
 
-            # Check if the trimmed line is actually an assignment (regardless of indentation)
-            if PatternUtils.contains_assignment(line.strip()):
-                new_line = PatternUtils.apply_assignment_spacing(
-                    line, space_around_assignment
+            # Check if line contains assignment operator
+            # Look for variable assignment at the start of the line
+            # Use a more specific regex to avoid splitting := incorrectly
+            # Variable assignments can contain variable references in their values
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*(:=|\+=|\?=|=|!=)\s*", line):
+                # Skip substitution references like $(VAR:pattern=replacement) which are not assignments
+                if re.search(r"\$\([^)]*:[^)]*=[^)]*\)", line):
+                    formatted_lines.append(line)
+                    continue
+
+                # Extract the parts - be more careful about the operator
+                # Use a more specific regex to avoid splitting := incorrectly
+                match = re.match(
+                    r"^([A-Za-z_][A-Za-z0-9_]*)\s*(:=|\+=|\?=|=|!=)\s*(.*)", line
                 )
-                return new_line, new_line != line
-            else:
-                return line, False
+                if match:
+                    var_name = match.group(1)
+                    operator = match.group(2)
+                    value = match.group(3)
 
-        formatted_lines, changed = LineUtils.process_lines_with_standard_skipping(
-            lines=lines,
-            line_processor=process_assignment_line,
-            skip_recipe=False,  # We handle recipe detection in our processor
-            skip_comments=True,
-            skip_empty=True,
-            skip_define_blocks=True,  # Skip assignment formatting inside define blocks
-        )
+                    # Only format if this is actually an assignment (not a target)
+                    if operator in ["=", ":=", "?=", "+=", "!="]:
+                        if space_around_assignment:
+                            new_line = f"{var_name} {operator} {value}"
+                        else:
+                            new_line = f"{var_name}{operator}{value}"
+
+                        if new_line != line:
+                            changed = True
+                            formatted_lines.append(new_line)
+                        else:
+                            formatted_lines.append(line)
+                    else:
+                        formatted_lines.append(line)
+                else:
+                    formatted_lines.append(line)
+            else:
+                formatted_lines.append(line)
 
         return FormatResult(
             lines=formatted_lines,

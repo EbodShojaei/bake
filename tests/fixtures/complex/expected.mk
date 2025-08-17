@@ -3,19 +3,21 @@ CC = gcc
 CFLAGS := -Wall -Wextra
 LDFLAGS = -lpthread
 
-SOURCES = main.c utils.c parser.c
+SOURCES = main.c \
+    utils.c \
+        parser.c
 
-.PHONY: all clean install test
-
+.PHONY: clean
 all: $(TARGET)
 	echo "Building project"
 	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCES)
 
+.PHONY: test
 # Conditional with poor formatting
 ifeq ($(DEBUG),yes)
-  EXTRA_FLAGS = -g -O0
+EXTRA_FLAGS = -g -O0
 else
-  EXTRA_FLAGS = -O2
+    EXTRA_FLAGS=-O2
 endif
 
 test: $(TARGET)
@@ -30,5 +32,6 @@ test: $(TARGET)
 clean:
 	rm -f *.o $(TARGET)
 
+.PHONY: all install
 install: $(TARGET)
 	cp $(TARGET) /usr/local/bin/

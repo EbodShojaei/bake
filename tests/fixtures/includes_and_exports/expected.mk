@@ -9,7 +9,7 @@ include   platform/linux.mk
 endif
 
 ifneq ($(TOOLCHAIN),)
-  include toolchain/$(TOOLCHAIN).mk
+include toolchain/$(TOOLCHAIN).mk
 endif
 
 # Optional includes
@@ -31,7 +31,7 @@ export PATH:=/usr/local/bin:$(PATH)
 export    PKG_CONFIG_PATH += /usr/local/lib/pkgconfig
 
 # VPATH with poor formatting
-VPATH = src:include:build
+VPATH = src: include:build
 vpath %.c    src/
 vpath   %.h  include/
 vpath %.o   build/
@@ -46,3 +46,8 @@ export   ANOTHER_VAR
 INCLUDE_DIR = config
 include $(INCLUDE_DIR)/settings.mk
 include   $(wildcard $(INCLUDE_DIR)/*.mk)
+
+# Adding a default target to prevent "No targets" error
+.PHONY: all
+all:
+	@echo "Makefile processed successfully."

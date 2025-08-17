@@ -24,44 +24,46 @@ class FinalNewlineRule(FormatterPlugin):
                 lines=lines, changed=False, errors=[], warnings=[], check_messages=[]
             )
 
+        # Check if file is empty
+        if not lines:
+            return FormatResult(
+                lines=lines, changed=False, errors=[], warnings=[], check_messages=[]
+            )
+
         formatted_lines = list(lines)
         changed = False
         errors: list[str] = []
         warnings: list[str] = []
         check_messages: list[str] = []
 
-        # Check if file is empty
-        if not lines:
-            return FormatResult(
-                lines=lines,
-                changed=False,
-                errors=errors,
-                warnings=warnings,
-                check_messages=check_messages,
-            )
-
-        # Check if the original content was missing a final newline
-        # This information is passed through context by the formatter
+        # Check if the last line ends with a newline
+        # In check mode, respect the original_content_ends_with_newline parameter
         original_ends_with_newline = context.get(
-            "original_content_ends_with_newline", True
+            "original_content_ends_with_newline", False
         )
 
-        # If original content didn't end with newline, we need to report it
-        if not original_ends_with_newline:
+        # If original content already ends with newline, no change needed
+        if check_mode and original_ends_with_newline:
+            return FormatResult(
+                lines=lines, changed=False, errors=[], warnings=[], check_messages=[]
+            )
+
+        # If the last line is not empty, we need to add a newline
+        if formatted_lines and formatted_lines[-1] != "":
             if check_mode:
-                # Generate check message pointing to the last line of the ORIGINAL file
-                # (the line that's missing the newline, not the line after it)
-                original_line_count = context.get("original_line_count", len(lines))
-                gnu_format = config.get("_global", {}).get("gnu_error_format", True)
+                # Generate check message
+                line_count = len(formatted_lines)
+                gnu_format = config.get("gnu_error_format", False)
 
                 if gnu_format:
-                    message = f"{original_line_count}: Error: Missing final newline"
+                    message = f"Makefile:{line_count}: Error: Missing final newline"
                 else:
-                    message = (
-                        f"Error: Missing final newline (line {original_line_count})"
-                    )
+                    message = f"Line {line_count}: Error: Missing final newline"
 
                 check_messages.append(message)
+            else:
+                # Add empty line to ensure final newline
+                formatted_lines.append("")
 
             changed = True
 

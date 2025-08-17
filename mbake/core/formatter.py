@@ -48,27 +48,27 @@ class MakefileFormatter:
         self.config = config
         self.format_disable_handler = FormatDisableHandler()
 
-        # Initialize all formatting rules with correct priority order
+        # Complete rule system with all formatting rules
         self.rules: list[FormatterPlugin] = [
-            # Error detection rules (run first on original line numbers)
-            DuplicateTargetRule(),  # priority 5 - detect before any line modifications
-            RecipeValidationRule(),  # priority 8 - validate recipe tabs before formatting
-            # Basic formatting rules (high priority)
-            WhitespaceRule(),  # priority 10
-            TabsRule(),  # priority 20
-            ShellFormattingRule(),  # priority 25
-            AssignmentSpacingRule(),  # priority 30
-            TargetSpacingRule(),  # priority 35
-            PatternSpacingRule(),  # priority 37
-            # PHONY-related rules (run in sequence)
-            PhonyInsertionRule(),  # priority 39 - auto-insert first
-            PhonyRule(),  # priority 40 - group/organize
-            PhonyDetectionRule(),  # priority 41 - enhance after grouping
+            # Error detection rules (run first)
+            DuplicateTargetRule(),  # Detect duplicate targets
+            RecipeValidationRule(),  # Validate recipe syntax
+            # Basic formatting rules
+            WhitespaceRule(),  # Clean up whitespace
+            TabsRule(),  # Ensure proper recipe tabs
+            ShellFormattingRule(),  # Format shell commands
+            AssignmentSpacingRule(),  # Format variable assignments
+            TargetSpacingRule(),  # Format target lines
+            PatternSpacingRule(),  # Format pattern rules
+            # PHONY-related rules
+            PhonyInsertionRule(),  # Auto-insert missing .PHONY
+            PhonyRule(),  # Group and organize .PHONY
+            PhonyDetectionRule(),  # Detect phony targets
             # Advanced rules
-            ContinuationRule(),  # priority 50
-            ConditionalRule(),  # priority 55
-            # Final cleanup rules (run last)
-            FinalNewlineRule(),  # priority 70 - check final newline
+            ContinuationRule(),  # Handle line continuations
+            ConditionalRule(),  # Format conditionals
+            # Final cleanup
+            FinalNewlineRule(),  # Ensure final newline
         ]
 
         # Sort rules by priority
@@ -191,94 +191,9 @@ class MakefileFormatter:
             )
             context["original_line_count"] = len(lines)
 
-        # --- PATCH START ---
-        # Split lines into blocks: outside and inside define/endef
-        formatted_lines = []
+        # Simplified formatting - apply rules directly to lines
+        formatted_lines = original_lines.copy()
         all_errors = []
-        in_define = False
-        block: list[str] = []
-        current_line_index = 0
-        block_start_index = 0
-
-        for line in original_lines:
-            if line.strip().startswith("define ") or line.strip() == "define":
-                in_define = True
-                if block:
-                    # Format previous block
-                    block_lines, block_errors = self._format_block(
-                        block,
-                        check_only,
-                        config_dict,
-                        context,
-                        disabled_regions,
-                        original_lines,
-                        block_start_index,
-                    )
-                    formatted_lines.extend(block_lines)
-                    all_errors.extend(block_errors)
-                    block = []
-                formatted_lines.append(line)
-                current_line_index += 1
-                block_start_index = current_line_index
-                continue
-            if line.strip() == "endef":
-                in_define = False
-                formatted_lines.append(line)
-                current_line_index += 1
-                block_start_index = current_line_index
-                continue
-            if in_define:
-                # Do not format lines inside define/endef
-                formatted_lines.append(line)
-            else:
-                block.append(line)
-            current_line_index += 1
-
-        if block:
-            block_lines, block_errors = self._format_block(
-                block,
-                check_only,
-                config_dict,
-                context,
-                disabled_regions,
-                original_lines,
-                block_start_index,
-            )
-            formatted_lines.extend(block_lines)
-            all_errors.extend(block_errors)
-        # --- PATCH END ---
-
-        return formatted_lines, all_errors
-
-    def _format_block(
-        self,
-        block_lines: list[str],
-        check_only: bool,
-        config_dict: dict,
-        context: dict,
-        disabled_regions: list[FormatRegion],
-        original_lines: list[str],
-        block_start_index: int,
-    ) -> tuple[list[str], list[str]]:
-        lines = block_lines.copy()
-        errors: list[str] = []
-
-        # Create a mapping of lines in disabled regions
-        disabled_line_indices = set()
-        for region in disabled_regions:
-            for i in range(region.start_line, region.end_line):
-                disabled_line_indices.add(i)
-
-        # Check if this entire block is within a disabled region
-        block_disabled_lines = []
-        for i, _line in enumerate(block_lines):
-            line_index = block_start_index + i
-            if line_index in disabled_line_indices:
-                block_disabled_lines.append(i)
-
-        # If entire block is disabled, skip formatting
-        if len(block_disabled_lines) == len(block_lines):
-            return block_lines, errors
 
         # Apply formatting rules in priority order
         for rule in self.rules:
@@ -286,104 +201,60 @@ class MakefileFormatter:
                 logger.debug(f"Applying rule: {rule.name}")
 
             try:
-                # Handle format disable regions - only format lines not in disabled regions
-                if disabled_line_indices:
-                    lines_to_format: list[str] = []
-                    line_mapping = {}  # Track original line indices
+                # Handle format disable regions
+                if disabled_regions:
+                    # Only format lines not in disabled regions
+                    lines_to_format = []
+                    line_mapping = {}
 
-                    # Group consecutive non-disabled lines into segments
-                    segments = []
-                    current_segment: list[str] = []
-                    for line_index, line in enumerate(lines):
-                        global_line_index = block_start_index + line_index
-                        if global_line_index not in disabled_line_indices:
-                            # This line is not disabled
-                            if not current_segment:
-                                pass  # Start new segment
-                            current_segment.append(line)
-                            line_mapping[len(lines_to_format)] = line_index
+                    for i, line in enumerate(formatted_lines):
+                        if not self._is_line_disabled(i, disabled_regions):
                             lines_to_format.append(line)
-                        else:
-                            # This line is disabled
-                            if current_segment:
-                                segments.append(
-                                    (
-                                        current_segment.copy(),
-                                        len(lines_to_format) - len(current_segment),
-                                    )
-                                )
-                                current_segment = []
-
-                    # Don't forget the last segment
-                    if current_segment:
-                        segments.append(
-                            (
-                                current_segment.copy(),
-                                len(lines_to_format) - len(current_segment),
-                            )
-                        )
+                            line_mapping[len(lines_to_format) - 1] = i
 
                     if lines_to_format:
-                        # Format only the non-disabled lines
                         result = rule.format(
                             lines_to_format, config_dict, check_only, **context
                         )
 
-                        # Process errors with proper line number formatting
+                        # Process errors
                         for error in result.errors:
-                            if ":" in error and error.split(":")[0].isdigit():
-                                line_num = int(error.split(":")[0])
-                                message = ":".join(error.split(":")[2:]).strip()
-                                formatted_error = self._format_error(
-                                    message, line_num, config_dict
-                                )
-                                errors.append(formatted_error)
-                            else:
-                                errors.append(error)
+                            formatted_error = self._format_error(error, 0, config_dict)
+                            all_errors.append(formatted_error)
 
-                        # Also collect check_messages when in check mode
-                        if check_only:
-                            for check_message in result.check_messages:
-                                errors.append(check_message)
-
-                        # Merge formatted lines back into original positions
-                        formatted_lines_to_format = result.lines
-                        new_lines = lines.copy()
+                        # Merge formatted lines back
                         for formatted_index, original_index in line_mapping.items():
-                            if formatted_index < len(formatted_lines_to_format):
-                                new_lines[original_index] = formatted_lines_to_format[
+                            if formatted_index < len(result.lines):
+                                formatted_lines[original_index] = result.lines[
                                     formatted_index
                                 ]
-
-                        lines = new_lines
                 else:
                     # No disabled regions, format normally
-                    result = rule.format(lines, config_dict, check_only, **context)
-                    lines = result.lines
+                    result = rule.format(
+                        formatted_lines, config_dict, check_only, **context
+                    )
+                    formatted_lines = result.lines
 
-                    # Process errors with proper line number formatting
+                    # Process errors
                     for error in result.errors:
-                        if ":" in error and error.split(":")[0].isdigit():
-                            line_num = int(error.split(":")[0])
-                            message = ":".join(error.split(":")[2:]).strip()
-                            formatted_error = self._format_error(
-                                message, line_num, config_dict
-                            )
-                            errors.append(formatted_error)
-                        else:
-                            errors.append(error)
-
-                    # Also collect check_messages when in check mode
-                    if check_only:
-                        for check_message in result.check_messages:
-                            errors.append(check_message)
+                        formatted_error = self._format_error(error, 0, config_dict)
+                        all_errors.append(formatted_error)
 
             except Exception as e:
                 error_msg = f"Error in rule {rule.name}: {e}"
                 logger.error(error_msg)
-                errors.append(error_msg)
+                all_errors.append(error_msg)
 
-        return lines, errors
+        return formatted_lines, all_errors
+
+    def _is_line_disabled(
+        self, line_index: int, disabled_regions: list[FormatRegion]
+    ) -> bool:
+        """Check if a line is in a disabled region."""
+        for region in disabled_regions:
+            if region.start_line <= line_index < region.end_line:
+                return True
+        return False
 
     def _format_error(self, message: str, line_num: int, config: dict) -> str:
         """Format an error message with consistent GNU or traditional format."""

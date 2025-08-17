@@ -7,7 +7,14 @@ CXXFLAGS = $(CFLAGS) -std=c++17
 LDFLAGS = -lpthread
 
 # Multi-line variable assignment
-SOURCES = main.c utils.c parser.c
+SOURCES = main.c \
+  utils.c \
+	parser.c
 
 # Function with nested calls
 OBJECTS = $(patsubst %.c,%.o,$(filter %.c,$(SOURCES)))
+
+# Add a default target
+.PHONY: all
+all:
+	@echo "Makefile processed successfully."

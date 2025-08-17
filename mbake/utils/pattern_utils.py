@@ -83,8 +83,8 @@ class PatternUtils:
         Returns:
             Formatted line or None if no changes needed
         """
-        # Skip recipe lines (they start with tab or space)
-        if line.startswith(("\t", " ")):
+        # Skip recipe lines (they start with tab)
+        if line.startswith("\t"):
             return None
 
         # Handle target colons (but not in conditionals, functions, assignments, or pattern rules)
@@ -96,10 +96,11 @@ class PatternUtils:
             and line.count(":") == 1
         ):  # Only single colon lines
             # Match target: dependencies pattern
-            colon_match = re.match(r"^([^:]+):(.*)$", line)
+            colon_match = re.match(r"^(\s*)([^:]+):(.*)$", line)
             if colon_match:
-                target_part = colon_match.group(1)
-                deps_part = colon_match.group(2)
+                leading_whitespace = colon_match.group(1)
+                target_part = colon_match.group(2)
+                deps_part = colon_match.group(3)
 
                 # Format target part (remove trailing spaces)
                 if space_before:
@@ -118,7 +119,7 @@ class PatternUtils:
                     # Normalize multiple spaces between dependencies to single spaces
                     deps_part = " ".join(deps_part.split()) if deps_part.strip() else ""
 
-                new_line = target_part + ":" + deps_part
+                new_line = leading_whitespace + target_part + ":" + deps_part
                 if new_line != line:
                     return new_line
 
@@ -137,25 +138,36 @@ class PatternUtils:
             Formatted line or None if no changes needed
         """
         # Handle static pattern rules with two colons specially
-        if re.search(r".*:\s*%.*\s*:\s*", line):
+        # Skip assignment lines (they contain = operators)
+        if re.search(r".*:\s*%.*\s*:\s*", line) and not re.search(r"[=]", line):
             # Static pattern rule: targets: pattern: prerequisites
-            static_pattern_match = re.match(r"^([^:]+):\s*([^:]+)\s*:\s*(.*)$", line)
+            static_pattern_match = re.match(
+                r"^(\s*)([^:]+):\s*([^:]+)\s*:\s*(.*)$", line
+            )
             if static_pattern_match:
-                targets_part = static_pattern_match.group(1).rstrip()
-                pattern_part = static_pattern_match.group(2).strip()
-                prereqs_part = static_pattern_match.group(3).strip()
+                leading_whitespace = static_pattern_match.group(1)
+                targets_part = static_pattern_match.group(2).rstrip()
+                pattern_part = static_pattern_match.group(3).strip()
+                prereqs_part = static_pattern_match.group(4).strip()
 
-                new_line = f"{targets_part}: {pattern_part}: {prereqs_part}"
+                new_line = (
+                    leading_whitespace
+                    + f"{targets_part}: {pattern_part}: {prereqs_part}"
+                )
                 if new_line != line:
                     return new_line
 
         # Handle simple pattern rules (%.o: %.c)
         elif re.search(r"%.*:", line) and line.count(":") == 1:
             # Simple pattern rule
-            pattern_match = re.match(r"^([^:]+):(.*)$", line)
+            pattern_match = re.match(r"^(\s*)([^:]+):(.*)$", line)
             if pattern_match:
-                pattern_part = pattern_match.group(1).rstrip()
-                prereqs_part = pattern_match.group(2)
+                leading_whitespace = pattern_match.group(1)
+                pattern_part = pattern_match.group(2)
+                prereqs_part = pattern_match.group(3)
+
+                # Format pattern part (remove trailing spaces)
+                pattern_part = pattern_part.rstrip()
 
                 if space_after_colon:
                     if prereqs_part.startswith(" "):
@@ -165,7 +177,7 @@ class PatternUtils:
                 else:
                     prereqs_part = prereqs_part.lstrip()
 
-                new_line = pattern_part + ":" + prereqs_part
+                new_line = leading_whitespace + pattern_part + ":" + prereqs_part
                 if new_line != line:
                     return new_line
 

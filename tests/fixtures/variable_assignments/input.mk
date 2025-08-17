@@ -12,4 +12,9 @@ SOURCES = main.c \
 	parser.c
 
 # Function with nested calls
-OBJECTS=$(patsubst %.c,%.o,$(filter %.c,$(SOURCES))) 
+OBJECTS=$(patsubst %.c,%.o,$(filter %.c,$(SOURCES)))
+
+# Add a default target
+.PHONY: all
+all:
+	@echo "Makefile processed successfully." 

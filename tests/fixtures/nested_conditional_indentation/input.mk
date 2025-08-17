@@ -28,3 +28,7 @@ define FOO_template
 something_else
 endef
 endif
+
+.PHONY: all
+all:
+	@echo "Makefile processed successfully."

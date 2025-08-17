@@ -28,7 +28,7 @@ class FormatterConfig:
     """Configuration for Makefile formatting rules."""
 
     # Indentation settings
-    use_tabs: bool = True
+    use_tabs: bool = False  # Default to spaces
     tab_width: int = 4
 
     # Spacing settings
@@ -47,7 +47,9 @@ class FormatterConfig:
 
     # General settings
     remove_trailing_whitespace: bool = True
-    ensure_final_newline: bool = True
+    ensure_final_newline: bool = (
+        False  # Don't enforce by default - this is a style choice
+    )
     normalize_empty_lines: bool = True
     max_consecutive_empty_lines: int = 2
     fix_missing_recipe_tabs: bool = True
@@ -135,14 +137,36 @@ class Config:
             config_path: Path to config file, or None for default
             explicit: True if config_path was explicitly specified by user
         """
-        try:
-            return cls.load(config_path)
-        except FileNotFoundError:
-            if explicit:
-                # If user explicitly specified a config file, error if it doesn't exist
-                raise
-            # Return default configuration for default path that doesn't exist
-            return cls(formatter=FormatterConfig())
+        if config_path is not None:
+            # User explicitly specified a config file
+            try:
+                return cls.load(config_path)
+            except FileNotFoundError:
+                if explicit:
+                    raise
+                return cls(formatter=FormatterConfig())
+
+        # Try to find config file in current directory first, then home directory
+
+        current_dir_config = Path.cwd() / ".bake.toml"
+        home_config = Path.home() / ".bake.toml"
+
+        if current_dir_config.exists():
+            try:
+                return cls.load(current_dir_config)
+            except Exception:
+                # If current directory config is invalid, fall back to home directory
+                pass
+
+        if home_config.exists():
+            try:
+                return cls.load(home_config)
+            except Exception:
+                # If home directory config is invalid, fall back to defaults
+                pass
+
+        # Return default configuration if no config file found
+        return cls(formatter=FormatterConfig())
 
     def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""

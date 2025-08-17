@@ -14,4 +14,4 @@ deploy:
 		cat $$file | \
 		sed 's/foo/bar/g' > \
 		processed_$$(basename $$file); \
-	done 
+	done

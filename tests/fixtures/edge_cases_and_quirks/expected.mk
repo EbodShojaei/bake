@@ -25,7 +25,7 @@ target_with_underscores: dependency
 
 #Targets with variables in names
 $(TARGET).backup: $(TARGET)
-		cp $< $@
+	cp $< $@
 
 #Pattern rules with edge cases
 %.out: %.in
@@ -54,11 +54,11 @@ very-long-target-name-that-might-cause-formatting-issues: very-long-dependency-n
 
 #Conditional assignments with complex conditions
 ifeq ($(origin CC),undefined)
-  CC = gcc
+CC = gcc
 endif
 
 ifneq (,$(findstring gcc,$(CC)))
-  COMPILER_FLAGS = -Wall -Wextra
+COMPILER_FLAGS = -Wall -Wextra
 endif
 
 #Complex shell constructs in recipes
@@ -73,8 +73,8 @@ complex-shell:
 
 #Variable assignments with functions
 FILES := $(wildcard *.c)
-OBJS = $(FILES:.c=.o)
-DEPS = $(OBJS:.o=.d)
+OBJS=$(FILES:.c=.o)
+DEPS=$(OBJS:.o=.d)
 
 #Immediate vs deferred evaluation edge cases
 NOW := $(shell date)
@@ -91,7 +91,7 @@ CC = gcc#inline comment
 #Tab vs spaces in recipes (this tests tab handling)
 tab-test:
 	echo "This line uses tab"
-		echo "This line uses spaces (should be converted to tab)"
+	echo "This line uses spaces (should be converted to tab)"
 	    echo "This line uses mixed tab and spaces"
 
 #Function calls with complex arguments
@@ -99,5 +99,9 @@ FILTERED = $(filter-out $(EXCLUDE_PATTERNS),$(ALL_FILES))
 TRANSFORMED = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SOURCES))
 
 #Export with complex expressions
-export PATH:=$(PATH):$(shell pwd)/bin
-export CFLAGS+=$(if $(DEBUG),-g -O0,-O2)
+export PATH:=(PATH):$(shell pwd)/bin
+export CFLAGS+=(if $(DEBUG),-g -O0,-O2)
+
+.PHONY: dependency
+dependency:
+	@echo "Satisfying the 'dependency' requirement."

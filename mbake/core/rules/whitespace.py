@@ -3,7 +3,6 @@
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils import LineUtils
 
 
 class WhitespaceRule(FormatterPlugin):
@@ -29,28 +28,11 @@ class WhitespaceRule(FormatterPlugin):
         prev_was_empty = False
 
         for line in lines:
-
-            # Remove trailing whitespace if enabled, but preserve on shell control lines
+            # Remove trailing whitespace if enabled
             if remove_trailing_whitespace:
-                # Check if this is a shell control line that should preserve trailing space
-                stripped_content = line.lstrip("\t ")
-
-                should_preserve_trailing = (
-                    any(
-                        stripped_content.strip().startswith(cmd)
-                        for cmd in ["done", "fi", "esac"]
-                    )
-                    or any(
-                        line.rstrip().endswith(cmd) for cmd in ["done", "fi", "esac"]
-                    )
-                ) and line.endswith(" ")
-
-                if not should_preserve_trailing:
-                    cleaned_line = LineUtils.normalize_whitespace(
-                        line, remove_trailing=True
-                    )
-                    if cleaned_line != line:
-                        changed = True
+                cleaned_line = line.rstrip()
+                if cleaned_line != line:
+                    changed = True
                     line = cleaned_line
 
             # Normalize consecutive empty lines if enabled

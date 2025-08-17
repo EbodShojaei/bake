@@ -17,4 +17,4 @@ test:
 	else \
 		echo "$(TARGET) tests failed"; \
 		exit 1; \
-	fi 
+	fi

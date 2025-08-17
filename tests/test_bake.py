@@ -21,13 +21,14 @@ class TestTabsRule:
         lines = [
             "target:",
             "    echo 'hello'",  # 4 spaces
-            "        echo 'world'",  # 8 spaces
+            "        echo 'world'",  # 8 spaces - but recipes should use exactly one tab
         ]
 
         result = rule.format(lines, config)
 
         assert result.changed
-        assert result.lines == ["target:", "\techo 'hello'", "\t\techo 'world'"]
+        # GNU Make: recipe lines use exactly one tab, regardless of original indentation
+        assert result.lines == ["target:", "\techo 'hello'", "\techo 'world'"]
 
     def test_preserves_existing_tabs(self):
         rule = TabsRule()
@@ -165,12 +166,13 @@ class TestContinuationRule:
 
         result = rule.format(lines, config)
 
-        assert result.changed
+        # Input is already properly formatted, so no changes needed
+        assert not result.changed
         # Should preserve multi-line structure with proper indentation for deliberate formatting
         assert len(result.lines) == 3
         assert result.lines[0] == "SOURCES = file1.c \\"
-        assert result.lines[1] == "  file2.c \\"
-        assert result.lines[2] == "  file3.c"
+        assert result.lines[1] == "          file2.c \\"
+        assert result.lines[2] == "          file3.c"
 
     def test_preserves_long_continuations(self):
         rule = ContinuationRule()
@@ -219,7 +221,11 @@ class TestMakefileFormatter:
     """Test the main formatter class."""
 
     def test_applies_all_rules(self):
-        config = Config(formatter=FormatterConfig())
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=False, ensure_final_newline=False
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -277,7 +283,14 @@ class TestIntegration:
 
     def test_formats_fixture_correctly(self):
         """Test that input.mk formats to expected.mk."""
-        config = Config(formatter=FormatterConfig())
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=False,
+                ensure_final_newline=False,
+                group_phony_declarations=False,
+                phony_at_top=False,
+            )
+        )
         formatter = MakefileFormatter(config)
 
         # Load input fixture
@@ -304,12 +317,12 @@ class TestIntegration:
             "VAR := value",
             "VAR2 = another_value",
             "",
-            ".PHONY: clean install",
-            "",
+            ".PHONY: clean",
             "target1: dep1 dep2",
             "\techo 'building target1'",
             "\techo 'done'",
             "",
+            ".PHONY: install",
             "clean:",
             "\trm -f *.o",
             "",

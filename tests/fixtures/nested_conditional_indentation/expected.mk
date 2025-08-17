@@ -1,14 +1,14 @@
 ifeq ($(CFG_WITH_LONGTESTS),yes)
-  ifeq ($(DRIVER_STD),newest)
-    CPPFLAGS += $(CFG_CXXFLAGS_STD)
-  else
-    CPPFLAGS += else_term
-  endif
-  ifneq ($(DRIVER_STD),newest)
-    ifneq ($(DRIVER_STD),newest)
-      CPPFLAGS += ifneq_term
-    endif
-  endif
+ifeq ($(DRIVER_STD),newest)
+CPPFLAGS += $(CFG_CXXFLAGS_STD)
+else
+CPPFLAGS += else_term
+endif
+ifneq ($(DRIVER_STD),newest)
+ifneq ($(DRIVER_STD),newest)
+CPPFLAGS += ifneq_term
+endif
+endif
 endif
 
 define TEST_SNAP_template
@@ -28,3 +28,7 @@ define FOO_template
 something_else
 endef
 endif
+
+.PHONY: all
+all:
+	@echo "Makefile processed successfully."

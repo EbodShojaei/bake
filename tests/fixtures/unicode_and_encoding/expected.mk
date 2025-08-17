@@ -34,8 +34,8 @@ TEST_EMOJI = 🧪
 
 # File patterns with Unicode
 UNICODE_SOURCES = $(wildcard $(SRC_DIR)/*.c) \
-  $(wildcard $(SRC_DIR)/测试/*.c) \
-  $(wildcard $(SRC_DIR)/тест/*.c)
+                  $(wildcard $(SRC_DIR)/测试/*.c) \
+                  $(wildcard $(SRC_DIR)/тест/*.c)
 
 # Target with Unicode comments
 unicode-demo: # Target with Unicode: 你好世界 🌍

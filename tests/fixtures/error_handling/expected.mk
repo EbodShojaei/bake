@@ -42,7 +42,7 @@ comment-only:
 
 # Targets with weird spacing around semicolons
 one-liner: ;echo "Hello"
-another: ; echo "World"
+another: ;  echo "World"
 
 # Function calls with error conditions
 CHECK_FILE = $(if $(wildcard $(1)),$(1),$(error File $(1) not found))

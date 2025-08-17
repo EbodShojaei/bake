@@ -9,7 +9,7 @@ include   platform/linux.mk
 endif
 
 ifneq ($(TOOLCHAIN),)
-  include toolchain/$(TOOLCHAIN).mk
+include toolchain/$(TOOLCHAIN).mk
 endif
 
 # Optional includes
@@ -45,4 +45,9 @@ export   ANOTHER_VAR
 # Include with variables
 INCLUDE_DIR = config
 include $(INCLUDE_DIR)/settings.mk
-include   $(wildcard $(INCLUDE_DIR)/*.mk) 
+include   $(wildcard $(INCLUDE_DIR)/*.mk)
+
+# Adding a default target to prevent "No targets" error
+.PHONY: all
+all:
+	@echo "Makefile processed successfully." 

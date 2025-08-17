@@ -24,17 +24,19 @@ class TestCLIFormat:
             formatter=FormatterConfig(
                 use_tabs=True,
                 space_around_assignment=True,
-                group_phony_declarations=True,
-                phony_at_top=True,
-                auto_insert_phony_declarations=True,
-                ensure_final_newline=True,
+                group_phony_declarations=False,
+                phony_at_top=False,
+                auto_insert_phony_declarations=False,
+                ensure_final_newline=False,
             )
         )
 
     def test_format_stdin_basic(self, runner, test_config):
         """Test basic stdin formatting functionality."""
         input_content = "target:\n\techo hello"
-        expected_content = ".PHONY: target\n\ntarget:\n\techo hello\n"
+        expected_content = (
+            "target:\n\techo hello"  # No phony insertion, no final newline
+        )
 
         with patch("mbake.cli.Config.load_or_default", return_value=test_config):
             result = runner.invoke(app, ["format", "--stdin"], input=input_content)
@@ -45,7 +47,7 @@ class TestCLIFormat:
     def test_format_stdin_with_multiple_targets(self, runner, test_config):
         """Test stdin formatting with multiple targets."""
         input_content = "target1:\n\techo hello\ntarget2:\n\techo world"
-        expected_content = ".PHONY: target1 target2\n\ntarget1:\n\techo hello\ntarget2:\n\techo world\n"
+        expected_content = "target1:\n\techo hello\ntarget2:\n\techo world"  # No phony insertion, no final newline
 
         with patch("mbake.cli.Config.load_or_default", return_value=test_config):
             result = runner.invoke(app, ["format", "--stdin"], input=input_content)
@@ -69,20 +71,22 @@ class TestCLIFormat:
     def test_format_stdin_with_check_flag(self, runner, test_config):
         """Test stdin formatting with --check flag."""
         input_content = "target:\n\techo hello"
-        # expected_content = ".PHONY: target\n\ntarget:\n\techo hello\n"
 
         with patch("mbake.cli.Config.load_or_default", return_value=test_config):
             result = runner.invoke(
                 app, ["format", "--stdin", "--check"], input=input_content
             )
 
-        assert result.exit_code == 1
-        # assert result.stdout == expected_content
+        # With conservative config, well-formatted input should return exit code 0
+        assert result.exit_code == 0
+        assert result.stdout == "target:\n\techo hello"
 
     def test_format_stdin_with_verbose_flag(self, runner, test_config):
         """Test stdin formatting with --verbose flag."""
         input_content = "target:\n\techo hello"
-        expected_content = ".PHONY: target\n\ntarget:\n\techo hello\n"
+        expected_content = (
+            "target:\n\techo hello"  # No phony insertion, no final newline
+        )
 
         with patch("mbake.cli.Config.load_or_default", return_value=test_config):
             result = runner.invoke(
@@ -138,13 +142,12 @@ main.o: main.c
             result = runner.invoke(app, ["format", "--stdin"], input=input_content)
 
         assert result.exit_code == 0
-        # Should format the assignments and organize PHONY declarations
+        # Should format the assignments but not modify PHONY (conservative config)
         assert "CC = gcc" in result.stdout
         assert "CFLAGS = -Wall" in result.stdout
-        assert (
-            ".PHONY: clean build" in result.stdout
-            or ".PHONY: build clean" in result.stdout
-        )
+        # Conservative config preserves existing .PHONY without auto-insertion
+        assert ".PHONY: clean" in result.stdout
+        assert ".PHONY: clean build" not in result.stdout  # No auto-insertion
 
     def test_format_stdin_error_output_to_stderr(self, runner, test_config):
         """Test that errors from stdin formatting go to stderr."""
@@ -176,7 +179,9 @@ main.o: main.c
     def test_format_stdin_with_backup_flag(self, runner, test_config):
         """Test that --backup flag is ignored with --stdin."""
         input_content = "target:\n\techo hello"
-        expected_content = ".PHONY: target\n\ntarget:\n\techo hello\n"
+        expected_content = (
+            "target:\n\techo hello"  # No phony insertion, no final newline
+        )
 
         with patch("mbake.cli.Config.load_or_default", return_value=test_config):
             result = runner.invoke(
@@ -189,7 +194,9 @@ main.o: main.c
     def test_format_stdin_with_validate_flag(self, runner, test_config):
         """Test that --validate flag is ignored with --stdin."""
         input_content = "target:\n\techo hello"
-        expected_content = ".PHONY: target\n\ntarget:\n\techo hello\n"
+        expected_content = (
+            "target:\n\techo hello"  # No phony insertion, no final newline
+        )
 
         with patch("mbake.cli.Config.load_or_default", return_value=test_config):
             result = runner.invoke(

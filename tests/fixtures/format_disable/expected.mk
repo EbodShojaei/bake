@@ -23,8 +23,8 @@ NO_FORMAT_1= \
   45678 \
 
 badly_spaced_target:
-  echo 'these spaces will NOT become tabs'
-    echo 'even weird indentation is preserved'
+	echo 'these spaces will NOT become tabs'
+	echo 'even weird indentation is preserved'
 .PHONY:not_grouped
 #bake-format on
 
