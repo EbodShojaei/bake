@@ -1,9 +1,9 @@
 """Pattern rule spacing rule for Makefiles."""
 
+import re
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils import LineUtils, PatternUtils
 
 
 class PatternSpacingRule(FormatterPlugin):
@@ -16,30 +16,27 @@ class PatternSpacingRule(FormatterPlugin):
         self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
     ) -> FormatResult:
         """Normalize spacing in pattern rules."""
-        formatted_lines: list[str] = []
+        formatted_lines = []
         changed = False
         errors: list[str] = []
         warnings: list[str] = []
 
         space_after_colon = config.get("space_after_colon", True)
 
-        def process_pattern_line(line: str, line_index: int) -> tuple[str, bool]:
-            """Process a single line for pattern rule spacing."""
-            # Try to format pattern rule spacing
-            new_line = PatternUtils.format_pattern_rule(line, space_after_colon)
-            if new_line is not None:
-                return new_line, True
-            else:
-                return line, False
+        for line in lines:
+            # Skip empty lines, comments, and recipe lines
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or line.startswith("\t"):
+                formatted_lines.append(line)
+                continue
 
-        formatted_lines, changed = LineUtils.process_lines_with_standard_skipping(
-            lines=lines,
-            line_processor=process_pattern_line,
-            skip_recipe=True,
-            skip_comments=True,
-            skip_empty=True,
-            skip_define_blocks=False,
-        )
+            # Process pattern rule spacing
+            new_line = self._format_pattern_rule(line, space_after_colon)
+            if new_line != line:
+                changed = True
+                formatted_lines.append(new_line)
+            else:
+                formatted_lines.append(line)
 
         return FormatResult(
             lines=formatted_lines,
@@ -48,3 +45,43 @@ class PatternSpacingRule(FormatterPlugin):
             warnings=warnings,
             check_messages=[],
         )
+
+    def _format_pattern_rule(self, line: str, space_after_colon: bool) -> str:
+        """Format spacing in pattern rules."""
+        # Handle static pattern rules with two colons: targets: pattern: prerequisites
+        if re.search(r".*:\s*%.*\s*:\s*", line) and not re.search(r"[=]", line):
+            static_pattern_match = re.match(
+                r"^(\s*)([^:]+):\s*([^:]+)\s*:\s*(.*)$", line
+            )
+            if static_pattern_match:
+                leading_whitespace = static_pattern_match.group(1)
+                targets_part = static_pattern_match.group(2).rstrip()
+                pattern_part = static_pattern_match.group(3).strip()
+                prereqs_part = static_pattern_match.group(4).strip()
+
+                new_line = (
+                    leading_whitespace
+                    + f"{targets_part}: {pattern_part}: {prereqs_part}"
+                )
+                return new_line
+
+        # Handle simple pattern rules: %.o: %.c
+        elif re.search(r"%.*:", line) and line.count(":") == 1:
+            pattern_match = re.match(r"^(\s*)([^:]+):(.*)$", line)
+            if pattern_match:
+                leading_whitespace = pattern_match.group(1)
+                pattern_part = pattern_match.group(2).rstrip()
+                prereqs_part = pattern_match.group(3)
+
+                if space_after_colon:
+                    if prereqs_part.startswith(" "):
+                        prereqs_part = " " + prereqs_part.lstrip()
+                    elif prereqs_part:
+                        prereqs_part = " " + prereqs_part
+                else:
+                    prereqs_part = prereqs_part.lstrip()
+
+                new_line = leading_whitespace + pattern_part + ":" + prereqs_part
+                return new_line
+
+        return line

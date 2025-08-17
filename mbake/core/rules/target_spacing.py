@@ -3,7 +3,6 @@
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils import LineUtils, PatternUtils
 
 
 class TargetSpacingRule(FormatterPlugin):
@@ -16,7 +15,7 @@ class TargetSpacingRule(FormatterPlugin):
         self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
     ) -> FormatResult:
         """Normalize spacing around colons in target definitions."""
-        formatted_lines: list[str] = []
+        formatted_lines = []
         changed = False
         errors: list[str] = []
         warnings: list[str] = []
@@ -24,25 +23,57 @@ class TargetSpacingRule(FormatterPlugin):
         space_before_colon = config.get("space_before_colon", False)
         space_after_colon = config.get("space_after_colon", True)
 
-        def process_target_line(line: str, line_index: int) -> tuple[str, bool]:
-            """Process a single line for target colon spacing."""
-            # Try to format target colon spacing
-            new_line = PatternUtils.format_target_colon(
-                line, space_before_colon, space_after_colon
-            )
-            if new_line is not None:
-                return new_line, True
-            else:
-                return line, False
+        for line in lines:
+            # Skip recipe lines, comments, and empty lines
+            if (
+                line.startswith("\t")
+                or line.strip().startswith("#")
+                or not line.strip()
+            ):
+                formatted_lines.append(line)
+                continue
 
-        formatted_lines, changed = LineUtils.process_lines_with_standard_skipping(
-            lines=lines,
-            line_processor=process_target_line,
-            skip_recipe=True,
-            skip_comments=True,
-            skip_empty=True,
-            skip_define_blocks=False,
-        )
+            # Check if line contains a target (has a colon)
+            if ":" in line and not line.strip().startswith("."):
+                # Skip if this looks like an assignment (has = after the colon)
+                if "=" in line and line.find("=") > line.find(":"):
+                    formatted_lines.append(line)
+                    continue
+
+                # Skip if this is a recipe line (starts with space)
+                if line.startswith(" "):
+                    formatted_lines.append(line)
+                    continue
+
+                # Skip if this contains variable references with substitution (like $(VAR:pattern=replacement))
+                if "$(" in line and ":" in line and "=" in line:
+                    formatted_lines.append(line)
+                    continue
+
+                # Check for double-colon rules first - these must not be modified
+                if "::" in line:
+                    formatted_lines.append(line)
+                    continue
+
+                # Format target colon spacing
+                parts = line.split(":", 1)
+                target = parts[0].rstrip()
+                prerequisites = parts[1] if len(parts) > 1 else ""
+
+                # Apply spacing rules
+                if space_before_colon:
+                    target += " "
+                if space_after_colon:
+                    prerequisites = " " + prerequisites.lstrip()
+
+                new_line = target + ":" + prerequisites
+                if new_line != line:
+                    changed = True
+                    formatted_lines.append(new_line)
+                else:
+                    formatted_lines.append(line)
+            else:
+                formatted_lines.append(line)
 
         return FormatResult(
             lines=formatted_lines,

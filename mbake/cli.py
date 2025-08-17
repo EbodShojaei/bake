@@ -108,7 +108,7 @@ wrap_error_messages = false  # Wrap long error messages (can interfere with IDE 
 
 [formatter]
 # Indentation settings
-use_tabs = true
+use_tabs = false  # Default to spaces
 tab_width = 4
 
 # Spacing settings
@@ -121,8 +121,8 @@ normalize_line_continuations = true
 max_line_length = 120
 
 # PHONY settings
-group_phony_declarations = true
-phony_at_top = true
+group_phony_declarations = false
+phony_at_top = false
 auto_insert_phony_declarations = false
 
 # General settings

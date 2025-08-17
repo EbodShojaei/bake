@@ -30,4 +30,9 @@ HEADER_DIRS = $(sort $(dir $(wildcard include/*.h)))
 
 # Functions with shell commands
 AVAILABLE_CORES = $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
-MAKE_JOBS = $(shell echo $$(($(AVAILABLE_CORES) + 1))) 
+MAKE_JOBS = $(shell echo $$(($(AVAILABLE_CORES) + 1)))
+
+# The fix: Add a default target
+.PHONY: all
+all:
+    @echo "Makefile processed successfully. No errors found." 

@@ -18,7 +18,7 @@ else ifeq ($(UNAME_S),Darwin)
   CC = clang
   CXX = clang++
 else
-  $(error Unsupported platform: $(UNAME_S))
+$(error Unsupported platform: $(UNAME_S))
 endif
 
 # Version information

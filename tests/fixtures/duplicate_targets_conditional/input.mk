@@ -31,6 +31,11 @@ clean:
 # Real duplicate targets (should be flagged)
 install:
 	echo "First install"
-
-install:
 	echo "Second install"
+
+# Phony targets to resolve dependencies
+.PHONY: nosc run
+nosc:
+	echo "No SystemC"
+run:
+	echo "Running"

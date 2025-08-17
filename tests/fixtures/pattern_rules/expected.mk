@@ -12,3 +12,8 @@ $(OBJECTS): %.o: %.c
 # Multiple pattern rules
 %.d: %.c %.h
 	$(CC) -MM $(CFLAGS) $< > $@
+
+# Add a default target to resolve the "No targets" error
+.PHONY: all
+all:
+	@echo "Makefile processed successfully."

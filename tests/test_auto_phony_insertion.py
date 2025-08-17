@@ -35,14 +35,15 @@ class TestAutoPhonyInsertion:
         assert not errors
         assert any(".PHONY:" in line for line in formatted_lines)
 
-        # Check that common phony targets are included
+        # Check that enhanced phony detection identified all phony targets
         phony_line = next(
             line for line in formatted_lines if line.startswith(".PHONY:")
         )
-        assert "setup" in phony_line
-        assert "clean" in phony_line
-        assert "test" in phony_line
-        assert "install" in phony_line
+        # Enhanced algorithm detects docker commands and standard action targets:
+        assert "setup" in phony_line  # docker commands
+        assert "clean" in phony_line  # cleanup command
+        assert "test" in phony_line  # test command
+        assert "install" in phony_line  # install command
 
         # Check that targets are sorted
         targets = phony_line.replace(".PHONY:", "").strip().split()
@@ -70,6 +71,7 @@ class TestAutoPhonyInsertion:
         formatted_lines, errors = formatter.format_lines(lines)
 
         assert not errors
+        # Enhanced algorithm detects docker commands as phony
         phony_line = next(
             line for line in formatted_lines if line.startswith(".PHONY:")
         )
@@ -193,11 +195,11 @@ class TestAutoPhonyInsertion:
         phony_line = next(
             line for line in formatted_lines if line.startswith(".PHONY:")
         )
-        # deploy and monitor are phony (no file creation)
-        assert "deploy" in phony_line
-        assert "monitor" in phony_line
-        assert "clean" in phony_line
-        # backup creates backup.sql file via redirection, so it should NOT be phony
+        # Enhanced algorithm detects command patterns and remote operations
+        assert "deploy" in phony_line  # remote command (ssh)
+        assert "monitor" in phony_line  # monitoring command (tail)
+        assert "clean" in phony_line  # cleanup command
+        # backup creates backup.sql file via redirection, correctly not flagged as phony
         assert "backup" not in phony_line
 
     def test_preserve_existing_phony_with_auto_detection(self):
@@ -251,10 +253,10 @@ class TestAutoPhonyInsertion:
             phony_line = next(
                 line for line in formatted_lines if line.startswith(".PHONY:")
             )
-            # These should be detected as phony based on name patterns
-            assert "clean-all" in phony_line
-            assert "test_unit" in phony_line
-            assert "build-prod" in phony_line
+            # Enhanced algorithm detects hyphenated patterns
+            assert "clean-all" in phony_line  # clean- pattern
+            assert "test_unit" in phony_line  # test_ pattern
+            assert "build-prod" in phony_line  # build- pattern
 
     def test_no_false_positives_for_file_targets(self):
         """Test that file-generating targets are not marked as phony."""
@@ -328,15 +330,15 @@ class TestAutoPhonyInsertion:
                 line for line in formatted_lines if line.startswith(".PHONY:")
             )
 
-            # These should be detected as phony
+            # Enhanced algorithm detects standard action patterns and docker commands
             expected_phony = [
-                "all",
-                "clean",
-                "install",
-                "test",
-                "debug",
-                "docker-build",
-                "docker-run",
+                "all",  # standard phony pattern
+                "clean",  # cleanup command
+                "install",  # install command
+                "test",  # test command
+                "debug",  # debug pattern
+                "docker-build",  # docker- pattern
+                "docker-run",  # docker- pattern
             ]
             for target in expected_phony:
                 assert (

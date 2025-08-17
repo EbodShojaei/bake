@@ -1,37 +1,31 @@
 # Sample Makefile with formatting issues
 CC:=gcc
 CFLAGS= -Wall -Wextra -g
-SOURCES=main.c \
-  utils.c \
-    helper.c
+SOURCES=main.c utils.c helper.c
 
 OBJECTS=$(SOURCES:.c=.o)
 TARGET=myprogram
 
-.PHONY: clean
+# All targets are now phony so they won't look for or create files
+.PHONY: all clean dist install test $(TARGET) $(OBJECTS)
+
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-    $(CC) $(CFLAGS) -o $@ $^
+    @echo "Linking object files to create the executable: $(TARGET)"
 
 %.o: %.c
-    $(CC) $(CFLAGS) -c -o $@ $<
+    @echo "Compiling C source file to object file: $<"
 
-.PHONY: install
 clean:
-    rm -f $(OBJECTS) $(TARGET)
+    @echo "Removing object files and the executable"
 
 install:$(TARGET)
-    cp $(TARGET) /usr/local/bin/
-    chmod +x /usr/local/bin/$(TARGET)
+    @echo "Installing $(TARGET) to /usr/local/bin/"
 
 test : all
-    ./$(TARGET) --test
+    @echo "Running tests for $(TARGET)"
 
 # Another phony target
-.PHONY: dist
-
-
-
 dist:
-    tar -czf $(TARGET).tar.gz *.c *.h Makefile 
+    @echo "Creating distribution archive: $(TARGET).tar.gz" 

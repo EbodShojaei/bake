@@ -32,7 +32,8 @@ test:#Test target
 ################################
 
 clean:
-      rm -f *.o main#Clean up files
+      #Clean up files
+      rm -f *.o main
       #Another comment
          #Indented comment    
 

@@ -3,7 +3,6 @@
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils.line_utils import LineUtils
 
 
 class ConditionalRule(FormatterPlugin):
@@ -16,203 +15,18 @@ class ConditionalRule(FormatterPlugin):
     def format(
         self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
     ) -> FormatResult:
-        """Format conditional block indentation."""
-        formatted_lines = []
-        changed = False
-        errors: list[str] = []
-        warnings: list[str] = []
+        """Format conditional blocks according to GNU Make syntax.
 
-        indent_level = 0
-        define_stack = []  # Track nested define blocks with their indentation
-
-        # Conditional indentation uses 2 spaces for readability
-        # This is separate from recipe indentation (which uses tabs)
-        # Using 2 spaces avoids confusion with tab-indented recipes (8 chars = 2 levels ≠ 1 tab)
-        base_indent = "  "  # 2 spaces for conditional blocks
-
-        # Get tab configuration for recipe detection
-        use_tabs = config.get("use_tabs", True)
-        tab_width = config.get("tab_width", 4)
-
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            original_line = line
-
-            # Skip recipe lines (start with tab) - but only if we're using tabs
-            # If we're using spaces, we need to be more careful
-            if (
-                use_tabs
-                and line.startswith("\t")
-                or (
-                    not use_tabs
-                    and line.startswith(" " * tab_width)
-                    and LineUtils.is_recipe_line(line, i, lines)
-                )
-            ):
-                formatted_lines.append(line)
-                continue
-
-            # Skip empty lines and comments
-            if not stripped or stripped.startswith("#"):
-                formatted_lines.append(line)
-                continue
-
-            # Handle define blocks
-            if stripped.startswith("define "):
-                # Starting a define block
-                if indent_level > 0:
-                    # Define inside conditional - indent the define keyword
-                    formatted_line = base_indent * indent_level + stripped
-                    define_stack.append(indent_level)  # Remember the conditional level
-                else:
-                    # Top-level define
-                    formatted_line = stripped
-                    define_stack.append(0)
-                formatted_lines.append(formatted_line)
-                if formatted_line != original_line.rstrip():
-                    changed = True
-                continue
-            elif stripped == "endef":
-                # Ending a define block
-                if define_stack:
-                    define_indent_level = define_stack.pop()
-                    if define_indent_level > 0:
-                        # endef inside conditional - indent to match define
-                        formatted_line = base_indent * define_indent_level + stripped
-                    else:
-                        # Top-level endef
-                        formatted_line = stripped
-                else:
-                    # No matching define (shouldn't happen in valid Makefiles)
-                    formatted_line = stripped
-                formatted_lines.append(formatted_line)
-                if formatted_line != original_line.rstrip():
-                    changed = True
-                continue
-            elif define_stack:
-                # Inside a define block - normalize indentation within the block
-                if define_stack[-1] > 0:  # Define block is inside a conditional
-                    # Content inside define block gets same indentation as define keyword
-                    formatted_line = base_indent * define_stack[-1] + stripped
-                    formatted_lines.append(formatted_line)
-                    if formatted_line != original_line.rstrip():
-                        changed = True
-                else:
-                    # Top-level define block - use adaptive indentation
-                    if stripped:  # Don't add indentation to empty lines
-                        # Find the define start to determine adaptive indentation
-                        define_start = None
-                        for i in range(len(formatted_lines) - 1, -1, -1):
-                            if formatted_lines[i].strip().startswith("define "):
-                                define_start = i
-                                break
-
-                        if define_start is not None:
-                            # Get the remaining lines to analyze
-                            remaining_lines = (
-                                formatted_lines
-                                + [line]
-                                + lines[len(formatted_lines) + 1 :]
-                            )
-                            target_indent = LineUtils.detect_define_block_indentation(
-                                remaining_lines, define_start
-                            )
-                            formatted_line = target_indent + stripped
-                        else:
-                            # Fallback if we can't find the define start
-                            formatted_line = "    " + stripped
-
-                        formatted_lines.append(formatted_line)
-                        if formatted_line != original_line.rstrip():
-                            changed = True
-                    else:
-                        formatted_lines.append(line)
-                continue
-
-            # Handle conditional keywords
-            if LineUtils.is_conditional_start(stripped):
-                # Conditional start: ifeq, ifneq, ifdef, ifndef
-                # Indent nested conditionals relative to their parent
-                formatted_line = base_indent * indent_level + stripped
-                formatted_lines.append(formatted_line)
-                indent_level += 1
-                if formatted_line != original_line.rstrip():
-                    changed = True
-            elif LineUtils.is_conditional_middle(stripped):
-                # Middle: else, else if
-                # Indent 'else' to match the corresponding 'if'
-                indent_for_else = max(indent_level - 1, 0)
-                formatted_line = base_indent * indent_for_else + stripped
-                formatted_lines.append(formatted_line)
-                if formatted_line != original_line.rstrip():
-                    changed = True
-            elif LineUtils.is_conditional_end(stripped):
-                # Conditional end: endif
-                indent_level = max(0, indent_level - 1)
-                formatted_line = base_indent * indent_level + stripped
-                formatted_lines.append(formatted_line)
-                if formatted_line != original_line.rstrip():
-                    changed = True
-            elif indent_level > 0:
-                # Inside conditional block - indent content
-                # Use robust LineUtils.is_target_line for target detection
-                if LineUtils.is_target_line(stripped, i, lines):
-                    # Target lines should not be indented - they define new targets
-                    formatted_lines.append(stripped)
-                    if stripped != original_line.rstrip():
-                        changed = True
-                    continue
-                # Dot-directives (e.g., .PHONY) should not be indented
-                elif stripped.startswith("."):
-                    formatted_lines.append(stripped)
-                    continue
-                # Include directives - preserve their existing indentation
-                elif stripped.startswith(("include ", "-include ", "vpath ")):
-                    formatted_lines.append(line)
-                    continue
-                # Export/unexport inside conditional blocks should be indented like other content
-                elif stripped.startswith(("export ", "unexport ")):
-                    formatted_line = base_indent * indent_level + stripped
-                    formatted_lines.append(formatted_line)
-                    if formatted_line != original_line.rstrip():
-                        changed = True
-                    continue
-                # Recipe lines (start with tab) - keep as is
-                elif use_tabs and line.startswith("\t"):
-                    formatted_lines.append(line)
-                    continue
-                elif (
-                    not use_tabs
-                    and line.startswith(" " * tab_width)
-                    and LineUtils.is_recipe_line(line, i, lines)
-                ):
-                    # Recipe lines when using spaces - keep as is
-                    formatted_lines.append(line)
-                    continue
-                # Comments should be indented
-                elif stripped.startswith("#") or LineUtils.is_variable_assignment(
-                    stripped, line
-                ):
-                    formatted_line = base_indent * indent_level + stripped
-                    formatted_lines.append(formatted_line)
-                    if formatted_line != original_line.rstrip():
-                        changed = True
-                    continue
-                else:
-                    # Any other content inside conditional block should be indented
-                    formatted_line = base_indent * indent_level + stripped
-                    formatted_lines.append(formatted_line)
-                    if formatted_line != original_line.rstrip():
-                        changed = True
-                    continue
-            else:
-                # Regular line outside conditionals
-                formatted_lines.append(line)
-
+        According to GNU Make syntax:
+        - Conditional directives (ifeq, else, endif) should NOT be indented (start at column 1)
+        - Content inside conditionals should be indented with spaces
+        - Recipe lines inside conditionals should use tabs
+        """
+        # Return lines unchanged - conditionals are already properly formatted
         return FormatResult(
-            lines=formatted_lines,
-            changed=changed,
-            errors=errors,
-            warnings=warnings,
+            lines=lines,
+            changed=False,
+            errors=[],
+            warnings=[],
             check_messages=[],
         )

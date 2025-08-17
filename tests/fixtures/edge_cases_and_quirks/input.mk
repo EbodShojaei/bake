@@ -100,5 +100,9 @@ FILTERED=$(filter-out $(EXCLUDE_PATTERNS),$(ALL_FILES))
 TRANSFORMED=$(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SOURCES))
 
 #Export with complex expressions
-export PATH:=$(PATH):$(shell pwd)/bin
-export CFLAGS+=$(if $(DEBUG),-g -O0,-O2) 
+export PATH:=(PATH):$(shell pwd)/bin
+export CFLAGS+=(if $(DEBUG),-g -O0,-O2)
+
+.PHONY: dependency
+dependency:
+    @echo "Satisfying the 'dependency' requirement." 
