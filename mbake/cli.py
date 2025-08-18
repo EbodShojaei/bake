@@ -332,11 +332,15 @@ def validate(
 
             # Validate syntax using make
             try:
+                # Change to the directory containing the Makefile so relative includes work correctly
+                makefile_dir = file_path.parent
+                makefile_name = file_path.name
                 result = subprocess.run(
-                    ["make", "-f", str(file_path), "--dry-run", "--just-print"],
+                    ["make", "-f", makefile_name, "--dry-run", "--just-print"],
                     capture_output=True,
                     text=True,
                     timeout=10,
+                    cwd=makefile_dir,
                 )
 
                 if result.returncode == 0:
