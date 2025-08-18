@@ -1,0 +1,647 @@
+.PHONY: docs doxygen msg_test spelling test test-diff test-snap verilator.html verilator.pdf verilator_bin$(EXEEXT) verilator_bin_dbg$(EXEEXT) verilator_coverage_bin_dbg$(EXEEXT) verilator_exe
+
+#*****************************************************************************
+# DESCRIPTION: Verilator top level: Makefile pre-configure version
+#
+# This file is part of Verilator.
+#
+# Code available from: https://verilator.org
+#
+#*****************************************************************************
+#
+# Copyright 2003-2025 by Wilson Snyder. This program is free software; you
+# can redistribute it and/or modify it under the terms of either the GNU
+# Lesser General Public License Version 3 or the Perl Artistic License
+# Version 2.0.
+# SPDX-License-Identifier: LGPL-3.0-only OR Artistic-2.0
+#
+#****************************************************************************/
+#
+# make all      to compile and build Verilator.
+# make install  to install it.
+# make TAGS     to update tags tables.
+#
+# make clean  or  make mostlyclean
+#      Delete all files from the current directory that are normally
+#      created by building the program.  Don't delete the files that
+#      record the configuration.  Also preserve files that could be made
+#      by building, but normally aren't because the distribution comes
+#      with them.
+#
+# make distclean
+#      Delete all files from the current directory that are created by
+#      configuring or building the program.  If you have unpacked the
+#      source and built the program without creating any other files,
+#      `make distclean' should leave only the files that were in the
+#      distribution.
+#
+# make maintainer-clean
+#      Delete everything from the current directory that can be
+#      reconstructed with this Makefile.  This typically includes
+#      everything deleted by distclean, plus more: C source files
+#      produced by Bison, tags tables, info files, and so on.
+
+#### Start of system configuration section. ####
+
+srcdir = @srcdir@
+VPATH = @srcdir@
+HOST = @HOST@
+EXEEXT = @EXEEXT@
+
+DOXYGEN = doxygen
+INSTALL = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA = @INSTALL_DATA@
+MAKEINFO = makeinfo
+POD2TEXT = pod2text
+PYTHON3 = @PYTHON3@
+MKINSTALLDIRS = $(SHELL) $(srcdir)/src/mkinstalldirs
+
+# Version (for docs/guide/conf.py)
+PACKAGE_VERSION_NUMBER = @PACKAGE_VERSION_NUMBER@
+
+# Destination prefix for RPMs
+DESTDIR =
+
+#### Don't edit: You're much better using configure switches to set these
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+# Directory in which to install scripts.
+bindir = @bindir@
+
+# Directory in which to install manpages.
+mandir = @mandir@
+
+# Directory in which to install library files.
+datadir = @datadir@
+
+# Directory in which to install documentation info files.
+infodir = @infodir@
+
+# Directory in which to install package-specific files
+# Generally ${prefix}/share/verilator
+pkgdatadir = @pkgdatadir@
+
+# Directory in which to install pkgconfig file
+# Generally ${prefix}/share/pkgconfig
+pkgconfigdir = @pkgconfigdir@
+
+# Directory in which to install data across multiple architectures
+datarootdir = @datarootdir@
+
+# Compile options
+CFG_WITH_CCWARN = @CFG_WITH_CCWARN@
+CFG_WITH_DEFENV = @CFG_WITH_DEFENV@
+CFG_WITH_LONGTESTS = @CFG_WITH_LONGTESTS@
+CFG_WITH_SOLVER = @CFG_WITH_SOLVER@
+PACKAGE_VERSION = @PACKAGE_VERSION@
+
+#### End of system configuration section. ####
+######################################################################
+# Main build targets
+
+.SUFFIXES:
+
+SHELL = /bin/sh
+
+SUBDIRS = docs src test_regress \
+  examples/cmake_hello_c \
+  examples/cmake_hello_sc \
+  examples/cmake_tracing_c \
+  examples/cmake_tracing_sc \
+  examples/cmake_protect_lib \
+  examples/make_hello_binary \
+  examples/make_hello_c \
+  examples/make_hello_sc \
+  examples/make_tracing_c \
+  examples/make_tracing_sc \
+  examples/make_protect_lib \
+  examples/json_py \
+
+INFOS = verilator.html verilator.pdf
+
+INFOS_OLD = README README.html README.pdf
+
+EXAMPLES_FIRST = \
+  examples/make_hello_c \
+  examples/make_hello_sc \
+
+EXAMPLES = $(EXAMPLES_FIRST) $(filter-out $(EXAMPLES_FIRST), $(sort $(wildcard examples/*)))
+
+# See uninstall also - don't put wildcards in this variable, it might uninstall other stuff
+# No verilator_ccache_report.1, verilator_difftree.1 as those are not bin/ installed
+VL_INST_MAN_FILES = \
+  verilator.1 \
+  verilator_coverage.1 \
+  verilator_gantt.1 \
+  verilator_profcfunc.1 \
+
+default: all
+all: all_nomsg msg_test
+all_nomsg: verilator_exe $(VL_INST_MAN_FILES)
+
+verilator_exe verilator_bin$(EXEEXT) verilator_bin_dbg$(EXEEXT) verilator_coverage_bin_dbg$(EXEEXT):
+	@echo ------------------------------------------------------------
+	@echo "making verilator in src"
+	$(MAKE) -C src $(OBJCACHE_JOBS)
+
+######################################################################
+# Tests
+
+msg_test: all_nomsg
+	@echo "Build complete!"
+	@echo
+	@echo "Now type 'make test' to test."
+	@echo
+
+ifeq ($(CFG_WITH_LONGTESTS),yes)  # Local... Else don't burden users
+test: smoke-test test_regress
+# examples is part of test_regress's test_regress/t/t_a2_examples.py
+# (because that allows it to run in parallel with other test_regress's)
+else
+test: smoke-test examples
+endif
+	@echo "Tests passed!"
+	@echo
+	@echo "Now type 'make install' to install."
+	@echo "Or type 'make' inside an examples subdirectory."
+	@echo
+
+smoke-test: all_nomsg
+	test_regress/t/t_a1_first_cc.py
+	test_regress/t/t_a2_first_sc.py
+
+test_regress: all_nomsg
+	$(MAKE) -C test_regress
+
+test-snap test-diff:
+	$(MAKE) -C test_regress $@
+
+examples: all_nomsg
+	for p in $(EXAMPLES) ; do \
+		$(MAKE) -C $$p VERILATOR_ROOT=`pwd` || exit 10; \
+	done
+
+######################################################################
+# Docs
+
+docs: info $(VL_INST_MAN_FILES)
+
+info: $(INFOS)
+
+verilator.1: ${srcdir}/bin/verilator
+	pod2man $< $@
+verilator_coverage.1: ${srcdir}/bin/verilator_coverage
+	pod2man $< $@
+%.1: ${srcdir}/bin/%
+	help2man --no-info --no-discard-stderr --version-string=- \
+		-n "$(shell $< --help | head -n 3 | tail -n 1)" $< -o $@
+
+verilator.html:
+	$(MAKE) -C docs html
+
+# PDF needs DIST variables; but having configure.ac as dependency isn't detected
+verilator.pdf: Makefile
+	$(MAKE) -C docs verilator.pdf
+
+TAGFILES = ${srcdir}/*/*.cpp ${srcdir}/*/*.h ${srcdir}/*/*.in \
+	${srcdir}/*.in ${srcdir}/*.pod
+
+TAGS: $(TAGFILES)
+	etags $(TAGFILES)
+
+doxygen:
+	$(MAKE) -C docs doxygen
+
+spelling:
+	$(MAKE) -C docs spelling
+
+######################################################################
+# Install
+
+# Public executables intended to be invoked directly by the user
+# Don't put wildcards in these variables, it might cause an uninstall of other stuff
+VL_INST_PUBLIC_SCRIPT_FILES = \
+  verilator \
+  verilator_coverage \
+  verilator_gantt \
+  verilator_profcfunc \
+
+VL_INST_PUBLIC_BIN_FILES = \
+  verilator_bin$(EXEEXT) \
+  verilator_bin_dbg$(EXEEXT) \
+  verilator_coverage_bin_dbg$(EXEEXT) \
+
+# Private executabels intended to be invoked by internals
+# Don't put wildcards in these variables, it might cause an uninstall of other stuff
+VL_INST_PRIVATE_SCRIPT_FILES = \
+  verilator_ccache_report \
+  verilator_includer \
+
+VL_INST_INC_BLDDIR_FILES = \
+  include/verilated_config.h \
+  include/verilated.mk \
+
+# Files under srcdir, instead of build time
+VL_INST_INC_SRCDIR_FILES = \
+  include/*.[chv]* \
+  include/*.vlt \
+  include/*.sv \
+  include/gtkwave/*.[chv]* \
+  include/vltstd/*.[chv]* \
+
+VL_INST_DATA_SRCDIR_FILES = \
+  examples/*/*.[chv]* \
+  examples/*/CMakeLists.txt \
+  examples/*/Makefile* \
+  examples/*/vl_* \
+
+mkbindirs:
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/bin
+	$(MKINSTALLDIRS) $(DESTDIR)$(bindir)
+
+installbin: | mkbindirs
+	cd $(srcdir)/bin; \
+	for p in $(VL_INST_PUBLIC_SCRIPT_FILES) ; do \
+		$(INSTALL_PROGRAM) $$p $(DESTDIR)$(bindir)/$$p; \
+	done
+	perl -p -i -e 'use File::Spec;' \
+	           -e' $$path = File::Spec->abs2rel("$(realpath $(DESTDIR)$(pkgdatadir))", "$(realpath $(DESTDIR)$(bindir))");' \
+	           -e 's/my \$$verilator_pkgdatadir_relpath = .*/my \$$verilator_pkgdatadir_relpath = "$$path";/g' \
+	           -- "$(DESTDIR)/$(bindir)/verilator"
+	cd bin; \
+	for p in $(VL_INST_PUBLIC_BIN_FILES) ; do \
+		$(INSTALL_PROGRAM) $$p $(DESTDIR)$(bindir)/$$p; \
+	done
+	cd $(srcdir)/bin; \
+	for p in $(VL_INST_PRIVATE_SCRIPT_FILES) ; do \
+		$(INSTALL_PROGRAM) $$p $(DESTDIR)$(pkgdatadir)/bin/$$p; \
+	done
+
+installredirect: installbin | mkbindirs
+	cp ${srcdir}/bin/redirect ${srcdir}/bin/redirect.tmp
+	perl -p -i -e 'use File::Spec;' \
+	           -e' $$path = File::Spec->abs2rel("$(realpath $(DESTDIR)$(bindir))", "$(realpath $(DESTDIR)$(pkgdatadir)/bin)");' \
+	           -e 's/RELPATH.*/"$$path";/g' -- "${srcdir}/bin/redirect.tmp"
+	cd $(srcdir)/bin; \
+	for p in $(VL_INST_PUBLIC_SCRIPT_FILES) $(VL_INST_PUBLIC_BIN_FILES) ; do \
+		$(INSTALL_PROGRAM) redirect.tmp $(DESTDIR)$(pkgdatadir)/bin/$$p; \
+	done
+	rm ${srcdir}/bin/redirect.tmp
+
+# Man files can either be part of the original kit, or built in current directory
+# So important we use $^ so VPATH is searched
+installman: $(VL_INST_MAN_FILES)
+	$(MKINSTALLDIRS) $(DESTDIR)$(mandir)/man1
+	for p in $^ ; do \
+		$(INSTALL_DATA) $$p $(DESTDIR)$(mandir)/man1/$$p; \
+	done
+
+installdata:
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/include/gtkwave
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/include/vltstd
+	for p in $(VL_INST_INC_BLDDIR_FILES) ; do \
+		$(INSTALL_DATA) $$p $(DESTDIR)$(pkgdatadir)/$$p; \
+	done
+	cd $(srcdir) \
+	; for p in $(VL_INST_INC_SRCDIR_FILES) ; do \
+	  $(INSTALL_DATA) $$p $(DESTDIR)$(pkgdatadir)/$$p; \
+	done
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/make_hello_binary
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/make_hello_c
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/make_hello_sc
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/make_tracing_c
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/make_tracing_sc
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/make_protect_lib
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/cmake_hello_c
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/cmake_hello_sc
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/cmake_tracing_c
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/cmake_tracing_sc
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/cmake_protect_lib
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgdatadir)/examples/json_py
+	cd $(srcdir) \
+	; for p in $(VL_INST_DATA_SRCDIR_FILES) ; do \
+	  $(INSTALL_DATA) $$p $(DESTDIR)$(pkgdatadir)/$$p; \
+	done
+	$(MKINSTALLDIRS) $(DESTDIR)$(pkgconfigdir)
+	$(INSTALL_DATA) verilator.pc $(DESTDIR)$(pkgconfigdir)
+	$(INSTALL_DATA) verilator-config.cmake $(DESTDIR)$(pkgdatadir)
+	$(INSTALL_DATA) verilator-config-version.cmake $(DESTDIR)$(pkgdatadir)
+
+# We don't trust rm -rf, so rmdir instead as it will fail if user put in other files
+uninstall:
+	-cd $(DESTDIR)$(bindir) && rm -f $(VL_INST_PUBLIC_SCRIPT_FILES)
+	-cd $(DESTDIR)$(bindir) && rm -f $(VL_INST_PUBLIC_BIN_FILES)
+	-cd $(DESTDIR)$(pkgdatadir)/bin && rm -f $(VL_INST_PUBLIC_SCRIPT_FILES)
+	-cd $(DESTDIR)$(pkgdatadir)/bin && rm -f $(VL_INST_PUBLIC_BIN_FILES)
+	-cd $(DESTDIR)$(pkgdatadir)/bin && rm -f $(VL_INST_PRIVATE_SCRIPT_FILES)
+	-cd $(DESTDIR)$(mandir)/man1 && rm -f $(VL_INST_MAN_FILES)
+	-cd $(DESTDIR)$(pkgdatadir) && rm -f $(VL_INST_INC_BLDDIR_FILES)
+	-cd $(DESTDIR)$(pkgdatadir) && rm -f $(VL_INST_INC_SRCDIR_FILES)
+	-cd $(DESTDIR)$(pkgdatadir) && rm -f $(VL_INST_DATA_SRCDIR_FILES)
+	-rm $(DESTDIR)$(pkgconfigdir)/verilator.pc
+	-rm $(DESTDIR)$(pkgdatadir)/verilator-config.cmake
+	-rm $(DESTDIR)$(pkgdatadir)/verilator-config-version.cmake
+	-rmdir $(DESTDIR)$(pkgdatadir)/bin
+	-rmdir $(DESTDIR)$(pkgdatadir)/include/gtkwave
+	-rmdir $(DESTDIR)$(pkgdatadir)/include/vltstd
+	-rmdir $(DESTDIR)$(pkgdatadir)/include
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/make_hello_binary
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/make_hello_c
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/make_hello_sc
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/make_tracing_c
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/make_tracing_sc
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/make_protect_lib
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/cmake_hello_c
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/cmake_hello_sc
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/cmake_tracing_c
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/cmake_tracing_sc
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/cmake_protect_lib
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples/json_py
+	-rmdir $(DESTDIR)$(pkgdatadir)/examples
+	-rmdir $(DESTDIR)$(pkgdatadir)
+	-rmdir $(DESTDIR)$(pkgconfigdir)
+
+install: all_nomsg install-all
+install-all: installbin installredirect installman installdata install-msg
+
+install-here: installman info
+
+install-msg:
+	@echo
+	@echo "Installed binaries to $(DESTDIR)$(bindir)/verilator"
+	@echo "Installed man to $(DESTDIR)$(mandir)/man1"
+	@echo "Installed examples to $(DESTDIR)$(pkgdatadir)/examples"
+	@echo
+	@echo "For documentation see 'man verilator' or 'verilator --help'"
+	@echo "For forums and to report bugs see https://verilator.org"
+	@echo
+
+######################################################################
+# Format/Lint
+
+# Use --xml flag to see the cppcheck code to use for suppression
+CPPCHECK1_CPP = $(wildcard $(srcdir)/include/*.cpp)
+CPPCHECK2_CPP = $(wildcard $(srcdir)/examples/*/*.cpp)
+CPPCHECK3_CPP = $(wildcard $(srcdir)/src/Vlc*.cpp)
+CPPCHECK4_CPP = $(wildcard $(srcdir)/src/V3[A-D]*.cpp $(srcdir)/src/Verilator*.cpp)
+CPPCHECK5_CPP = $(wildcard $(srcdir)/src/V3[E-I]*.cpp)
+CPPCHECK6_CPP = $(wildcard $(srcdir)/src/V3[P-Z]*.cpp)
+CPPCHECK7_CPP = $(wildcard $(srcdir)/src/V3[L-R]*.cpp)
+CPPCHECK8_CPP = $(wildcard $(srcdir)/src/V3[S-Z]*.cpp)
+CHECK_CPP = $(CPPCHECK1_CPP) $(CPPCHECK2_CPP) $(CPPCHECK3_CPP) $(CPPCHECK4_CPP) \
+	$(CPPCHECK5_CPP) $(CPPCHECK6_CPP) $(CPPCHECK7_CPP) $(CPPCHECK8_CPP)
+CHECK_H = $(wildcard \
+  $(srcdir)/include/*.h \
+	$(srcdir)/src/*.h )
+CHECK_YL = $(wildcard \
+  $(srcdir)/src/*.y \
+	$(srcdir)/src/*.l )
+CPPCHECK = src/cppcheck_filtered cppcheck
+CPPCHECK_FLAGS = --enable=all --inline-suppr \
+  --suppress=cstyleCast --suppress=ctunullpointer \
+  --suppress=derefInvalidIteratorRedundantCheck \
+  --suppress=nullPointer --suppress=nullPointerRedundantCheck \
+  --suppress=templateRecursion \
+  --suppress=unusedFunction --suppress=unusedScopedObject \
+  --suppress=useInitializationList --suppress=useStlAlgorithm \
+
+CPPCHECK_FLAGS += --xml
+CPPCHECK_DEP = $(subst .cpp,.cppcheck,$(CHECK_CPP))
+CPPCHECK_INC = -I$(srcdir)/include -I$(srcdir)/include/gtkwave -I$(srcdir)/include/vltstd -I$(srcdir)/src/obj_dbg -I$(srcdir)/src
+
+cppcheck: cppcheck-1 cppcheck-2 cppcheck-3 cppcheck-4 cppcheck-5 cppcheck-6 cppcheck-7 cppcheck-8
+cppcheck-1:
+	$(CPPCHECK) $(CPPCHECK_FLAGS) -DVL_DEBUG=1 -DVL_CPPCHECK=1 $(CPPCHECK_INC) $(CPPCHECK1_CPP)
+cppcheck-2:
+	$(CPPCHECK) $(CPPCHECK_FLAGS) -DVL_DEBUG=1 -DVL_CPPCHECK=1 $(CPPCHECK_INC) $(CPPCHECK2_CPP)
+cppcheck-3:
+	$(CPPCHECK) $(CPPCHECK_FLAGS) -DVL_DEBUG=1 -DVL_CPPCHECK=1 $(CPPCHECK_INC) $(CPPCHECK3_CPP)
+cppcheck-4:
+	$(CPPCHECK) $(CPPCHECK_FLAGS) -DVL_DEBUG=1 -DVL_CPPCHECK=1 $(CPPCHECK_INC) $(CPPCHECK4_CPP)
+cppcheck-5:
+	$(CPPCHECK) $(CPPCHECK_FLAGS) -DVL_DEBUG=1 -DVL_CPPCHECK=1 $(CPPCHECK_INC) $(CPPCHECK5_CPP)
+cppcheck-6:
+	$(CPPCHECK) $(CPPCHECK_FLAGS) -DVL_DEBUG=1 -DVL_CPPCHECK=1 $(CPPCHECK_INC) $(CPPCHECK6_CPP)
+cppcheck-7:
+	$(CPPCHECK) $(CPPCHECK_FLAGS) -DVL_DEBUG=1 -DVL_CPPCHECK=1 $(CPPCHECK_INC) $(CPPCHECK7_CPP)
+cppcheck-8:
+	$(CPPCHECK) $(CPPCHECK_FLAGS) -DVL_DEBUG=1 -DVL_CPPCHECK=1 $(CPPCHECK_INC) $(CPPCHECK8_CPP)
+
+CLANGTIDY = clang-tidy
+CLANGTIDY_FLAGS = -config='' \
+  -header-filter='.*' \
+  -checks='-fuchsia-*,-cppcoreguidelines-avoid-c-arrays,-cppcoreguidelines-init-variables,-cppcoreguidelines-avoid-goto,-modernize-avoid-c-arrays,-readability-magic-numbers,-readability-simplify-boolean-expr,-cppcoreguidelines-macro-usage' \
+
+CLANGTIDY_DEP = $(subst .cpp,.cpp.tidy,$(CHECK_CPP))
+CLANGTIDY_DEFS = -DVL_DEBUG=1 -DVL_CPPCHECK=1
+
+clang-tidy: $(CLANGTIDY_DEP)
+%.cpp.tidy: %.cpp
+	$(CLANGTIDY) $(CLANGTIDY_FLAGS) $< -- $(CLANGTIDY_DEFS) $(CPPCHECK_INC) | 2>&1 tee $@
+%.h.tidy: %.h
+	$(CLANGTIDY) $(CLANGTIDY_FLAGS) $< -- $(CLANGTIDY_DEFS) $(CPPCHECK_INC) -x c++-header | 2>&1 tee $@
+
+analyzer-src:
+	-rm -rf src/obj_dbg
+	scan-build $(MAKE) -k verilator_coverage_bin_dbg$(EXEEXT) verilator_bin_dbg$(EXEEXT)
+
+analyzer-include:
+	-rm -rf examples/*/obj*
+	scan-build $(MAKE) -k examples
+
+format:
+	$(MAKE) -j 5 format-c format-cmake format-exec format-py
+
+CLANGFORMAT = clang-format-14
+CLANGFORMAT_FLAGS = -i
+CLANGFORMAT_FILES = $(CHECK_CPP) $(CHECK_H) $(CHECK_YL) test_regress/t/*.c* test_regress/t/*.h
+
+format-c clang-format:
+	$(CLANGFORMAT) --version
+	@$(CLANGFORMAT) --version | egrep 14.0 > /dev/null \
+	|| echo "*** You are not using clang-format-14, indents may differ from master's ***"
+	$(CLANGFORMAT) $(CLANGFORMAT_FLAGS) $(CLANGFORMAT_FILES)
+
+YAMLFIX = YAMLFIX_WHITELINES=1 YAMLFIX_LINE_LENGTH=130 YAMLFIX_preserve_quotes=true yamlfix
+
+yamlfix:
+	$(YAMLFIX) .
+
+# CMake files
+CMAKE_FILES = \
+  CMakeLists.txt \
+  examples/*/CMakeLists.txt \
+  src/CMakeLists.txt \
+  test_regress/CMakeLists.txt \
+  *.cmake.in \
+
+# Makefiles
+MAKE_FILES = \
+  Makefile*.in \
+  docs/Makefile* \
+  include/verilated.mk.in \
+  examples/*/Makefile* \
+  src/Makefile*.in \
+  test_regress/Makefile* \
+
+# Python programs, subject to format and lint
+PY_PROGRAMS = \
+  bin/verilator_ccache_report \
+  bin/verilator_difftree \
+  bin/verilator_gantt \
+  bin/verilator_includer \
+  bin/verilator_profcfunc \
+  examples/json_py/vl_file_copy \
+  examples/json_py/vl_hier_graph \
+  docs/guide/conf.py \
+  docs/bin/vl_sphinx_extract \
+  docs/bin/vl_sphinx_fix \
+  src/astgen \
+  src/bisonpre \
+  src/config_rev \
+  src/cppcheck_filtered \
+  src/flexfix \
+  src/vlcovgen \
+  src/.gdbinit.py \
+  test_regress/*.py \
+  test_regress/t/*.pf \
+  nodist/clang_check_attributes \
+  nodist/code_coverage \
+  nodist/dot_importer \
+  nodist/fuzzer/actual_fail \
+  nodist/fuzzer/generate_dictionary \
+  nodist/install_test \
+  nodist/log_changes \
+
+# Python files, subject to format but not lint
+PY_FILES = \
+  $(PY_PROGRAMS) \
+  nodist/code_coverage.dat \
+  test_regress/t/*.py \
+
+# Python files, test_regress tests
+PY_TEST_FILES = test_regress/t/*.py
+
+YAPF = yapf3
+YAPF_FLAGS = -i --parallel
+
+format-py yapf:
+	$(YAPF) --version
+	$(YAPF) $(YAPF_FLAGS) $(PY_FILES)
+
+GERSEMI = gersemi
+GERSEMI_FLAGS = -i --no-warn-about-unknown-commands
+
+format-cmake:
+	$(GERSEMI) $(GERSEMI_FLAGS) $(CMAKE_FILES)
+
+MBAKE = mbake
+MBAKE_FLAGS = format --config ./.bake.toml
+
+format-make:
+	$(MBAKE) $(MBAKE_FLAGS) $(MAKE_FILES)
+
+format-yaml: yamlfix
+
+PYLINT = pylint
+PYLINT_FLAGS = --recursive=n --score=n --disable=R0801
+PYLINT_TEST_FLAGS = $(PYLINT_FLAGS) --disable=C0103,C0114,C0116,C0209,C0411,C0413,C0301,R0801,R0912,R0915,R0916,R1702,W0511,W0621
+
+RUFF = ruff
+RUFF_FLAGS = check --ignore=E402,E501,E701
+
+# "make -k" so can see all tool result errors
+lint-py:
+	$(MAKE) -k lint-py-pylint lint-py-pylint-tests lint-py-ruff
+
+lint-py-pylint:
+	$(PYLINT) $(PYLINT_FLAGS) $(PY_PROGRAMS)
+
+lint-py-pylint-tests:
+	$(PYLINT) $(PYLINT_TEST_FLAGS) $(PY_TEST_FILES) | $(PYTHON3) nodist/lint_py_test_filter
+
+lint-py-ruff:
+	$(RUFF) $(RUFF_FLAGS) $(PY_PROGRAMS)
+
+format-exec:
+	-chmod a+x test_regress/t/*.py
+
+######################################################################
+# Configure
+
+IN_WILD := ${srcdir}/*.in ${srcdir}/*/*.in
+
+# autoheader might not change config_package.h.in, so touch it
+${srcdir}/config_package.h: ${srcdir}/config_package.h.in configure
+	cd ${srcdir} && autoheader
+	touch $@
+Makefile: Makefile.in config.status $(IN_WILD)
+	./config.status
+src/Makefile: src/Makefile.in Makefile
+config.status: configure
+	./config.status --recheck
+
+configure: configure.ac
+ifeq ($(CFG_WITH_CCWARN),yes)  # Local... Else don't burden users
+	autoconf --warnings=all
+else
+	autoconf
+endif
+
+######################################################################
+# Clean
+
+maintainer-clean: :
+	@echo "This command is intended for maintainers to use;"
+	@echo "rebuilding the deleted files requires autoconf."
+	rm -f configure
+
+clean mostlyclean distclean maintainer-clean maintainer-copy: :
+	for dir in $(SUBDIRS); do \
+		echo making $@ in $$dir ; \
+		$(MAKE) -C $$dir $@ ; \
+	done
+
+clean mostlyclean distclean maintainer-clean: :
+	rm -f $(SCRIPTS) *.tmp
+	rm -f *.aux *.cp *.cps *.dvi *.fn *.fns *.ky *.kys *.log
+	rm -f *.pg *.pgs *.toc *.tp *.tps *.vr *.vrs *.idx
+	rm -f *.ev *.evs *.ov *.ovs *.cv *.cvs *.ma *.mas
+	rm -f *.tex
+	rm -rf examples/*/obj_dir* examples/*/logs
+	rm -rf test_*/obj_dir
+	rm -rf src/*.tidy include/*.tidy examples/*/*.tidy
+	rm -rf .ruff_cache
+	rm -rf nodist/fuzzer/dictionary
+	rm -rf nodist/obj_dir
+	rm -rf verilator.txt
+
+distclean maintainer-clean: :
+	rm -f *.info* *.1 $(INFOS) $(INFOS_OLD) $(VL_INST_MAN_FILES)
+	rm -f Makefile config.status config.cache config.log TAGS
+	rm -f verilator_bin* verilator_coverage_bin*
+	rm -f bin/verilator_bin* bin/verilator_coverage_bin*
+	rm -f include/verilated.mk include/verilated_config.h
+
+######################################################################
+# Distributions
+
+DISTTITLE := Verilator $(word 1,$(PACKAGE_VERSION))
+DISTNAME := verilator-$(word 1,$(PACKAGE_VERSION))
+DISTDATEPRE := $(word 2,$(PACKAGE_VERSION))
+DISTDATE := $(subst /,-,$(DISTDATEPRE))
+DISTTAGNAME := $(subst .,_,$(subst -,_,$(DISTNAME)))
+
+tag:
+	svnorcvs tag $(DISTTAGNAME)
+
+maintainer-diff:
+	svnorcvs diff $(DISTTAGNAME)
+
+preexist:
+	svnorcvs nexists $(DISTTAGNAME)
+
+maintainer-dist: preexist tag
+	svnorcvs release $(DISTTAGNAME)

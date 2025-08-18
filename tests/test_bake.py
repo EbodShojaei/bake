@@ -17,7 +17,7 @@ class TestTabsRule:
 
     def test_converts_spaces_to_tabs(self):
         rule = TabsRule()
-        config = {"tab_width": 4}
+        config = {"tab_width": 2}
         lines = [
             "target:",
             "    echo 'hello'",  # 4 spaces
@@ -32,7 +32,7 @@ class TestTabsRule:
 
     def test_preserves_existing_tabs(self):
         rule = TabsRule()
-        config = {"tab_width": 4}
+        config = {"tab_width": 2}
         lines = ["target:", "\techo 'hello'", "\t\techo 'world'"]
 
         result = rule.format(lines, config)
@@ -42,7 +42,7 @@ class TestTabsRule:
 
     def test_handles_mixed_indentation(self):
         rule = TabsRule()
-        config = {"tab_width": 4}
+        config = {"tab_width": 2}
         lines = ["target:", "  \techo 'mixed'"]  # 2 spaces + 1 tab = 6 total
 
         result = rule.format(lines, config)

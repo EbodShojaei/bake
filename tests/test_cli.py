@@ -22,7 +22,6 @@ class TestCLIFormat:
         """Create a test configuration with consistent settings."""
         return Config(
             formatter=FormatterConfig(
-                use_tabs=True,
                 space_around_assignment=True,
                 group_phony_declarations=False,
                 phony_at_top=False,

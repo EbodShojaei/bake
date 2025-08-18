@@ -21,6 +21,11 @@ class TabsRule(FormatterPlugin):
         errors: list[str] = []
         warnings: list[str] = []
 
+        # Track conditional context when indentation is enabled
+        indent_conditionals = config.get("indent_nested_conditionals", False)
+        tab_width = config.get("tab_width", 4)
+        conditional_stack: list[str] = [] if indent_conditionals else []
+
         for line_index, line in enumerate(lines):
             # Skip empty lines
             if not line.strip():
@@ -33,6 +38,10 @@ class TabsRule(FormatterPlugin):
                 continue
 
             stripped = line.strip()
+
+            # Track conditional context if indentation is enabled
+            if indent_conditionals:
+                self._update_conditional_stack(stripped, conditional_stack)
 
             # Handle conditional directives - these should start at column 1 according to GNU Make syntax
             # BUT: nested conditionals inside else blocks should preserve indentation
@@ -80,16 +89,97 @@ class TabsRule(FormatterPlugin):
             ):
                 # Convert leading spaces to tab for recipe lines
                 content = line.lstrip()
-                # For recipe lines, always use exactly one tab
-                new_line = "\t" + content
+                # Apply conditional nesting indentation if enabled
+                if indent_conditionals and conditional_stack:
+                    # Recipe should align with the conditional directive that contains it
+                    # Calculate spaces needed, accounting for the mandatory tab's visual width
+                    conditional_indent = (len(conditional_stack) - 1) * tab_width
+                    # Subtract tab_width to compensate for the mandatory tab's visual width
+                    recipe_spaces = max(0, conditional_indent - tab_width)
+                    new_line = "\t" + " " * recipe_spaces + content
+                else:
+                    # For recipe lines, always use exactly one tab (GNU Make requirement)
+                    new_line = "\t" + content
+                if new_line != line:
+                    changed = True
+                    formatted_lines.append(new_line)
+                else:
+                    formatted_lines.append(line)
+            # Enhanced recipe alignment when nested conditionals are enabled
+            # This ONLY processes lines that actually have alignment problems
+            elif (
+                config.get("indent_nested_conditionals", False)
+                and self._needs_recipe_alignment(line)  # MUST have alignment problems
+                and line.startswith("\t")
+                and stripped  # Not empty
+                and not stripped.startswith("#")  # Not a comment
+                and not self._is_target_definition(stripped)  # Not a target definition
+                and not self._is_variable_assignment_line(
+                    stripped
+                )  # Not a variable assignment
+                and not stripped.startswith(
+                    ("include", "-include", "vpath")
+                )  # Not include/vpath
+                and not self._is_variable_continuation(
+                    line, line_index, lines
+                )  # Not variable continuation
+                and not LineUtils.is_makefile_construct(
+                    stripped
+                )  # Not a makefile construct
+            ):
+                # Clean up mixed whitespace in recipe lines when conditional indentation is enabled
+                content = line.lstrip()
+                # Apply conditional nesting indentation if enabled
+                if indent_conditionals and conditional_stack:
+                    # Recipe should align with the conditional directive that contains it
+                    # Calculate spaces needed, accounting for the mandatory tab's visual width
+                    conditional_indent = (len(conditional_stack) - 1) * tab_width
+                    # Subtract tab_width to compensate for the mandatory tab's visual width
+                    recipe_spaces = max(0, conditional_indent - tab_width)
+                    new_line = "\t" + " " * recipe_spaces + content
+                else:
+                    # For recipe lines, always use exactly one tab (GNU Make requirement)
+                    new_line = "\t" + content
                 if new_line != line:
                     changed = True
                     formatted_lines.append(new_line)
                 else:
                     formatted_lines.append(line)
             elif line.startswith("\t"):
-                # Already starts with tab
-                formatted_lines.append(line)
+                # Already starts with tab - but may need conditional nesting adjustment
+                if (
+                    indent_conditionals
+                    and conditional_stack
+                    and stripped
+                    and not stripped.startswith("#")
+                    and not self._is_target_definition(stripped)
+                    and not self._is_variable_assignment_line(stripped)
+                    and not stripped.startswith(("include", "-include", "vpath"))
+                    and not self._is_variable_continuation(line, line_index, lines)
+                    and not LineUtils.is_makefile_construct(stripped)
+                ):
+                    # This is a recipe line that needs conditional nesting indentation
+                    content = (
+                        line.lstrip()
+                    )  # Remove all leading whitespace (tabs/spaces)
+                    if conditional_stack:
+                        # Recipe should align with the conditional directive that contains it
+                        # Calculate spaces needed, accounting for the mandatory tab's visual width
+                        conditional_indent = (len(conditional_stack) - 1) * tab_width
+                        # Subtract tab_width to compensate for the mandatory tab's visual width
+                        recipe_spaces = max(0, conditional_indent - tab_width)
+                        new_line = "\t" + " " * recipe_spaces + content
+                    else:
+                        # No nesting - just use one tab
+                        new_line = "\t" + content
+                    if new_line != line:
+                        changed = True
+                        formatted_lines.append(new_line)
+                    else:
+                        formatted_lines.append(line)
+                else:
+                    # Not a recipe line or no conditional context - preserve as-is
+                    formatted_lines.append(line)
             else:
                 # Not a recipe line, preserve as-is
                 formatted_lines.append(line)
@@ -238,3 +328,57 @@ class TabsRule(FormatterPlugin):
             i += 1
 
         return False
+
+    def _needs_recipe_alignment(self, line: str) -> bool:
+        """Check if line has mixed whitespace or excessive tabs that need alignment."""
+        if not line:
+            return False
+
+        # Check for mixed tabs and spaces at the beginning
+        leading_chars = []
+        for char in line:
+            if char in [" ", "\t"]:
+                leading_chars.append(char)
+            else:
+                break
+
+        # Mixed whitespace means we have both tabs and spaces in the leading whitespace
+        has_tab = "\t" in leading_chars
+        has_space = " " in leading_chars
+        mixed_whitespace = has_tab and has_space
+
+        # Check for excessive tabs (more than one leading tab)
+        if line.startswith("\t"):
+            tab_count = 0
+            for char in line:
+                if char == "\t":
+                    tab_count += 1
+                else:
+                    break
+            excessive_tabs = tab_count > 1
+        else:
+            excessive_tabs = False
+
+        return mixed_whitespace or excessive_tabs
+
+    def _update_conditional_stack(
+        self, stripped_line: str, conditional_stack: list[str]
+    ) -> None:
+        """Update the conditional stack based on the current line."""
+        if not stripped_line:
+            return
+
+        # Check for conditional directives
+        if stripped_line.startswith(("ifeq", "ifneq", "ifdef", "ifndef")):
+            # Opening conditional - add to stack
+            conditional_type = (
+                stripped_line.split()[0]
+                if " " in stripped_line
+                else stripped_line.split("(")[0]
+            )
+            conditional_stack.append(conditional_type)
+        elif stripped_line.startswith("endif"):
+            # Closing conditional - remove from stack
+            if conditional_stack:
+                conditional_stack.pop()
+        # Note: 'else' doesn't change the stack depth, just the branch

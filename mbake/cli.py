@@ -103,15 +103,11 @@ debug = false
 verbose = false
 
 # Error message formatting
-gnu_error_format = true  # Use GNU standard error format (file:line: Error: message)
-wrap_error_messages = false  # Wrap long error messages (can interfere with IDE parsing)
+gnu_error_format = true
+wrap_error_messages = false
 
 [formatter]
-# Indentation settings
-use_tabs = false  # Default to spaces
-tab_width = 4
-
-# Spacing settings
+# Spacing settings - enable proper spacing
 space_around_assignment = true
 space_before_colon = false
 space_after_colon = true
@@ -125,12 +121,17 @@ group_phony_declarations = false
 phony_at_top = false
 auto_insert_phony_declarations = false
 
-# General settings
+# General settings - enable proper formatting
 remove_trailing_whitespace = true
 ensure_final_newline = true
 normalize_empty_lines = true
 max_consecutive_empty_lines = 2
 fix_missing_recipe_tabs = true
+
+# Conditional formatting settings (Default disabled)
+indent_nested_conditionals = false
+# Indentation settings
+tab_width = 2
 """
 
 
@@ -214,8 +215,6 @@ def config(
         console.print("[bold cyan]Formatter Settings:[/bold cyan]")
 
         settings = [
-            ("use_tabs", config.formatter.use_tabs, "Use tabs for indentation"),
-            ("tab_width", config.formatter.tab_width, "Tab width in spaces"),
             (
                 "space_around_assignment",
                 config.formatter.space_around_assignment,
@@ -281,6 +280,12 @@ def config(
                 config.formatter.fix_missing_recipe_tabs,
                 "Fix recipe lines missing tab separator",
             ),
+            (
+                "indent_nested_conditionals",
+                config.formatter.indent_nested_conditionals,
+                "Indent nested conditionals",
+            ),
+            ("tab_width", config.formatter.tab_width, "Tab width in spaces"),
         ]
 
         for name, value, desc in settings:

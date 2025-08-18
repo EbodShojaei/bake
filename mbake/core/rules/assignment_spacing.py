@@ -57,7 +57,11 @@ class AssignmentSpacingRule(FormatterPlugin):
                     # Only format if this is actually an assignment (not a target)
                     if operator in ["=", ":=", "?=", "+=", "!="]:
                         if space_around_assignment:
-                            new_line = f"{var_name} {operator} {value}"
+                            # Only add trailing space if there's actually a value
+                            if value.strip():
+                                new_line = f"{var_name} {operator} {value}"
+                            else:
+                                new_line = f"{var_name} {operator}"
                         else:
                             new_line = f"{var_name}{operator}{value}"
 
