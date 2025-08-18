@@ -52,7 +52,7 @@ function activate(context) {
 async function initializeConfig() {
     try {
         const result = await runBakeCommand(null, false, ['init']);
-        
+
         if (result.success) {
             vscode.window.showInformationMessage('mbake configuration initialized successfully');
         } else {
@@ -72,10 +72,10 @@ async function initializeConfig() {
 function isMakefileDocument(document) {
     const fileName = path.basename(document.fileName).toLowerCase();
     const extension = path.extname(document.fileName).toLowerCase();
-    
+
     return document.languageId === 'makefile' ||
-           ['makefile', 'gnumakefile'].includes(fileName) ||
-           ['.mk', '.make'].includes(extension);
+        ['makefile', 'gnumakefile'].includes(fileName) ||
+        ['.mk', '.make'].includes(extension);
 }
 
 /**
@@ -84,8 +84,10 @@ function isMakefileDocument(document) {
  */
 function getBakeConfig() {
     const config = vscode.workspace.getConfiguration('mbake');
+    const executablePath = config.get('executablePath', 'mbake');
+
     return {
-        executablePath: config.get('executablePath', 'bake'),
+        executablePath: executablePath,
         configPath: config.get('configPath', ''),
         showDiff: config.get('showDiff', false),
         verbose: config.get('verbose', false)
@@ -102,37 +104,48 @@ function getBakeConfig() {
 function buildBakeCommand(filePath, checkOnly = false, extraArgs = []) {
     const config = getBakeConfig();
     const args = ['format'];  // Always use format command
-    
+
     if (checkOnly) {
         args.push('--check');
     }
-    
+
     if (config.showDiff) {
         args.push('--diff');
     }
-    
+
     if (config.verbose) {
         args.push('--verbose');
     }
-    
+
     if (config.configPath) {
         args.push('--config', config.configPath);
     }
-    
+
     // Add extra args (like init)
     if (extraArgs.length > 0) {
         args.splice(0, 1); // Remove 'format'
         args.unshift(...extraArgs);
     }
-    
+
     if (filePath) {
         args.push(filePath);
     }
-    
-    return {
-        command: config.executablePath,
-        args: args
-    };
+
+    // Handle executablePath as either string or array
+    if (Array.isArray(config.executablePath)) {
+        // For array configuration, the first element is the command, rest are prepended args
+        const [command, ...prependedArgs] = config.executablePath;
+        return {
+            command: command,
+            args: [...prependedArgs, ...args]
+        };
+    } else {
+        // For string configuration, use as is
+        return {
+            command: config.executablePath,
+            args: args
+        };
+    }
 }
 
 /**
@@ -145,22 +158,46 @@ function buildBakeCommand(filePath, checkOnly = false, extraArgs = []) {
 function runBakeCommand(filePath, checkOnly = false, extraArgs = []) {
     return new Promise((resolve, reject) => {
         const { command, args } = buildBakeCommand(filePath, checkOnly, extraArgs);
-        
-        // Use Python module execution for better reliability
-        const pythonCommand = `python -c "from bake.cli import main; main()" ${args.join(' ')}`;
-        
-        exec(pythonCommand, { 
+
+        // Use spawn for better argument handling, especially for array configurations
+        const child = spawn(command, args, {
             cwd: path.dirname(filePath || process.cwd()),
-            timeout: 30000 
-        }, (error, stdout, stderr) => {
+            timeout: 30000,
+            stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        child.stdout.on('data', (data) => {
+            stdout += data.toString();
+        });
+
+        child.stderr.on('data', (data) => {
+            stderr += data.toString();
+        });
+
+        child.on('close', (code) => {
             const result = {
-                success: error === null || error.code === 0,
+                success: code === 0,
                 stdout: stdout,
                 stderr: stderr,
-                exitCode: error ? error.code : 0,
-                changed: error ? error.code === 1 : false
+                exitCode: code,
+                changed: code === 1 // Exit code 1 typically means formatting needed
             };
-            
+
+            resolve(result);
+        });
+
+        child.on('error', (error) => {
+            const result = {
+                success: false,
+                stdout: '',
+                stderr: error.message,
+                exitCode: -1,
+                changed: false
+            };
+
             resolve(result);
         });
     });
@@ -191,7 +228,7 @@ async function formatCurrentFile() {
     }
 
     const filePath = editor.document.fileName;
-    
+
     try {
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -199,7 +236,7 @@ async function formatCurrentFile() {
             cancellable: false
         }, async () => {
             const result = await runBakeCommand(filePath, false);
-            
+
             if (result.success) {
                 // Use workspace edit instead of file reload
                 const formattedContent = await fs.promises.readFile(filePath, 'utf8');
@@ -210,21 +247,21 @@ async function formatCurrentFile() {
                     document.positionAt(document.getText().length)
                 );
                 edit.replace(document.uri, fullRange, formattedContent);
-                
+
                 const success = await vscode.workspace.applyEdit(edit);
-                
+
                 if (success) {
                     vscode.window.showInformationMessage('Makefile formatted successfully');
                 } else {
                     vscode.window.showErrorMessage('Failed to apply formatting changes');
                 }
-                
+
                 if (result.stdout && getBakeConfig().verbose) {
                     console.log('Bake output:', result.stdout);
                 }
             } else {
                 let errorMsg = result.stderr || result.stdout || 'Unknown error occurred';
-                
+
                 // Check for common errors and provide helpful suggestions
                 if (errorMsg.includes('Configuration file not found')) {
                     const action = await vscode.window.showErrorMessage(
@@ -237,7 +274,7 @@ async function formatCurrentFile() {
                     }
                 } else if (errorMsg.includes('command not found') || errorMsg.includes('No module named')) {
                     vscode.window.showErrorMessage(
-                        'mbake not found. Please install it with: pip install mbake',
+                        'mbake not found. Please install it or configure the executable path in settings.',
                         'Open Settings'
                     ).then(action => {
                         if (action === 'Open Settings') {
@@ -280,7 +317,7 @@ async function checkCurrentFile() {
     }
 
     const filePath = editor.document.fileName;
-    
+
     try {
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -288,7 +325,7 @@ async function checkCurrentFile() {
             cancellable: false
         }, async () => {
             const result = await runBakeCommand(filePath, true);
-            
+
             if (result.success && !result.changed) {
                 vscode.window.showInformationMessage('✓ Makefile is properly formatted');
             } else if (result.changed) {
@@ -314,7 +351,7 @@ async function checkCurrentFile() {
                 const errorMsg = result.stderr || result.stdout || 'Unknown error occurred';
                 vscode.window.showErrorMessage(`Bake check failed: ${errorMsg}`);
             }
-            
+
             if (result.stdout && getBakeConfig().verbose) {
                 console.log('Bake output:', result.stdout);
             }
@@ -344,10 +381,10 @@ async function formatDocument(document) {
     }
 
     const filePath = document.fileName;
-    
+
     try {
         const result = await runBakeCommand(filePath, false);
-        
+
         if (result.success) {
             // Read the formatted file content
             const formattedContent = await fs.promises.readFile(filePath, 'utf8');
@@ -355,7 +392,7 @@ async function formatDocument(document) {
                 document.positionAt(0),
                 document.positionAt(document.getText().length)
             );
-            
+
             // Only return edit if content actually changed
             if (formattedContent !== document.getText()) {
                 return [vscode.TextEdit.replace(fullRange, formattedContent)];
@@ -367,7 +404,7 @@ async function formatDocument(document) {
     } catch (error) {
         console.error('Error running bake:', error.message);
     }
-    
+
     return [];
 }
 

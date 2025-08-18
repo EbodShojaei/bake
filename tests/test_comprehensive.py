@@ -211,6 +211,48 @@ class TestConditionalBlocks:
             # Note: We may need to adjust expected for our current implementation
             # assert formatted_lines == expected_lines
 
+    def test_complex_conditional_fixture(self):
+        """Test complex conditional fixture."""
+        config = create_conservative_config()
+        config.formatter.indent_nested_conditionals = True
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/complex_conditionals/input.mk")
+        expected_file = Path("tests/fixtures/complex_conditionals/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+        # Disable indent_nested_conditionals
+        config.formatter.indent_nested_conditionals = False
+
+    def test_nested_conditional_alignment_fixture(self):
+        """Test complex conditional fixture."""
+        config = create_conservative_config()
+        config.formatter.indent_nested_conditionals = True
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/nested_conditional_alignment/input.mk")
+        expected_file = Path("tests/fixtures/nested_conditional_alignment/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+        # Disable indent_nested_conditionals
+        config.formatter.indent_nested_conditionals = False
+
     def test_simple_conditional_indentation(self):
         """Test basic conditional indentation."""
         rule = ConditionalRule()

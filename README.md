@@ -299,12 +299,16 @@ bake init
 ### Sample Configuration
 
 ```toml
-[formatter]
-# Indentation settings
-use_tabs = true
-tab_width = 4
+# Global settings
+debug = false
+verbose = false
 
-# Spacing settings
+# Error message formatting
+gnu_error_format = true
+wrap_error_messages = false
+
+[formatter]
+# Spacing settings - enable proper spacing
 space_around_assignment = true
 space_before_colon = false
 space_after_colon = true
@@ -314,24 +318,21 @@ normalize_line_continuations = true
 max_line_length = 120
 
 # PHONY settings
-group_phony_declarations = true
-phony_at_top = true
+group_phony_declarations = false
+phony_at_top = false
 auto_insert_phony_declarations = false
 
-# General settings
+# General settings - enable proper formatting
 remove_trailing_whitespace = true
 ensure_final_newline = true
 normalize_empty_lines = true
 max_consecutive_empty_lines = 2
 fix_missing_recipe_tabs = true
 
-# Global settings
-debug = false
-verbose = false
-
-# Error message formatting
-gnu_error_format = true         # Use GNU standard error format (file:line: Error: message)
-wrap_error_messages = false     # Wrap long error messages (can interfere with IDE parsing)
+# Conditional formatting settings (Default disabled)
+indent_nested_conditionals = false
+# Indentation settings
+tab_width = 2
 ```
 
 ---

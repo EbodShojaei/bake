@@ -27,10 +27,6 @@ def get_active_command_name() -> str:
 class FormatterConfig:
     """Configuration for Makefile formatting rules."""
 
-    # Indentation settings
-    use_tabs: bool = False  # Default to spaces
-    tab_width: int = 4
-
     # Spacing settings
     space_around_assignment: bool = True
     space_before_colon: bool = False
@@ -41,18 +37,21 @@ class FormatterConfig:
     max_line_length: int = 120
 
     # PHONY settings
-    group_phony_declarations: bool = True
-    phony_at_top: bool = True
+    group_phony_declarations: bool = False
+    phony_at_top: bool = False
     auto_insert_phony_declarations: bool = False
 
     # General settings
     remove_trailing_whitespace: bool = True
-    ensure_final_newline: bool = (
-        False  # Don't enforce by default - this is a style choice
-    )
+    ensure_final_newline: bool = False
     normalize_empty_lines: bool = True
     max_consecutive_empty_lines: int = 2
     fix_missing_recipe_tabs: bool = True
+
+    # Conditional formatting settings (Default disabled)
+    indent_nested_conditionals: bool = False
+    # Indentation settings
+    tab_width: int = 2
 
 
 @dataclass
@@ -92,8 +91,6 @@ class Config:
         formatter_data = data.get("formatter", {})
         # Remove any keys that aren't valid FormatterConfig fields
         valid_formatter_keys = {
-            "use_tabs",
-            "tab_width",
             "space_around_assignment",
             "space_before_colon",
             "space_after_colon",
@@ -107,6 +104,8 @@ class Config:
             "normalize_empty_lines",
             "max_consecutive_empty_lines",
             "fix_missing_recipe_tabs",
+            "indent_nested_conditionals",
+            "tab_width",
         }
         filtered_formatter_data = {
             k: v for k, v in formatter_data.items() if k in valid_formatter_keys
@@ -172,8 +171,6 @@ class Config:
         """Convert config to dictionary."""
         return {
             "formatter": {
-                "use_tabs": self.formatter.use_tabs,
-                "tab_width": self.formatter.tab_width,
                 "space_around_assignment": self.formatter.space_around_assignment,
                 "space_before_colon": self.formatter.space_before_colon,
                 "space_after_colon": self.formatter.space_after_colon,
@@ -187,6 +184,8 @@ class Config:
                 "normalize_empty_lines": self.formatter.normalize_empty_lines,
                 "max_consecutive_empty_lines": self.formatter.max_consecutive_empty_lines,
                 "fix_missing_recipe_tabs": self.formatter.fix_missing_recipe_tabs,
+                "indent_nested_conditionals": self.formatter.indent_nested_conditionals,
+                "tab_width": self.formatter.tab_width,
             },
             "debug": self.debug,
             "verbose": self.verbose,

@@ -63,8 +63,11 @@ class TargetSpacingRule(FormatterPlugin):
                 # Apply spacing rules
                 if space_before_colon:
                     target += " "
-                if space_after_colon:
+                if space_after_colon and prerequisites.strip():
+                    # Only add space after colon if there are actual prerequisites
                     prerequisites = " " + prerequisites.lstrip()
+                else:
+                    prerequisites = prerequisites.lstrip()
 
                 new_line = target + ":" + prerequisites
                 if new_line != line:

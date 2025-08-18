@@ -11,10 +11,6 @@ gnu_error_format = true
 wrap_error_messages = false
 
 [formatter]
-# Indentation settings
-use_tabs = true
-tab_width = 4
-
 # Spacing settings
 space_around_assignment = true
 space_before_colon = false
@@ -35,3 +31,8 @@ ensure_final_newline = true
 normalize_empty_lines = true
 max_consecutive_empty_lines = 2
 fix_missing_recipe_tabs = true
+
+# Conditional formatting settings (Default disabled)
+indent_nested_conditionals = false
+# Indentation settings
+tab_width = 2

@@ -49,9 +49,11 @@ Access these settings through VS Code's settings (`Cmd/Ctrl + ,`) and search for
 
 ### `mbake.executablePath`
 
-- **Type**: `string`
-- **Default**: `"bake"`
-- **Description**: Path to the bake executable. Use 'bake' if it's in your PATH, or provide the full path.
+- **Type**: `string` or `array`
+- **Default**: `"mbake"`
+- **Description**: Path to the mbake executable. Can be:
+  - A string: Use 'mbake' if it's in your PATH, or provide the full path (the command can also be invoked as 'bake')
+  - An array: For custom execution scenarios (e.g., `["python", "-m", "mbake"]` or `["nix-shell", "-p", "mbake", "--run", "mbake"]`)
 
 ### `mbake.configPath`
 
@@ -77,9 +79,11 @@ Access these settings through VS Code's settings (`Cmd/Ctrl + ,`) and search for
 - **Default**: `false`
 - **Description**: Enable verbose output.
 
-## Configuration Example
+## Configuration Examples
 
 Add these settings to your VS Code `settings.json`:
+
+### Basic Configuration
 
 ```json
 {
@@ -88,6 +92,33 @@ Add these settings to your VS Code `settings.json`:
     "mbake.formatOnSave": true,
     "mbake.verbose": true,
     "mbake.showDiff": false
+}
+```
+
+### Using Python Module
+
+```json
+{
+    "mbake.executablePath": ["python", "-m", "mbake"],
+    "mbake.formatOnSave": true
+}
+```
+
+### Using Nix Shell (for NixOS users)
+
+```json
+{
+    "mbake.executablePath": ["nix-shell", "-p", "mbake", "--run", "mbake"],
+    "mbake.formatOnSave": true
+}
+```
+
+### Using Virtual Environment
+
+```json
+{
+    "mbake.executablePath": ["/path/to/venv/bin/python", "-m", "mbake"],
+    "mbake.formatOnSave": true
 }
 ```
 
@@ -142,6 +173,12 @@ which bake
 bake --help
 ```
 
+**Alternative solutions:**
+
+- Use Python module execution: `"mbake.executablePath": ["python", "-m", "mbake"]`
+- Use Nix shell (for NixOS): `"mbake.executablePath": ["nix-shell", "-p", "mbake", "--run", "mbake"]`
+- Use virtual environment: `"mbake.executablePath": ["/path/to/venv/bin/python", "-m", "mbake"]`
+
 ### Configuration file not found
 
 If you see errors about missing configuration files, either:
@@ -172,10 +209,6 @@ gnu_error_format = true         # Use GNU standard error format (file:line: Erro
 wrap_error_messages = false     # Wrap long error messages (can interfere with IDE parsing)
 
 [formatter]
-# Indentation settings
-use_tabs = true
-tab_width = 4
-
 # Spacing settings
 space_around_assignment = true
 space_before_colon = false
@@ -195,6 +228,11 @@ ensure_final_newline = true
 normalize_empty_lines = true
 max_consecutive_empty_lines = 2
 fix_missing_recipe_tabs = true
+
+# Conditional formatting settings (Default disabled)
+indent_nested_conditionals = false
+# Indentation settings
+tab_width = 2
 ```
 
 ## Contributing

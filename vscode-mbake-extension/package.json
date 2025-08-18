@@ -2,7 +2,7 @@
     "name": "mbake-makefile-formatter",
     "displayName": "mbake Makefile Formatter",
     "description": "Format Makefiles using the mbake formatter",
-    "version": "1.2.3",
+    "version": "1.4.0",
     "publisher": "eshojaei",
     "engines": {
         "vscode": "^1.60.0"
@@ -96,9 +96,12 @@
             "title": "mbake",
             "properties": {
                 "mbake.executablePath": {
-                    "type": "string",
+                    "type": [
+                        "string",
+                        "array"
+                    ],
                     "default": "mbake",
-                    "description": "Path to the mbake/bake executable. Use 'mbake' or 'bake' if in your PATH, or provide the full path."
+                    "description": "Path to the mbake executable. Can be a string (e.g., 'mbake', 'bake', '/path/to/mbake') or an array for custom execution (e.g., ['python', '-m', 'mbake'] or ['nix-shell', '-p', 'mbake', '--run', 'mbake']). Use 'mbake' if in your PATH, or provide the full path."
                 },
                 "mbake.configPath": {
                     "type": "string",
