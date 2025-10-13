@@ -37,6 +37,17 @@ class TabsRule(FormatterPlugin):
                 formatted_lines.append(line)
                 continue
 
+            # Get active recipe prefix for this line
+            active_prefix = LineUtils.get_active_recipe_prefix(lines, line_index)
+
+            # Skip lines that start directly with the active recipe prefix (already properly formatted)
+            # But only if they don't need conditional indentation
+            if (
+                line.startswith(active_prefix) or line.startswith(active_prefix + "\t")
+            ) and not indent_conditionals:
+                formatted_lines.append(line)
+                continue
+
             stripped = line.strip()
 
             # Track conditional context if indentation is enabled
@@ -68,6 +79,7 @@ class TabsRule(FormatterPlugin):
             # - Variable definition continuations
             # - Function calls
             # - Other makefile constructs
+            # - Lines that start with the active .RECIPEPREFIX character
             elif (
                 line.startswith(" ")
                 and stripped  # Not empty
@@ -86,6 +98,10 @@ class TabsRule(FormatterPlugin):
                 and not LineUtils.is_makefile_construct(
                     stripped
                 )  # Not a makefile construct
+                and not (
+                    line.startswith(active_prefix)
+                    or line.startswith(active_prefix + "\t")
+                )  # Not direct .RECIPEPREFIX line
             ):
                 # Convert leading spaces to tab for recipe lines
                 content = line.lstrip()

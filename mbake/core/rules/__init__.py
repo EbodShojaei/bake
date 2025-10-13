@@ -13,6 +13,7 @@ from .recipe_validation import RecipeValidationRule
 from .shell import ShellFormattingRule
 from .tabs import TabsRule
 from .target_spacing import TargetSpacingRule
+from .target_validation import TargetValidationRule
 from .whitespace import WhitespaceRule
 
 __all__ = [
@@ -29,5 +30,6 @@ __all__ = [
     "ShellFormattingRule",
     "TabsRule",
     "TargetSpacingRule",
+    "TargetValidationRule",
     "WhitespaceRule",
 ]

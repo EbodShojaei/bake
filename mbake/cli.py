@@ -477,7 +477,7 @@ def format(
                 # Show diff if requested
                 if diff:
                     original_content = file_path.read_text(encoding="utf-8")
-                    formatted_lines, errors = formatter.format_lines(
+                    formatted_lines, errors, warnings = formatter.format_lines(
                         original_content.splitlines()
                     )
                     formatted_content = "\n".join(formatted_lines)
@@ -502,6 +502,10 @@ def format(
                 # Format file
                 changed, errors = formatter.format_file(file_path, check_only=check)
 
+                # Get warnings from the formatter result
+                result = formatter.format(file_path.read_text(encoding="utf-8"))
+                warnings = result.warnings
+
                 if errors:
                     any_errors = True
                     for error in errors:
@@ -518,6 +522,24 @@ def format(
                         else:
                             # Traditional format
                             output_console.print(f"[red]Error:[/red] {error}")
+
+                if warnings:
+                    for warning in warnings:
+                        if config.gnu_error_format:
+                            # GNU standard format: filename:line: Warning: message
+                            if ":" in warning and warning.split(":")[0].isdigit():
+                                # Warning already has line number, prepend filename
+                                output_console.print(
+                                    f"[yellow]{file_path}:{warning}[/yellow]"
+                                )
+                            else:
+                                # Warning doesn't have line number, add generic format
+                                output_console.print(
+                                    f"[yellow]{file_path}: Warning: {warning}[/yellow]"
+                                )
+                        else:
+                            # Traditional format
+                            output_console.print(f"[yellow]Warning:[/yellow] {warning}")
 
                 if changed:
                     any_changed = True

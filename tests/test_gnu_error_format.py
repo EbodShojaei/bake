@@ -21,7 +21,7 @@ class TestGNUErrorFormat:
             "\techo 'second default'",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert len(errors) == 1
         # Our current format includes line numbers and detailed context
@@ -42,7 +42,7 @@ class TestGNUErrorFormat:
             "\techo 'second default'",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert len(errors) == 1
         # Should still have line numbers but without the "2: Error:" prefix format
@@ -61,7 +61,7 @@ class TestGNUErrorFormat:
         # Simulate original content without final newline
         original_content = "\n".join(lines)  # No final newline
 
-        formatted_lines, errors = formatter.format_lines(
+        formatted_lines, errors, warnings = formatter.format_lines(
             lines, check_only=True, original_content=original_content
         )
 
@@ -91,7 +91,7 @@ class TestGNUErrorFormat:
         # Simulate original content without final newline
         original_content = "\n".join(lines)  # No final newline
 
-        formatted_lines, errors = formatter.format_lines(
+        formatted_lines, errors, warnings = formatter.format_lines(
             lines, check_only=True, original_content=original_content
         )
 
@@ -140,7 +140,7 @@ class TestGNUErrorFormat:
         # Simulate original content without final newline (17 lines total)
         original_content = "\n".join(lines)  # No final newline
 
-        formatted_lines, errors = formatter.format_lines(
+        formatted_lines, errors, warnings = formatter.format_lines(
             lines, check_only=True, original_content=original_content
         )
 
@@ -183,7 +183,7 @@ class TestGNUErrorFormat:
         # Simulate original content without final newline
         original_content = "\n".join(lines)  # No final newline
 
-        formatted_lines, errors = formatter.format_lines(
+        formatted_lines, errors, warnings = formatter.format_lines(
             lines, check_only=True, original_content=original_content
         )
 
@@ -227,7 +227,7 @@ class TestGNUErrorFormat:
         # Simulate original content without final newline
         original_content = "\n".join(lines)  # No final newline
 
-        formatted_lines, errors = formatter.format_lines(
+        formatted_lines, errors, warnings = formatter.format_lines(
             lines, check_only=True, original_content=original_content
         )
 

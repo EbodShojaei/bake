@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import LineUtils
 
 
 class TargetSpacingRule(FormatterPlugin):
@@ -24,10 +25,7 @@ class TargetSpacingRule(FormatterPlugin):
         space_before_colon = config.get("space_before_colon", False)
         space_after_colon = config.get("space_after_colon", True)
 
-        # Track active recipe prefix while iterating (handles mid-file flips)
-        active_prefix = "\t"
-
-        for line in lines:
+        for line_index, line in enumerate(lines):
             # Skip recipe lines, comments, and empty lines
             if (
                 line.startswith("\t")
@@ -37,10 +35,12 @@ class TargetSpacingRule(FormatterPlugin):
                 formatted_lines.append(line)
                 continue
 
+            # Get active recipe prefix for this line
+            active_prefix = LineUtils.get_active_recipe_prefix(lines, line_index)
+
             # Update active .RECIPEPREFIX when encountered and emit unchanged
             m_prefix = re.match(r"^\s*\.RECIPEPREFIX\s*(?::=|=)\s*(.)\s*$", line)
             if m_prefix:
-                active_prefix = m_prefix.group(1)
                 formatted_lines.append(line)
                 continue
 
@@ -113,7 +113,7 @@ class TargetSpacingRule(FormatterPlugin):
 
             # Check if line contains a target (has a colon)
             # Treat lines that begin with the active recipe prefix as recipes; don't format
-            if active_prefix and line.startswith(active_prefix):
+            if LineUtils.is_recipe_line_with_prefix(line, active_prefix):
                 formatted_lines.append(line)
                 continue
 

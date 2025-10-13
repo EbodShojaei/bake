@@ -28,6 +28,46 @@ class LineUtils:
     )  # Common shell command starters
 
     @staticmethod
+    def get_active_recipe_prefix(lines: list[str], line_index: int) -> str:
+        """
+        Get the active .RECIPEPREFIX character up to the given line index.
+
+        Args:
+            lines: List of all lines in the Makefile
+            line_index: Index of the current line (0-based)
+
+        Returns:
+            The active recipe prefix character (default: "\t")
+        """
+        active_prefix = "\t"  # Default recipe prefix
+        for i in range(line_index):
+            line = lines[i]
+            prefix_match = re.match(r"^\s*\.RECIPEPREFIX\s*(?::=|=)\s*(.)\s*$", line)
+            if prefix_match:
+                active_prefix = prefix_match.group(1)
+        return active_prefix
+
+    @staticmethod
+    def is_recipe_line_with_prefix(line: str, active_prefix: str) -> bool:
+        """
+        Check if line is a recipe line using the active .RECIPEPREFIX character.
+
+        Args:
+            line: The line to check
+            active_prefix: The active recipe prefix character
+
+        Returns:
+            True if the line starts with the active recipe prefix
+        """
+        # Handle cases: prefix directly (>) and prefix with tab (>\t)
+        # Also handle the case where there might be a tab before the prefix
+        return (
+            line.startswith(active_prefix)
+            or line.startswith(active_prefix + "\t")
+            or line.startswith("\t" + active_prefix)
+        )
+
+    @staticmethod
     def should_skip_line(
         line: str,
         skip_recipe: bool = True,

@@ -23,6 +23,7 @@ from .rules import (
     ShellFormattingRule,
     TabsRule,
     TargetSpacingRule,
+    TargetValidationRule,
     WhitespaceRule,
 )
 
@@ -52,6 +53,7 @@ class MakefileFormatter:
         self.rules: list[FormatterPlugin] = [
             # Error detection rules (run first)
             DuplicateTargetRule(),  # Detect duplicate targets
+            TargetValidationRule(),  # Validate target syntax
             RecipeValidationRule(),  # Validate recipe syntax
             # Basic formatting rules
             WhitespaceRule(),  # Clean up whitespace
@@ -104,7 +106,7 @@ class MakefileFormatter:
             lines = original_content.splitlines()
 
             # Apply formatting
-            formatted_lines, errors = self.format_lines(
+            formatted_lines, errors, warnings = self.format_lines(
                 lines, check_only, original_content
             )
 
@@ -168,7 +170,7 @@ class MakefileFormatter:
         lines: Sequence[str],
         check_only: bool = False,
         original_content: Union[str, None] = None,
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[str], list[str], list[str]]:
         """Format makefile lines and return formatted lines and errors."""
         # Convert to list for easier manipulation
         original_lines = list(lines)
@@ -194,6 +196,7 @@ class MakefileFormatter:
         # Simplified formatting - apply rules directly to lines
         formatted_lines = original_lines.copy()
         all_errors = []
+        all_warnings = []
 
         # Apply formatting rules in priority order
         for rule in self.rules:
@@ -217,10 +220,13 @@ class MakefileFormatter:
                             lines_to_format, config_dict, check_only, **context
                         )
 
-                        # Process errors
+                        # Process errors and warnings
                         for error in result.errors:
                             formatted_error = self._format_error(error, 0, config_dict)
                             all_errors.append(formatted_error)
+
+                        for warning in result.warnings:
+                            all_warnings.append(warning)
 
                         # Merge formatted lines back
                         for formatted_index, original_index in line_mapping.items():
@@ -235,17 +241,20 @@ class MakefileFormatter:
                     )
                     formatted_lines = result.lines
 
-                    # Process errors
+                    # Process errors and warnings
                     for error in result.errors:
                         formatted_error = self._format_error(error, 0, config_dict)
                         all_errors.append(formatted_error)
+
+                    for warning in result.warnings:
+                        all_warnings.append(warning)
 
             except Exception as e:
                 error_msg = f"Error in rule {rule.name}: {e}"
                 logger.error(error_msg)
                 all_errors.append(error_msg)
 
-        return formatted_lines, all_errors
+        return formatted_lines, all_errors, all_warnings
 
     def _is_line_disabled(
         self, line_index: int, disabled_regions: list[FormatRegion]
@@ -347,7 +356,7 @@ class MakefileFormatter:
             FormatterResult with formatted content
         """
         lines = content.splitlines()
-        formatted_lines, errors = self.format_lines(lines, check_only=False)
+        formatted_lines, errors, warnings = self.format_lines(lines, check_only=False)
 
         # Join lines back to content
         formatted_content = "\n".join(formatted_lines)
@@ -374,7 +383,7 @@ class MakefileFormatter:
         changed = formatted_content != content
 
         return FormatterResult(
-            content=formatted_content, changed=changed, errors=errors, warnings=[]
+            content=formatted_content, changed=changed, errors=errors, warnings=warnings
         )
 
     def _sort_errors_by_line_number(self, errors: list[str]) -> list[str]:

@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import LineUtils
 
 
 class RecipeValidationRule(FormatterPlugin):
@@ -27,8 +28,11 @@ class RecipeValidationRule(FormatterPlugin):
         for i, line in enumerate(lines):
             line_num = i + 1
 
+            # Get active recipe prefix for this line
+            active_prefix = LineUtils.get_active_recipe_prefix(lines, i)
+
             # Check if this should be a recipe line but is missing a tab
-            if self._is_missing_recipe_tab(line, i, lines):
+            if self._is_missing_recipe_tab(line, i, lines, active_prefix):
                 error_msg = "Missing required tab separator in recipe line"
 
                 if check_mode:
@@ -66,7 +70,7 @@ class RecipeValidationRule(FormatterPlugin):
         )
 
     def _is_missing_recipe_tab(
-        self, line: str, line_index: int, all_lines: list[str]
+        self, line: str, line_index: int, all_lines: list[str], active_prefix: str
     ) -> bool:
         """
         Check if a line should be a recipe line but is missing the required tab.
@@ -75,6 +79,7 @@ class RecipeValidationRule(FormatterPlugin):
             line: The line to check
             line_index: Index of the line in the file
             all_lines: All lines in the file
+            active_prefix: The active recipe prefix character
 
         Returns:
             True if this line should be a recipe but is missing a tab
@@ -83,6 +88,10 @@ class RecipeValidationRule(FormatterPlugin):
 
         # Skip empty lines and comments
         if not stripped or stripped.startswith("#"):
+            return False
+
+        # Skip lines that already start with the active recipe prefix (correctly formatted)
+        if LineUtils.is_recipe_line_with_prefix(line, active_prefix):
             return False
 
         # Skip lines that already start with tab (correctly formatted) or space (continuations/intentional indent)
