@@ -37,11 +37,11 @@ $(OBJECTS): %.o: %.c | $(DEPDIR)
 
 # Target-specific variables with poor formatting
 debug: CFLAGS += -g -DDEBUG
-debug:LDFLAGS += -rdynamic
+debug: LDFLAGS += -rdynamic
 debug: all
 
-release:    CFLAGS += -O2 -DNDEBUG
-release:CFLAGS += -march=native
+release: CFLAGS += -O2 -DNDEBUG
+release: CFLAGS += -march=native
 release: all
 
 # Conditional targets
