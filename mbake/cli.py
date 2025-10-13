@@ -694,30 +694,78 @@ def update(
         console.print("🔍 Checking for updates...", style="dim")
 
         try:
-            update_available, latest_version, current_ver = check_for_updates()
+            # First check stable versions
+            update_available, latest_stable, current_ver = check_for_updates(
+                include_prerelease=False
+            )
 
-            if update_available and latest_version:
-                console.print("[green]✨ Update available![/green]")
+            # Then check if there are any pre-release versions available
+            prerelease_available, latest_prerelease, _ = check_for_updates(
+                include_prerelease=True
+            )
+
+            # Determine what to show
+            if (
+                prerelease_available
+                and latest_prerelease
+                and latest_prerelease != latest_stable
+            ):
+                # There are pre-release versions available
+                console.print("[green]✨ Updates available![/green]")
                 console.print(f"Current version: [yellow]{current_ver}[/yellow]")
-                console.print(f"Latest version:  [green]{latest_version}[/green]")
+
+                if update_available and latest_stable:
+                    console.print(f"Latest stable:   [green]{latest_stable}[/green]")
+
+                if any(
+                    suffix in latest_prerelease
+                    for suffix in ["rc", "alpha", "beta", "a", "b"]
+                ):
+                    console.print(
+                        f"Latest pre-release: [blue]{latest_prerelease}[/blue] [dim](pre-release)[/dim]"
+                    )
 
                 if is_development_install():
                     console.print(
-                        "\n[yellow]Note:[/yellow] You appear to be using a development installation."
+                        "\n[yellow]Development installation detected[/yellow]"
                     )
                     console.print(
-                        "Consider updating your local repository and reinstalling."
+                        "Update via: [bold]git pull && pip install -e .[/bold]"
                     )
                 else:
-                    console.print("\nTo update, run: [bold]bake update[/bold]")
+                    console.print("\nTo update, run: [bold]mbake update[/bold]")
 
-            elif latest_version is None:
+            elif update_available and latest_stable:
+                # Only stable updates available
+                console.print("[green]✨ Update available![/green]")
+                console.print(f"Current version: [yellow]{current_ver}[/yellow]")
+                console.print(f"Latest version:  [green]{latest_stable}[/green]")
+
+                if is_development_install():
+                    console.print(
+                        "\n[yellow]Development installation detected[/yellow]"
+                    )
+                    console.print(
+                        "Update via: [bold]git pull && pip install -e .[/bold]"
+                    )
+                else:
+                    console.print("\nTo update, run: [bold]mbake update[/bold]")
+
+            elif latest_stable is None:
                 console.print(
                     "[yellow]⚠️[/yellow] Unable to check for updates (network error)"
                 )
                 console.print("Check your internet connection and try again later.")
             else:
                 console.print(f"[green]✅ You're up to date![/green] (v{current_ver})")
+
+                if is_development_install():
+                    console.print(
+                        "\n[yellow]Development installation detected[/yellow]"
+                    )
+                    console.print(
+                        "Update via: [bold]git pull && pip install -e .[/bold]"
+                    )
 
         except VersionError as e:
             console.print(f"[red]Error checking version:[/red] {e}")
@@ -727,45 +775,102 @@ def update(
     console.print("🔍 Checking for updates...", style="dim")
 
     try:
-        update_available, latest_version, current_ver = check_for_updates()
+        # Check both stable and pre-release versions
+        stable_available, latest_stable, current_ver = check_for_updates(
+            include_prerelease=False
+        )
+        prerelease_available, latest_prerelease, _ = check_for_updates(
+            include_prerelease=True
+        )
 
-        if latest_version is None:
-            console.print("[red]❌ Unable to check for updates[/red]")
-            console.print("Check your internet connection and try again later.")
-            raise typer.Exit(1)
+        # Check if this is a development install first
+        if is_development_install():
+            console.print("[yellow]⚠️ Development installation detected[/yellow]")
+            console.print(
+                "For development installs, update via: [bold]git pull && pip install -e .[/bold]"
+            )
+            return
 
-        if not update_available and not force:
+        # Determine what updates are available
+        has_stable_update = stable_available and latest_stable
+        has_prerelease_update = (
+            prerelease_available
+            and latest_prerelease
+            and latest_prerelease != latest_stable
+        )
+
+        if not has_stable_update and not has_prerelease_update and not force:
             console.print(f"[green]✅ Already up to date![/green] (v{current_ver})")
             return
 
-        # Check if this is a development install
-        if is_development_install():
-            console.print("[yellow]⚠️ Development installation detected[/yellow]")
-            console.print("This appears to be an editable/development installation.")
-            console.print(
-                "Please update manually by pulling the latest changes and reinstalling:"
-            )
-            console.print("  git pull")
-            console.print("  pip install -e .")
-            return
+        # Show available updates
+        console.print("[green]✨ Updates available![/green]")
+        console.print(f"Current version: [yellow]{current_ver}[/yellow]")
 
-        if update_available:
-            console.print("[green]✨ Update available![/green]")
-            console.print(f"Current version: [yellow]{current_ver}[/yellow]")
-            console.print(f"Latest version:  [green]{latest_version}[/green]")
-        else:
+        if has_stable_update:
+            console.print(f"Latest stable:   [green]{latest_stable}[/green]")
+
+        if (
+            has_prerelease_update
+            and latest_prerelease
+            and any(
+                suffix in latest_prerelease
+                for suffix in ["rc", "alpha", "beta", "a", "b"]
+            )
+        ):
             console.print(
-                f"[yellow]Forcing update...[/yellow] (current: v{current_ver})"
+                f"Latest pre-release: [blue]{latest_prerelease}[/blue] [dim](pre-release)[/dim]"
             )
 
-        # Confirmation prompt
+        # Interactive version selection
         if not yes:
-            proceed = typer.confirm(
-                f"Do you want to update mbake to v{latest_version}?"
+            if has_stable_update and has_prerelease_update:
+                # Both available - let user choose
+                console.print("\n[bold]Which version would you like to install?[/bold]")
+                choice = typer.prompt(
+                    "Choose version [stable/prerelease/cancel]",
+                    default="stable",
+                )
+
+                if choice == "cancel":
+                    console.print("Update cancelled.")
+                    return
+                elif choice == "stable":
+                    target_version = latest_stable
+                elif choice == "prerelease":
+                    target_version = latest_prerelease
+                    console.print("[yellow]⚠️  Installing pre-release version[/yellow]")
+                else:
+                    console.print("[red]Invalid choice. Update cancelled.[/red]")
+                    return
+
+            elif has_stable_update:
+                # Only stable available
+                target_version = latest_stable
+                proceed = typer.confirm(f"Do you want to update to v{target_version}?")
+                if not proceed:
+                    console.print("Update cancelled.")
+                    return
+
+            elif has_prerelease_update:
+                # Only pre-release available
+                target_version = latest_prerelease
+                console.print("[yellow]⚠️  Only pre-release version available[/yellow]")
+                proceed = typer.confirm(f"Do you want to update to v{target_version}?")
+                if not proceed:
+                    console.print("Update cancelled.")
+                    return
+            else:
+                # Force update
+                target_version = latest_stable or latest_prerelease
+                console.print(
+                    f"[yellow]Forcing update...[/yellow] (current: v{current_ver})"
+                )
+        else:
+            # Auto-select latest available
+            target_version = (
+                latest_prerelease if has_prerelease_update else latest_stable
             )
-            if not proceed:
-                console.print("Update cancelled.")
-                return
 
         # Perform update
         console.print("📦 Updating mbake...", style="dim")
@@ -775,7 +880,7 @@ def update(
 
         if success:
             console.print(
-                f"[green]🎉 Successfully updated to v{latest_version}![/green]"
+                f"[green]🎉 Successfully updated to v{target_version}![/green]"
             )
             console.print(
                 "\n[dim]Note: You may need to restart your terminal or reload your shell for changes to take effect.[/dim]"
