@@ -1218,3 +1218,300 @@ class TestFormatDisable:
 
             assert not errors
             assert formatted_lines == expected_lines
+
+
+class TestUrlsInMakefiles:
+    """Test URL handling in Makefiles to prevent misclassification as targets."""
+
+    def test_urls_in_recipes_fixture(self):
+        """Test URLs in recipe environment assignments are not treated as targets."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/urls_in_recipes/input.mk")
+        expected_file = Path("tests/fixtures/urls_in_recipes/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+
+class TestAdditionalVariations:
+    """Additional fixtures to validate formatter behavior on edge assumptions."""
+
+    def test_recipeprefix_multi_fixture(self):
+        """Multiple .RECIPEPREFIX changes mid-file should leave recipes untouched."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/recipeprefix_multi/input.mk")
+        expected_file = Path("tests/fixtures/recipeprefix_multi/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_colon_sensitive_assignment_fixture(self):
+        """Colon-sensitive assignment values should remain unchanged; VPATH still OK."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/colon_sensitive_assignment/input.mk")
+        expected_file = Path("tests/fixtures/colon_sensitive_assignment/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_vpath_variations_fixture(self):
+        """All VPATH spacing forms are valid and should remain unchanged."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/vpath_variations/input.mk")
+        expected_file = Path("tests/fixtures/vpath_variations/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_vpath_conditionals_fixture(self):
+        """VPATH in conditional blocks should be normalized correctly."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/vpath_conditionals/input.mk")
+        expected_file = Path("tests/fixtures/vpath_conditionals/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_vpath_advanced_fixture(self):
+        """VPATH with function calls and target-specific assignments should be handled correctly."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/vpath_advanced/input.mk")
+        expected_file = Path("tests/fixtures/vpath_advanced/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_vpath_edge_cases_fixture(self):
+        """VPATH edge cases and error scenarios should be handled gracefully."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/vpath_edge_cases/input.mk")
+        expected_file = Path("tests/fixtures/vpath_edge_cases/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_urls_in_recipes_quoted_fixture(self):
+        """Test quoted URLs in recipe environment assignments are not treated as targets."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/urls_in_recipes_quoted/input.mk")
+        expected_file = Path("tests/fixtures/urls_in_recipes_quoted/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_urls_in_assignments_fixture(self):
+        """Test URLs in top-level variable assignments are not modified."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/urls_in_assignments/input.mk")
+        expected_file = Path("tests/fixtures/urls_in_assignments/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_urls_in_assignments_quoted_fixture(self):
+        """Test quoted URLs in top-level variable assignments are not modified."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/urls_in_assignments_quoted/input.mk")
+        expected_file = Path("tests/fixtures/urls_in_assignments_quoted/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_urls_in_recipes_datetime_fixture(self):
+        """ISO datetime with colon in recipe env should not be a target."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/urls_in_recipes_datetime/input.mk")
+        expected_file = Path("tests/fixtures/urls_in_recipes_datetime/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_urls_in_assignments_datetime_fixture(self):
+        """ISO datetime colon should not be spaced or misparsed in assignments."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/urls_in_assignments_datetime/input.mk")
+        expected_file = Path("tests/fixtures/urls_in_assignments_datetime/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_windows_path_in_assignments_fixture(self):
+        """Windows-like path with colon should remain unchanged in assignments."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/windows_path_in_assignments/input.mk")
+        expected_file = Path("tests/fixtures/windows_path_in_assignments/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_conditional_urls_fixture(self):
+        """Recipe env URLs inside conditionals should not be treated as targets."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/conditional_urls/input.mk")
+        expected_file = Path("tests/fixtures/conditional_urls/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_recipeprefix_urls_fixture(self):
+        """With custom .RECIPEPREFIX, recipe env URL lines are not targets."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/recipeprefix_urls/input.mk")
+        expected_file = Path("tests/fixtures/recipeprefix_urls/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_substitution_reference_guard_fixture(self):
+        """Ensure $(VAR:pattern=repl) with colon is not mistaken as target."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/substitution_reference_guard/input.mk")
+        expected_file = Path("tests/fixtures/substitution_reference_guard/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_multiline_assignment_with_url_fixture(self):
+        """Backslash-continued assignment with URL must be preserved."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/multiline_assignment_with_url/input.mk")
+        expected_file = Path("tests/fixtures/multiline_assignment_with_url/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines

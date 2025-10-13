@@ -48,8 +48,8 @@ class DuplicateTargetRule(FormatterPlugin):
             # Get conditional context for this line
             conditional_context = conditional_tracker.process_line(line, i)
 
-            # Skip empty lines, comments, and recipes
-            if not stripped or stripped.startswith("#") or stripped.startswith("\t"):
+            # Skip empty lines, comments, and recipes (must check original line for tab)
+            if not stripped or stripped.startswith("#") or line.startswith("\t"):
                 continue
 
             # Check for target definitions

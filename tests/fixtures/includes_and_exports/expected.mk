@@ -30,8 +30,8 @@ unexport	TEMP_VAR
 export PATH:=/usr/local/bin:$(PATH)
 export    PKG_CONFIG_PATH += /usr/local/lib/pkgconfig
 
-# VPATH with poor formatting
-VPATH = src: include:build
+# VPATH with poor formatting - normalized to colon-separated
+VPATH = src:include:build
 vpath %.c    src/
 vpath   %.h  include/
 vpath %.o   build/
