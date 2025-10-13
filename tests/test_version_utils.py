@@ -37,6 +37,26 @@ class TestParseVersion:
         assert post_version_2 > post_version
         assert post_version_2 > base_version
 
+    def test_prerelease_version(self):
+        """Test parsing pre-release version numbers."""
+        assert parse_version("1.2.3rc0") == (1, 2, 3, 0)
+        assert parse_version("1.2.3alpha1") == (1, 2, 3, 0)
+        assert parse_version("1.2.3beta2") == (1, 2, 3, 0)
+        assert parse_version("1.2.3a1") == (1, 2, 3, 0)
+        assert parse_version("1.2.3b2") == (1, 2, 3, 0)
+        assert parse_version("1.2.3.pre") == (1, 2, 3, 0)
+
+    def test_prerelease_version_comparison(self):
+        """Test that pre-release versions are handled correctly."""
+        # Note: The current implementation treats pre-releases the same as base versions
+        # This is a simplified approach - in a full implementation, you might want
+        # to handle pre-release ordering more sophisticatedly
+        base_version = parse_version("1.2.3")
+        rc_version = parse_version("1.2.3rc0")
+
+        # For now, they're treated as equal in our simplified implementation
+        assert rc_version == base_version
+
     def test_invalid_version(self):
         """Test parsing invalid version strings."""
         with pytest.raises(VersionError):
@@ -156,6 +176,30 @@ class TestCheckForUpdates:
         assert update_available is False
         assert latest == "1.2.3"
         assert current == "1.2.3.post1"
+
+    @patch("mbake.utils.version_utils.get_pypi_version")
+    @patch("mbake.utils.version_utils.current_version", "1.4.1")
+    def test_prerelease_update_available(self, mock_get_version):
+        """Test that pre-release versions are detected when include_prerelease=True."""
+        mock_get_version.return_value = "1.4.2rc0"
+
+        update_available, latest, current = check_for_updates(include_prerelease=True)
+
+        assert update_available is True
+        assert latest == "1.4.2rc0"
+        assert current == "1.4.1"
+
+    @patch("mbake.utils.version_utils.get_pypi_version")
+    @patch("mbake.utils.version_utils.current_version", "1.4.1")
+    def test_prerelease_excluded_by_default(self, mock_get_version):
+        """Test that pre-release versions are excluded by default."""
+        mock_get_version.return_value = "1.4.1"  # Latest stable version
+
+        update_available, latest, current = check_for_updates(include_prerelease=False)
+
+        assert update_available is False
+        assert latest == "1.4.1"
+        assert current == "1.4.1"
 
 
 class TestIsDevelopmentInstall:

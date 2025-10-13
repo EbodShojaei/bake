@@ -21,13 +21,13 @@ def parse_version(version_str: str) -> tuple[int, ...]:
     """Parse a version string into a tuple of integers for comparison.
 
     Args:
-        version_str: Version string like '1.2.3' or '1.2.3.post1'
+        version_str: Version string like '1.2.3', '1.2.3.post1', '1.2.3rc0', or '1.2.3.pre'
 
     Returns:
-        tuple of integers representing version components (including post-release)
+        tuple of integers representing version components (including post-release and pre-release)
     """
     try:
-        # Split on .post to handle post-release versions
+        # Handle post-release versions first (e.g., 1.2.3.post1)
         if ".post" in version_str:
             base_version, post_part = version_str.split(".post", 1)
             base_tuple = tuple(map(int, base_version.split(".")))
@@ -35,20 +35,37 @@ def parse_version(version_str: str) -> tuple[int, ...]:
             # Add the post-release number as an additional component
             # This ensures 1.2.3.post1 > 1.2.3 (which becomes 1.2.3.0 internally)
             return base_tuple + (post_number,)
-        else:
-            # For non-post versions, add 0 as the post component for comparison
-            base_tuple = tuple(map(int, version_str.split(".")))
-            return base_tuple + (0,)
+
+        # Handle pre-release versions (e.g., 1.2.3rc0, 1.2.3.rc1, 1.2.3-alpha1, 1.2.3-beta2, 1.2.3.pre)
+        prerelease_suffixes = ["rc", "alpha", "beta", "a", "b", "pre"]
+        for suffix in prerelease_suffixes:
+            if suffix in version_str:
+                # For pre-release versions, we'll treat them as the base version
+                # This is a simplified approach - in a full implementation you might want
+                # to handle pre-release ordering more sophisticatedly
+                parts = version_str.split(suffix, 1)
+                if len(parts) == 2:
+                    # Extract just the base version part and clean up any trailing dots
+                    version_str = parts[0].rstrip(".")
+                    break
+
+        # Parse the base version
+        base_tuple = tuple(map(int, version_str.split(".")))
+        # Add 0 as the post component for comparison
+        return base_tuple + (0,)
     except ValueError as e:
         raise VersionError(f"Invalid version format: {version_str}") from e
 
 
-def get_pypi_version(package_name: str = "mbake", timeout: int = 5) -> Optional[str]:
+def get_pypi_version(
+    package_name: str = "mbake", timeout: int = 5, include_prerelease: bool = False
+) -> Optional[str]:
     """Get the latest version of a package from PyPI.
 
     Args:
         package_name: Name of the package to check
         timeout: Request timeout in seconds
+        include_prerelease: Whether to include pre-release versions
 
     Returns:
         Latest version string, or None if unable to fetch
@@ -57,24 +74,55 @@ def get_pypi_version(package_name: str = "mbake", timeout: int = 5) -> Optional[
         url = f"https://pypi.org/pypi/{package_name}/json"
         with urllib.request.urlopen(url, timeout=timeout) as response:
             data = json.loads(response.read().decode())
-            version = data["info"]["version"]
-            if isinstance(version, str):
-                return version
-            return None
+
+            if include_prerelease:
+                # Get all available versions from releases
+                releases = data.get("releases", {})
+                if not releases:
+                    return None
+
+                # Parse all versions and find the latest
+                versions = []
+                for version_str in releases:
+                    try:
+                        parsed = parse_version(version_str)
+                        versions.append((parsed, version_str))
+                    except VersionError:
+                        # Skip invalid versions
+                        continue
+
+                if not versions:
+                    return None
+
+                # Sort by parsed version and return the latest
+                versions.sort(key=lambda x: x[0])
+                latest_version: str = versions[-1][1]
+                return latest_version
+            else:
+                # Return only the latest stable version
+                version = data["info"]["version"]
+                if isinstance(version, str):
+                    return version
+                return None
     except (urllib.error.URLError, json.JSONDecodeError, KeyError, OSError):
         return None
 
 
-def check_for_updates(package_name: str = "mbake") -> tuple[bool, Optional[str], str]:
+def check_for_updates(
+    package_name: str = "mbake", include_prerelease: bool = False
+) -> tuple[bool, Optional[str], str]:
     """Check if there's a newer version available on PyPI.
 
     Args:
         package_name: Name of the package to check
+        include_prerelease: Whether to include pre-release versions
 
     Returns:
         tuple of (update_available, latest_version, current_version)
     """
-    latest_version = get_pypi_version(package_name)
+    latest_version = get_pypi_version(
+        package_name, include_prerelease=include_prerelease
+    )
 
     if latest_version is None:
         return False, None, current_version
