@@ -30,7 +30,7 @@ class TestAutoPhonyInsertion:
             "\tnpm install",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         assert any(".PHONY:" in line for line in formatted_lines)
@@ -68,7 +68,7 @@ class TestAutoPhonyInsertion:
             "\tdocker compose exec app sh",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         # Enhanced algorithm detects docker commands as phony
@@ -93,7 +93,7 @@ class TestAutoPhonyInsertion:
             "\tnpm test",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         assert not any(".PHONY:" in line for line in formatted_lines)
@@ -111,7 +111,7 @@ class TestAutoPhonyInsertion:
             "\trm -f *.o",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         phony_line = next(
@@ -133,7 +133,7 @@ class TestAutoPhonyInsertion:
             "\trm -f *.o",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         phony_line = next(
@@ -159,7 +159,7 @@ class TestAutoPhonyInsertion:
             "\trm -f *.o",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         phony_line = next(
@@ -189,7 +189,7 @@ class TestAutoPhonyInsertion:
             "\trm -f *.o *.tmp",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         phony_line = next(
@@ -220,7 +220,7 @@ class TestAutoPhonyInsertion:
             "\tnpm install",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         phony_line = next(
@@ -246,7 +246,7 @@ class TestAutoPhonyInsertion:
             "\tnpm run build:prod",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         if any(".PHONY:" in line for line in formatted_lines):
@@ -274,7 +274,7 @@ class TestAutoPhonyInsertion:
             "\trm -f myapp myapp.o",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         if any(".PHONY:" in line for line in formatted_lines):
@@ -322,7 +322,7 @@ class TestAutoPhonyInsertion:
             "\tdocker run -it myapp",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         if any(".PHONY:" in line for line in formatted_lines):
@@ -362,7 +362,7 @@ class TestAutoPhonyInsertion:
             "\tnpm test",
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         assert any(".PHONY:" in line for line in formatted_lines)

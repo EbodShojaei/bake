@@ -44,6 +44,11 @@ class AssignmentSpacingRule(FormatterPlugin):
                     formatted_lines.append(line)
                     continue
 
+                # Skip invalid target syntax - preserve it exactly as written
+                if self._is_invalid_target_syntax(line):
+                    formatted_lines.append(line)
+                    continue
+
                 # Extract the parts - be more careful about the operator
                 # Use a more specific regex to avoid splitting := incorrectly
                 match = re.match(
@@ -84,3 +89,9 @@ class AssignmentSpacingRule(FormatterPlugin):
             warnings=warnings,
             check_messages=[],
         )
+
+    def _is_invalid_target_syntax(self, line: str) -> bool:
+        """Check if line contains invalid target syntax that should be preserved."""
+        stripped = line.strip()
+        # Skip lines that look like invalid targets with = signs
+        return bool(re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*=.*:", stripped))

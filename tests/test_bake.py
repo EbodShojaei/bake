@@ -235,7 +235,7 @@ class TestMakefileFormatter:
             "    echo 'hello'",  # 4 spaces
         ]
 
-        formatted_lines, errors = formatter.format_lines(lines)
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
 
         assert not errors
         # Check that spacing was fixed
@@ -330,7 +330,7 @@ class TestIntegration:
             "\tcp binary /usr/local/bin",
         ]
 
-        formatted_lines, errors = formatter.format_lines(input_lines)
+        formatted_lines, errors, warnings = formatter.format_lines(input_lines)
 
         assert not errors
         assert formatted_lines == expected_lines
