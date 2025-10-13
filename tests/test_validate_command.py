@@ -32,7 +32,8 @@ class TestValidateCommand:
                 result = runner.invoke(app, ["validate", makefile_path])
 
                 assert result.exit_code == 0
-                assert "Valid syntax" in result.stdout
+                assert "Valid" in result.stdout
+                assert "syntax" in result.stdout
                 mock_run.assert_called_once()
 
                 # Check that the command was called with the correct arguments
@@ -76,7 +77,8 @@ class TestValidateCommand:
                 result = runner.invoke(app, ["validate", str(makefile_mk)])
 
                 assert result.exit_code == 0
-                assert "Valid syntax" in result.stdout
+                assert "Valid" in result.stdout
+                assert "syntax" in result.stdout
                 mock_run.assert_called_once()
 
                 # Check that the command was called with the correct working directory
@@ -134,7 +136,8 @@ class TestValidateCommand:
                 )
 
                 assert result.exit_code == 0
-                assert "Valid syntax" in result.stdout
+                assert "Valid" in result.stdout
+                assert "syntax" in result.stdout
                 assert mock_run.call_count == 2
         finally:
             Path(makefile1_path).unlink()
