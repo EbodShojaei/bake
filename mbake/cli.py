@@ -10,6 +10,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.logging import RichHandler
+from rich.markup import escape
 
 from . import __version__
 from .config import Config
@@ -348,7 +349,7 @@ def validate(
                 else:
                     console.print(f"[red]✗[/red] {file_path}: Invalid syntax")
                     if result.stderr:
-                        console.print(f"  [dim]{result.stderr.strip()}[/dim]")
+                        console.print(f"  [dim]{escape(result.stderr.strip())}[/dim]")
                     any_errors = True
 
             except subprocess.TimeoutExpired:
@@ -495,8 +496,9 @@ def format(
 
                         for orig, fmt in zip(original_lines, formatted_lines_list):
                             if orig != fmt:
-                                console.print(f"[red]- {orig}[/red]")
-                                console.print(f"[green]+ {fmt}[/green]")
+                                # Escape content to prevent Rich markup interpretation
+                                console.print(f"[red]- {escape(orig)}[/red]")
+                                console.print(f"[green]+ {escape(fmt)}[/green]")
                     continue
 
                 # Format file
@@ -513,15 +515,17 @@ def format(
                             # GNU standard format: filename:line: Error: message
                             if ":" in error and error.split(":")[0].isdigit():
                                 # Error already has line number, prepend filename
-                                output_console.print(f"[red]{file_path}:{error}[/red]")
+                                output_console.print(
+                                    f"[red]{file_path}:{escape(error)}[/red]"
+                                )
                             else:
                                 # Error doesn't have line number, add generic format
                                 output_console.print(
-                                    f"[red]{file_path}: Error: {error}[/red]"
+                                    f"[red]{file_path}: Error: {escape(error)}[/red]"
                                 )
                         else:
                             # Traditional format
-                            output_console.print(f"[red]Error:[/red] {error}")
+                            output_console.print(f"[red]Error:[/red] {escape(error)}")
 
                 if warnings:
                     for warning in warnings:
@@ -530,16 +534,18 @@ def format(
                             if ":" in warning and warning.split(":")[0].isdigit():
                                 # Warning already has line number, prepend filename
                                 output_console.print(
-                                    f"[yellow]{file_path}:{warning}[/yellow]"
+                                    f"[yellow]{file_path}:{escape(warning)}[/yellow]"
                                 )
                             else:
                                 # Warning doesn't have line number, add generic format
                                 output_console.print(
-                                    f"[yellow]{file_path}: Warning: {warning}[/yellow]"
+                                    f"[yellow]{file_path}: Warning: {escape(warning)}[/yellow]"
                                 )
                         else:
                             # Traditional format
-                            output_console.print(f"[yellow]Warning:[/yellow] {warning}")
+                            output_console.print(
+                                f"[yellow]Warning:[/yellow] {escape(warning)}"
+                            )
 
                 if changed:
                     any_changed = True

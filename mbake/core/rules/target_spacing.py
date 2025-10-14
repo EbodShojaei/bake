@@ -5,6 +5,7 @@ from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils
+from ...utils.pattern_utils import PatternUtils
 
 
 class TargetSpacingRule(FormatterPlugin):
@@ -102,22 +103,20 @@ class TargetSpacingRule(FormatterPlugin):
                         formatted_lines.append(line)
                     continue
 
-                # Skip other assignments with colon-sensitive literals
-                if (
-                    "://" in value_part
-                    or re.search(r"T\d{2}:\d{2}:\d{2}", value_part)
-                    or re.search(r"^[A-Za-z]:\\", value_part)
-                ):
+                # Skip other assignments with colon-sensitive literals (URLs, datetimes, paths)
+                if PatternUtils.value_is_colon_safe(value_part):
                     formatted_lines.append(line)
                     continue
 
             # Check if line contains a target (has a colon)
-            # Treat lines that begin with the active recipe prefix as recipes; don't format
+            # Treat lines that begin with the active recipe prefix as recipes (do not format)
             if LineUtils.is_recipe_line_with_prefix(line, active_prefix):
                 formatted_lines.append(line)
                 continue
 
-            if ":" in line and not line.strip().startswith("."):
+            if LineUtils.colon_is_target_separator(
+                line
+            ) and not line.strip().startswith("."):
                 # Skip if this looks like an assignment with colons in the value
                 # (not assignment operators like :=, +=, etc.)
                 if "=" in line:

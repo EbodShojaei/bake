@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.pattern_utils import PatternUtils
 
 
 class AssignmentSpacingRule(FormatterPlugin):
@@ -24,63 +25,48 @@ class AssignmentSpacingRule(FormatterPlugin):
         space_around_assignment = config.get("space_around_assignment", True)
 
         for line in lines:
-            # Skip recipe lines (lines starting with tab)
-            if line.startswith("\t"):
-                formatted_lines.append(line)
-                continue
+            new_line = line  # Default to original line
 
-            # Skip comments and empty lines
-            if line.strip().startswith("#") or not line.strip():
-                formatted_lines.append(line)
-                continue
-
+            # Skip recipe lines (lines starting with tab) or comments or empty lines
+            if (
+                line.startswith("\t")
+                or line.strip().startswith("#")
+                or not line.strip()
+            ):
+                pass  # Keep original line
             # Check if line contains assignment operator
-            # Look for variable assignment at the start of the line
-            # Use a more specific regex to avoid splitting := incorrectly
-            # Variable assignments can contain variable references in their values
-            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*(:=|\+=|\?=|=|!=)\s*", line):
+            elif re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*(:=|\+=|\?=|=|!=)\s*", line):
                 # Skip substitution references like $(VAR:pattern=replacement) which are not assignments
-                if re.search(r"\$\([^)]*:[^)]*=[^)]*\)", line):
-                    formatted_lines.append(line)
-                    continue
-
-                # Skip invalid target syntax - preserve it exactly as written
-                if self._is_invalid_target_syntax(line):
-                    formatted_lines.append(line)
-                    continue
-
-                # Extract the parts - be more careful about the operator
-                # Use a more specific regex to avoid splitting := incorrectly
-                match = re.match(
-                    r"^([A-Za-z_][A-Za-z0-9_]*)\s*(:=|\+=|\?=|=|!=)\s*(.*)", line
-                )
-                if match:
-                    var_name = match.group(1)
-                    operator = match.group(2)
-                    value = match.group(3)
-
-                    # Only format if this is actually an assignment (not a target)
-                    if operator in ["=", ":=", "?=", "+=", "!="]:
-                        if space_around_assignment:
-                            # Only add trailing space if there's actually a value
-                            if value.strip():
-                                new_line = f"{var_name} {operator} {value}"
-                            else:
-                                new_line = f"{var_name} {operator}"
-                        else:
-                            new_line = f"{var_name}{operator}{value}"
-
-                        if new_line != line:
-                            changed = True
-                            formatted_lines.append(new_line)
-                        else:
-                            formatted_lines.append(line)
-                    else:
-                        formatted_lines.append(line)
+                # or skip invalid target-like lines of the form VAR=token:... (no space after '=')
+                if re.search(
+                    r"\$\([^)]*:[^)]*=[^)]*\)", line
+                ) or self._is_invalid_target_syntax(line):
+                    pass  # Keep original line
                 else:
-                    formatted_lines.append(line)
-            else:
-                formatted_lines.append(line)
+                    # Extract the parts - be more careful about the operator
+                    match = re.match(
+                        r"^([A-Za-z_][A-Za-z0-9_]*)\s*(:=|\+=|\?=|=|!=)\s*(.*)", line
+                    )
+                    if match:
+                        var_name = match.group(1)
+                        operator = match.group(2)
+                        value = match.group(3)
+
+                        # Only format if this is actually an assignment (not a target)
+                        if operator in ["=", ":=", "?=", "+=", "!="]:
+                            if space_around_assignment:
+                                # Only add trailing space if there's actually a value
+                                if value.strip():
+                                    new_line = f"{var_name} {operator} {value}"
+                                else:
+                                    new_line = f"{var_name} {operator}"
+                            else:
+                                new_line = f"{var_name}{operator}{value}"
+
+            # Single append at the end
+            if new_line != line:
+                changed = True
+            formatted_lines.append(new_line)
 
         return FormatResult(
             lines=formatted_lines,
@@ -93,5 +79,10 @@ class AssignmentSpacingRule(FormatterPlugin):
     def _is_invalid_target_syntax(self, line: str) -> bool:
         """Check if line contains invalid target syntax that should be preserved."""
         stripped = line.strip()
-        # Skip lines that look like invalid targets with = signs
-        return bool(re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*=.*:", stripped))
+        # Only flag when there is NO whitespace after '=' before the first ':'
+        # This avoids flagging typical assignments whose values contain ':' (URLs, times, paths).
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*=\S*:\S*", stripped):
+            return False
+        # Allow colon-safe values to pass (URLs, datetimes, drive/path patterns)
+        after_eq = stripped.split("=", 1)[1]
+        return not PatternUtils.value_is_colon_safe(after_eq)

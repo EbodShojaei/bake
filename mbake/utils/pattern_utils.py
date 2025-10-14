@@ -23,6 +23,44 @@ class PatternUtils:
         ],
     }
 
+    # Precompiled detectors for colon-sensitive values that should NOT be parsed as targets
+    URL_LIKE_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+    ISO_DATETIME_PATTERN = re.compile(
+        r"^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:?\d{2})?$"
+    )
+    WINDOWS_DRIVE_PATH_PATTERN = re.compile(r"^[A-Za-z]:\\|^[A-Za-z]:/")
+    # Unix/Linux/Mac paths that commonly contain colons (PATH-like variables, etc.)
+    UNIX_PATH_PATTERN = re.compile(r"^/.*:.*|^\./.*:.*|^\.\./.*:.*")
+
+    @staticmethod
+    def is_url_like(text: str) -> bool:
+        return bool(PatternUtils.URL_LIKE_PATTERN.match(text.strip()))
+
+    @staticmethod
+    def is_iso_datetime_like(text: str) -> bool:
+        return bool(PatternUtils.ISO_DATETIME_PATTERN.match(text.strip()))
+
+    @staticmethod
+    def is_drive_path(text: str) -> bool:
+        """Check if text is a drive path (Windows) or Unix path with colons."""
+        return bool(
+            PatternUtils.WINDOWS_DRIVE_PATH_PATTERN.match(text.strip())
+            or PatternUtils.UNIX_PATH_PATTERN.match(text.strip())
+        )
+
+    @staticmethod
+    def value_is_colon_safe(text: str) -> bool:
+        """Return True if the colon(s) in the value are likely part of a value, not a target separator.
+
+        This includes URL-like schemes, ISO datetimes, and drive/path patterns (Windows and Unix).
+        """
+        s = text.strip().strip('"').strip("'")
+        return (
+            PatternUtils.is_url_like(s)
+            or PatternUtils.is_iso_datetime_like(s)
+            or PatternUtils.is_drive_path(s)
+        )
+
     @staticmethod
     def contains_assignment(line: str) -> bool:
         """

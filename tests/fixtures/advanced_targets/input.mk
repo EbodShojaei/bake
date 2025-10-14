@@ -40,6 +40,22 @@ debug: CFLAGS += -g -DDEBUG
 debug:LDFLAGS += -rdynamic
 debug:   all
 
+# Target-specific variable assignment forms that should not warn
+ollama/run/cpu: DOCKER_IMAGE_NAME = ollama-wrapper
+ollama/run/cpu: DOCKER_UID ?= $(shell id -u)
+ollama/run/cpu: DOCKER_GID ?= $(shell id -g)
+ollama/run/cpu: MODEL ?= llama3.1
+ollama/run/cpu: .make/ollama-docker FORCE
+ollama/run/cpu:
+	docker container rm ollama ; true
+	docker run \
+		--detach \
+		--name ollama \
+		--publish 11434:11434 \
+		--user $(DOCKER_UID):$(DOCKER_GID) \
+		--volume $(CURDIR)/data/ollama:/home/ollama/.ollama \
+		$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG) $(MODEL)
+
 release:    CFLAGS += -O2 -DNDEBUG
 release:CFLAGS += -march=native
 release: all

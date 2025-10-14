@@ -49,6 +49,7 @@ class TestRecipeTabs:
             formatted_lines, errors, warnings = formatter.format_lines(input_lines)
 
             assert not errors
+            assert not warnings
             assert formatted_lines == expected_lines
 
             # Removed makefile execution test - focus only on formatting
@@ -1431,13 +1432,13 @@ class TestAdditionalVariations:
             assert not errors
             assert formatted_lines == expected_lines
 
-    def test_windows_path_in_assignments_fixture(self):
-        """Windows-like path with colon should remain unchanged in assignments."""
+    def test_path_in_assignments_fixture(self):
+        """File path with colon should remain unchanged in assignments."""
         config = create_conservative_config()
         formatter = MakefileFormatter(config)
 
-        input_file = Path("tests/fixtures/windows_path_in_assignments/input.mk")
-        expected_file = Path("tests/fixtures/windows_path_in_assignments/expected.mk")
+        input_file = Path("tests/fixtures/path_in_assignments/input.mk")
+        expected_file = Path("tests/fixtures/path_in_assignments/expected.mk")
 
         if input_file.exists() and expected_file.exists():
             input_lines = input_file.read_text(encoding="utf-8").splitlines()
