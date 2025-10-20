@@ -20,4 +20,8 @@ COMMON_PHONY_TARGETS = {
     "doc",
     "lint",
     "setup",
+    "format",
+    "check",
+    "verify",
+    "validate",
 }

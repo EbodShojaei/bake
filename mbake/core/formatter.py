@@ -20,7 +20,10 @@ from .rules import (
     PhonyInsertionRule,
     PhonyRule,
     RecipeValidationRule,
+    RuleTypeDetectionRule,
     ShellFormattingRule,
+    SpecialTargetValidationRule,
+    SuffixValidationRule,
     TabsRule,
     TargetSpacingRule,
     TargetValidationRule,
@@ -51,10 +54,14 @@ class MakefileFormatter:
 
         # Complete rule system with all formatting rules
         self.rules: list[FormatterPlugin] = [
-            # Error detection rules (run first)
+            # Rule type detection (run first)
+            RuleTypeDetectionRule(),  # Detect rule types
+            # Error detection rules
             DuplicateTargetRule(),  # Detect duplicate targets
             TargetValidationRule(),  # Validate target syntax
             RecipeValidationRule(),  # Validate recipe syntax
+            SpecialTargetValidationRule(),  # Validate special targets
+            SuffixValidationRule(),  # Validate suffix rules
             # Basic formatting rules
             WhitespaceRule(),  # Clean up whitespace
             TabsRule(),  # Ensure proper recipe tabs

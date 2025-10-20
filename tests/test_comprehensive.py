@@ -1537,3 +1537,84 @@ class TestAdditionalVariations:
             # Should have warnings for invalid target syntax
             # Note: This test verifies the validation rule is working
             # The actual warnings would be in the formatter result, not errors
+
+
+class TestSuffixRules:
+    """Test suffix rules and SUFFIXES handling."""
+
+    def test_suffix_rules_fixture(self):
+        """Test suffix rules fixture matches expected output."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/suffix_rules/input.mk")
+        expected_file = Path("tests/fixtures/suffix_rules/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors, warnings = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines
+
+    def test_suffix_phony_issue_fixture(self):
+        """Test that suffix rules are not suggested as phony targets."""
+        # Enable auto-insertion for this test to verify phony detection works correctly
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True,
+                ensure_final_newline=False,
+                group_phony_declarations=False,
+                phony_at_top=False,
+            )
+        )
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/suffix_phony_issue/input.mk")
+        expected_file = Path("tests/fixtures/suffix_phony_issue/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            # Test in check mode to see warnings
+            formatted_lines, errors, warnings = formatter.format_lines(
+                input_lines, check_only=True
+            )
+
+            # Should not suggest .a.b or foo.b as phony
+            for warning in warnings:
+                assert (
+                    ".a.b" not in warning
+                ), f"Suffix rule .a.b incorrectly suggested as phony: {warning}"
+                assert (
+                    "foo.b" not in warning
+                ), f"File target foo.b incorrectly suggested as phony: {warning}"
+
+            # Test actual formatting
+            formatted_lines, errors, warnings = formatter.format_lines(input_lines)
+            assert not errors
+            assert formatted_lines == expected_lines
+
+
+class TestSpecialTargets:
+    """Test special target handling and validation."""
+
+    def test_special_targets_fixture(self):
+        """Test special targets fixture matches expected output."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/special_targets/input.mk")
+        expected_file = Path("tests/fixtures/special_targets/expected.mk")
+
+        if input_file.exists() and expected_file.exists():
+            input_lines = input_file.read_text(encoding="utf-8").splitlines()
+            expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+            formatted_lines, errors, warnings = formatter.format_lines(input_lines)
+
+            assert not errors
+            assert formatted_lines == expected_lines

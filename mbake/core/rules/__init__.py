@@ -10,7 +10,10 @@ from .phony import PhonyRule
 from .phony_detection import PhonyDetectionRule
 from .phony_insertion import PhonyInsertionRule
 from .recipe_validation import RecipeValidationRule
+from .rule_type_detection import RuleTypeDetectionRule
 from .shell import ShellFormattingRule
+from .special_target_validation import SpecialTargetValidationRule
+from .suffix_validation import SuffixValidationRule
 from .tabs import TabsRule
 from .target_spacing import TargetSpacingRule
 from .target_validation import TargetValidationRule
@@ -27,7 +30,10 @@ __all__ = [
     "PhonyDetectionRule",
     "PhonyInsertionRule",
     "RecipeValidationRule",
+    "RuleTypeDetectionRule",
     "ShellFormattingRule",
+    "SpecialTargetValidationRule",
+    "SuffixValidationRule",
     "TabsRule",
     "TargetSpacingRule",
     "TargetValidationRule",

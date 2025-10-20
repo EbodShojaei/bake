@@ -3,7 +3,10 @@
 import re
 from typing import Any
 
+from ...constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS, DEFAULT_SUFFIXES
+from ...constants.phony_targets import COMMON_PHONY_TARGETS
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import PhonyAnalyzer
 
 
 class PhonyDetectionRule(FormatterPlugin):
@@ -21,7 +24,7 @@ class PhonyDetectionRule(FormatterPlugin):
         check_messages: list[str] = []
         changed = False
 
-        # Only run if auto-insertion is enabled (same setting controls both features)
+        # Only run if auto-insertion is enabled
         if not config.get("auto_insert_phony_declarations", False) and not check_mode:
             return FormatResult(
                 lines=lines,
@@ -75,7 +78,7 @@ class PhonyDetectionRule(FormatterPlugin):
                 else:
                     message = f"Warning: Consider adding targets to .PHONY declaration: {', '.join(sorted_new_targets)} (line {phony_line_num})"
 
-            check_messages.append(message)
+            warnings.append(message)
 
         if not new_targets:
             return FormatResult(
@@ -147,18 +150,8 @@ class PhonyDetectionRule(FormatterPlugin):
         target_pattern = re.compile(r"^([^:=]+):(:?)\s*(.*)$")
         phony_targets = set()
 
-        # Declarative targets that are always phony
-        declarative_targets = {
-            ".PHONY",
-            ".SUFFIXES",
-            ".DEFAULT",
-            ".PRECIOUS",
-            ".INTERMEDIATE",
-            ".SECONDARY",
-            ".IGNORE",
-            ".SILENT",
-            ".EXPORT_ALL_VARIABLES",
-        }
+        # Use special targets from constants
+        declarative_targets = ALL_SPECIAL_MAKE_TARGETS
 
         for i, line in enumerate(lines):
             stripped = line.strip()
@@ -266,37 +259,117 @@ class PhonyDetectionRule(FormatterPlugin):
         self, target_name: str, recipe_lines: list[str], all_lines: list[str]
     ) -> bool:
         """Determine if a target is phony (has no real file)."""
-        # Check if target has no recipe lines
-        if not recipe_lines:
+        # Check if this is a suffix rule (e.g., .a.b, .c.o)
+        if self._is_suffix_rule(target_name, all_lines):
+            return False  # Suffix rules are NOT phony
+
+        # Check if this is a pattern rule (e.g., %.o, %.c)
+        if "%" in target_name:
+            return False  # Pattern rules are NOT phony
+
+        # Use PhonyAnalyzer for dynamic analysis
+        dynamic_result = PhonyAnalyzer.is_target_phony(
+            target_name, recipe_lines, all_lines
+        )
+
+        # Use hardcoded patterns for edge cases dynamic analysis might miss
+        if target_name.lower() in COMMON_PHONY_TARGETS:
             return True
 
-        # Check if all recipe lines are just comments or empty
-        non_empty_recipes = [
-            line
-            for line in recipe_lines
-            if line.strip() and not line.strip().startswith("#")
-        ]
-        if not non_empty_recipes:
+        return dynamic_result
+
+    def _is_suffix_rule(self, target_name: str, all_lines: list[str]) -> bool:
+        """Check if target is a suffix rule (e.g., .a.b, .c.o)."""
+        if not target_name.startswith("."):
+            return False
+
+        # Check if it contains exactly one more dot (e.g., .a.b, .c.o)
+        if target_name.count(".") != 2:
+            return False
+
+        # Check if the suffixes are declared in .SUFFIXES
+        declared_suffixes = self._get_declared_suffixes(all_lines)
+        if not declared_suffixes:
+            return False
+
+        # Extract the two suffixes
+        parts = target_name.split(".")
+        if len(parts) != 3:  # ['', 'a', 'b']
+            return False
+
+        suffix1 = "." + parts[1]  # .a
+        suffix2 = "." + parts[2]  # .b
+
+        return suffix1 in declared_suffixes and suffix2 in declared_suffixes
+
+    def _get_declared_suffixes(self, all_lines: list[str]) -> set[str]:
+        """Extract suffixes declared in .SUFFIXES statements."""
+        suffixes = set()
+
+        for line in all_lines:
+            stripped = line.strip()
+            if stripped.startswith(".SUFFIXES:"):
+                # Parse suffixes from .SUFFIXES: .a .b .c
+                content = stripped[9:].strip()  # Remove '.SUFFIXES:'
+                if content:  # If not empty (which clears all suffixes)
+                    suffixes.update(content.split())
+
+        # If no .SUFFIXES found, use default suffixes
+        if not suffixes:
+            suffixes = DEFAULT_SUFFIXES
+
+        return suffixes
+
+    def _is_file_target(self, target_name: str, all_lines: list[str]) -> bool:
+        """Check if target is likely a file target (not phony)."""
+        # Has file extension and doesn't look like an action
+        if "." in target_name and not target_name.startswith("."):
             return True
 
-        # Check if target name contains special characters that suggest it's not a real file
-        if any(char in target_name for char in ["*", "?", "[", "]", "{", "}"]):
+        # Has path separators
+        if "/" in target_name or "\\" in target_name:
             return True
 
-        # Check if target name looks like a command or action
-        action_indicators = [
-            "clean",
-            "distclean",
-            "install",
-            "uninstall",
-            "test",
-            "check",
-            "build",
-            "compile",
-        ]
-        if target_name.lower() in action_indicators:
-            return True
+        # Check if it's a target that creates a file with its own name
+        return self._target_creates_file_with_same_name(target_name, all_lines)
 
-        # Check if target name contains common phony patterns
-        phony_patterns = ["all", "help", "docs", "format", "lint", "debug", "release"]
-        return any(pattern in target_name.lower() for pattern in phony_patterns)
+    def _target_creates_file_with_same_name(
+        self, target_name: str, all_lines: list[str]
+    ) -> bool:
+        """Check if target creates a file with its own name by analyzing its recipe."""
+
+        # Find the target definition and get its recipe lines
+        target_pattern = re.compile(r"^([^:=]+):(:?)\s*(.*)$")
+
+        for i, line in enumerate(all_lines):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or line.startswith("\t"):
+                continue
+
+            match = target_pattern.match(stripped)
+            if match:
+                target_list = match.group(1).strip()
+                target_names = [t.strip() for t in target_list.split() if t.strip()]
+
+                if target_name in target_names:
+                    # Get recipe lines for this target
+                    recipe_lines = PhonyAnalyzer._get_target_recipe_lines(all_lines, i)
+
+                    # Analyze if any recipe command creates the target file
+                    for recipe_line in recipe_lines:
+                        if recipe_line.strip() and not recipe_line.strip().startswith(
+                            "#"
+                        ):
+                            # Clean the command for analysis
+                            clean_command = PhonyAnalyzer._clean_command_for_analysis(
+                                recipe_line
+                            )
+                            if PhonyAnalyzer._command_creates_target_file(
+                                clean_command, target_name
+                            ):
+                                return True
+                    break
+
+        # If no recipe analysis found, use simple heuristic
+        # Targets with file extensions are likely file targets
+        return "." in target_name and not target_name.startswith(".")

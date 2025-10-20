@@ -3,7 +3,7 @@
 import re
 from typing import Any, Callable, Optional, Union
 
-from ..constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS, DECLARATIVE_TARGETS
+from ..constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS
 from ..constants.shell_commands import SHELL_COMMAND_INDICATORS
 
 
@@ -1771,7 +1771,7 @@ class PhonyAnalyzer:
 
                 # Process each target name
                 for target_name in target_names:
-                    if target_name in DECLARATIVE_TARGETS:
+                    if target_name in ALL_SPECIAL_MAKE_TARGETS:
                         continue
 
                     # Skip targets that contain quotes or special characters that shouldn't be in target names
@@ -1916,4 +1916,8 @@ class PhonyAnalyzer:
             if base_name in command and base_name != target_name:
                 return True
 
-        return False
+        # Pattern: target name as last argument
+        # Examples: "cp input.txt clean", "mv temp.txt final", "touch output"
+        # This catches cases where the target name is the destination/output of a command
+        command_parts = command.strip().split()
+        return bool(command_parts and command_parts[-1] == target_name)
