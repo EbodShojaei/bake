@@ -24,7 +24,7 @@ class AssignmentSpacingRule(FormatterPlugin):
 
         space_around_assignment = config.get("space_around_assignment", True)
 
-        for line in lines:
+        for i, line in enumerate(lines, 1):
             new_line = line  # Default to original line
 
             # Skip recipe lines (lines starting with tab) or comments or empty lines
@@ -36,6 +36,11 @@ class AssignmentSpacingRule(FormatterPlugin):
                 pass  # Keep original line
             # Check if line contains assignment operator
             elif re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*(:=|\+=|\?=|=|!=)\s*", line):
+                # Check for reversed assignment operators first
+                reversed_warning = self._check_reversed_operators(line, i)
+                if reversed_warning:
+                    warnings.append(reversed_warning)
+
                 # Skip substitution references like $(VAR:pattern=replacement) which are not assignments
                 # or skip invalid target-like lines of the form VAR=token:... (no space after '=')
                 if re.search(
@@ -86,3 +91,32 @@ class AssignmentSpacingRule(FormatterPlugin):
         # Allow colon-safe values to pass (URLs, datetimes, drive/path patterns)
         after_eq = stripped.split("=", 1)[1]
         return not PatternUtils.value_is_colon_safe(after_eq)
+
+    def _check_reversed_operators(self, line: str, line_number: int) -> str:
+        """Check for reversed assignment operators and return warning message if found."""
+        stripped = line.strip()
+
+        # Skip if this is not a variable assignment line
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*=", stripped):
+            return ""
+
+        # Check for reversed operators: =?, =:, =+
+        # Pattern: variable = [space] [?:+] [space or end or value]
+        # This handles both "FOO = ? bar" and "FOO =?bar" cases
+        reversed_match = re.search(r"=\s*([?:+])(?:\s|$|[a-zA-Z0-9_])", stripped)
+        if reversed_match:
+            reversed_char = reversed_match.group(1)
+            correct_operator = f"{reversed_char}="
+            reversed_operator = f"={reversed_char}"
+
+            # Get the variable name for context
+            var_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)", stripped)
+            var_name = var_match.group(1) if var_match else "variable"
+
+            return (
+                f"Line {line_number}: Possible typo in assignment operator '{reversed_operator}' "
+                f"for variable '{var_name}', did you mean '{correct_operator}'? "
+                f"Make will treat this as a regular assignment with '{reversed_char}' as part of the value."
+            )
+
+        return ""
