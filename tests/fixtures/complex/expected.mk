@@ -5,7 +5,7 @@ LDFLAGS = -lpthread
 
 SOURCES = main.c \
     utils.c \
-        parser.c
+    parser.c
 
 .PHONY: clean
 all: $(TARGET)

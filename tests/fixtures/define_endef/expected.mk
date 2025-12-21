@@ -7,7 +7,7 @@ SHELL := bash
 
 .PHONY: test_split
 test_split:
-files = $(shell ls)
+	files=$$(shell ls); \
 	$(first)
 
 define first

@@ -3,9 +3,9 @@
 .SUFFIXES: .c .o .h
 
 # Global directives (should not be duplicated)
-.EXPORT_ALL_VARIABLES
-.NOTPARALLEL
-.ONESHELL
+# Note: .EXPORT_ALL_VARIABLES conflicts with .POSIX, so it's omitted
+.NOTPARALLEL:
+.ONESHELL:
 
 # Declarative targets (can be duplicated)
 .PHONY: all clean
