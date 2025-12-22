@@ -77,15 +77,95 @@ class ContinuationRule(FormatterPlugin):
         if not lines:
             return lines
 
-        # Preserve original indentation structure, only normalize spacing around backslashes
-        formatted_lines = []
-        for line in lines:
+        # First line is the assignment/recipe line - keep it as is
+        first_line = lines[0]
+        formatted_lines = [first_line]
+
+        # If there's only one line, return early
+        if len(lines) == 1:
+            return formatted_lines
+
+        # Check if this is a recipe continuation (starts with tab)
+        is_recipe = first_line.startswith("\t")
+
+        # Check if this continuation block contains shell control structures
+        # If so, preserve original indentation for recipes (ShellFormattingRule will handle it)
+        if is_recipe and self._contains_shell_control_structures(lines):
+            # For recipe continuations with shell control structures, preserve indentation
+            # Only normalize spacing around backslashes
+            for line in lines[1:]:
+                if line.rstrip().endswith("\\"):
+                    # Remove trailing whitespace before backslash, ensure single space
+                    content = line.rstrip()[:-1].rstrip()
+                    formatted_lines.append(content + " \\")
+                else:
+                    # Last line of continuation - preserve original indentation
+                    formatted_lines.append(line)
+            return formatted_lines
+
+        # Normalize indentation for variable assignments and simple recipe continuations
+        # Find the indentation of the first continuation line (second line)
+        first_continuation_line = lines[1]
+        # Get leading whitespace (spaces/tabs) from the first continuation line
+        leading_whitespace = ""
+        for char in first_continuation_line:
+            if char in (" ", "\t"):
+                leading_whitespace += char
+            else:
+                break
+
+        # Format all continuation lines (from second line onwards)
+        for line in lines[1:]:
             if line.rstrip().endswith("\\"):
                 # Remove trailing whitespace before backslash, ensure single space
-                content = line.rstrip()[:-1].rstrip()
-                formatted_lines.append(content + " \\")
+                # Also remove leading whitespace to normalize indentation
+                content = line.rstrip()[:-1].rstrip().lstrip()
+                # Apply consistent indentation from first continuation line
+                formatted_lines.append(leading_whitespace + content + " \\")
             else:
-                # Last line of continuation - preserve original indentation
-                formatted_lines.append(line)
+                # Last line of continuation - apply consistent indentation
+                stripped_content = line.lstrip()
+                formatted_lines.append(leading_whitespace + stripped_content)
 
         return formatted_lines
+
+    def _contains_shell_control_structures(self, lines: list[str]) -> bool:
+        """Check if continuation block contains shell control structure keywords."""
+        # Shell control structure keywords that have semantic indentation meaning
+        # These keywords should preserve their indentation relative to each other
+        shell_keywords = (
+            "if",
+            "then",
+            "else",
+            "elif",
+            "fi",
+            "for",
+            "do",
+            "done",
+            "while",
+            "until",
+            "case",
+            "esac",
+        )
+
+        for line in lines:
+            # Strip leading whitespace and make command prefixes for checking
+            stripped = line.lstrip("\t ").lstrip("@-+ ")
+            # Remove trailing backslash and whitespace for cleaner matching
+            content = stripped.rstrip(" \\")
+
+            # Check if line starts with a shell keyword (most common case)
+            for keyword in shell_keywords:
+                # Match keyword at start of line, followed by space, semicolon, or end of line
+                if (
+                    content.startswith(keyword + " ")
+                    or content.startswith(keyword + ";")
+                    or content == keyword
+                    # Also check for keywords after shell operators (; || &&)
+                    or f"; {keyword}" in content
+                    or f"|| {keyword}" in content
+                    or f"&& {keyword}" in content
+                ):
+                    return True
+
+        return False

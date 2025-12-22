@@ -9,7 +9,7 @@ LDFLAGS = -lpthread
 # Multi-line variable assignment
 SOURCES = main.c \
   utils.c \
-	parser.c
+  parser.c
 
 # Function with nested calls
 OBJECTS = $(patsubst %.c,%.o,$(filter %.c,$(SOURCES)))

@@ -7,8 +7,8 @@ SHELL := bash
 
 .PHONY: test_split
 test_split:
-files=$(shell ls)
-    $(first)
+	files=$$(shell ls); \
+	$(first)
 
 define first
     FIRST=$(word 1, $(subst _, ,$@))

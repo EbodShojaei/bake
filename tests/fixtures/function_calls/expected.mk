@@ -13,8 +13,8 @@ COMMIT_HASH = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 # Functions with poor indentation and spacing
 DEPS = $(shell find . -name "*.h" -o -name "*.hpp" | \
          head -10 | \
-           sort | \
-    uniq)
+         sort | \
+         uniq)
 
 # Conditional function calls
 COMPILER = $(if $(CC),$(CC),gcc)

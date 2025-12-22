@@ -6,8 +6,8 @@ build:
 	echo "Starting build" && \
 	mkdir -p $(BUILD_DIR) && \
 	$(CC) $(CFLAGS) \
-		-o $(TARGET) \
-		$(SOURCES)
+	-o $(TARGET) \
+	$(SOURCES)
 
 # Minimal test for tab/space/continuation issues
 
