@@ -169,3 +169,55 @@ SHELL_COMMAND_INDICATORS = {
     "uncompress",
     "zcat",
 }
+
+# Commands that NEVER create files with the target name
+# Only include POSIX-standard commands that output to stdout or perform actions
+# DO NOT include language runtimes (npm, python, node, etc.) - use structural detection instead
+NON_FILE_CREATING_COMMANDS = {
+    # Text output commands (output to stdout, don't create files)
+    "echo",
+    "printf",
+    "print",
+    "cat",
+    # Shell built-ins that don't create files
+    "cd",
+    "pwd",
+    "export",
+    "unset",
+    "alias",
+    "unalias",
+    # Process/status commands
+    "ps",
+    "jobs",
+    "kill",
+    # Other non-file-creating POSIX commands
+    "test",
+    "[",  # test command alias
+    "true",
+    "false",
+    "sleep",
+    "date",
+    "uname",
+    "who",
+    "whoami",
+    "id",
+}
+
+# Commands that ALWAYS create files when used with target name as argument
+# These commands create, copy, move, or link files
+# Used for phony target detection: if command is in this set and target is last arg, creates file
+FILE_CREATING_COMMANDS = {
+    # File creation commands
+    "touch",
+    "mkdir",
+    "mkfifo",
+    # File copy/move commands
+    "cp",
+    "mv",
+    "ln",
+    "link",
+    "install",
+    # File transformation commands (when output is target)
+    "dd",
+    "tee",
+}

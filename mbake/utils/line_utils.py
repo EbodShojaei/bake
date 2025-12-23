@@ -4,7 +4,11 @@ import re
 from typing import Any, Callable, Optional, Union
 
 from ..constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS
-from ..constants.shell_commands import SHELL_COMMAND_INDICATORS
+from ..constants.shell_commands import (
+    FILE_CREATING_COMMANDS,
+    NON_FILE_CREATING_COMMANDS,
+    SHELL_COMMAND_INDICATORS,
+)
 
 
 class LineUtils:
@@ -1917,7 +1921,78 @@ class PhonyAnalyzer:
                 return True
 
         # Pattern: target name as last argument
-        # Examples: "cp input.txt clean", "mv temp.txt final", "touch output"
-        # This catches cases where the target name is the destination/output of a command
+        # Only return True if we have STRONG structural indicators of file creation
+        # Don't assume file creation just because target is last argument
         command_parts = command.strip().split()
-        return bool(command_parts and command_parts[-1] == target_name)
+        if command_parts and command_parts[-1] == target_name:
+            # Check for explicit file creation indicators (structural patterns only)
+            # 1. Output redirection (strongest indicator)
+            if f">{target_name}" in command or f"> {target_name}" in command:
+                return True
+            if f">>{target_name}" in command or f">> {target_name}" in command:
+                return True
+
+            # 2. -o flag (output flag) - structural pattern for compilers/linkers
+            if f"-o{target_name}" in command or f"-o {target_name}" in command:
+                return True
+
+            # 3. Make automatic variables (structural pattern)
+            if "$@" in command or "$< $@" in command or "$^ $@" in command:
+                return True
+
+            # 4. Multiple arguments with file extensions - suggests file transformation
+            # Pattern: command source.ext target.ext (structural: file to file)
+            if len(command_parts) >= 3:
+                # Check if there are file-like arguments (contain dots/extensions)
+                has_file_args = any(
+                    "." in part and not part.startswith(".")
+                    for part in command_parts[:-1]
+                )
+                target_has_extension = (
+                    "." in target_name and not target_name.startswith(".")
+                )
+                if has_file_args and target_has_extension:
+                    return True
+
+            # 5. If target has extension and command has file-like patterns
+            # This catches: command input.txt output.txt (structural pattern)
+            if "." in target_name and not target_name.startswith("."):
+                # Check if there are other file-like words in the command
+                file_like_pattern = re.compile(r"\b\w+\.\w+\b")
+                if file_like_pattern.search(command):
+                    return True
+
+            # 6. Single-argument commands (command + target only) - use command semantics
+            # Pattern: "command target" where target is the only argument
+            # Use constants for POSIX-standard commands only
+            # For language runtimes (npm, python, rust, etc.), use structural heuristics
+            if len(command_parts) == 2:
+                first_word = command_parts[0].lower()
+                # Known POSIX commands that never create files (echo, printf, etc.)
+                if first_word in NON_FILE_CREATING_COMMANDS:
+                    return False
+                # Known POSIX commands that always create files (touch, cp, mv, etc.)
+                if first_word in FILE_CREATING_COMMANDS:
+                    return True
+                # For unknown commands (language runtimes, custom scripts, etc.):
+                # Use structural heuristics - if target looks like a file, assume file creation
+                # Otherwise, assume it's just an argument (conservative - likely phony)
+                # Default: assume it's just an argument (like npm test, python script, rust run)
+                # This is conservative but avoids false positives
+                return "." in target_name or "/" in target_name or "\\" in target_name
+
+            # 7. Multiple arguments (3+) where target is last - likely file creation
+            # Pattern: command arg1 arg2 ... target (structural: target is destination)
+            if len(command_parts) >= 3:
+                # If any previous argument looks file-like, target is likely output file
+                file_like_pattern = re.compile(r"\b\w+\.\w+\b")
+                if file_like_pattern.search(" ".join(command_parts[:-1])):
+                    return True
+                # If target has extension and there are multiple args, likely file creation
+                if "." in target_name and not target_name.startswith("."):
+                    return True
+
+            # Default: if target is last arg but no strong structural indicators,
+            # assume NOT file creation (most commands just pass target as argument)
+            return False
+        return False

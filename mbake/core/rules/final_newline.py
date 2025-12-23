@@ -53,12 +53,12 @@ class FinalNewlineRule(FormatterPlugin):
             if check_mode:
                 # Generate check message
                 line_count = len(formatted_lines)
-                gnu_format = config.get("gnu_error_format", False)
+                gnu_format = config.get("_global", {}).get("gnu_error_format", True)
 
                 if gnu_format:
-                    message = f"Makefile:{line_count}: Error: Missing final newline"
+                    message = f"{line_count}: Warning: Missing final newline"
                 else:
-                    message = f"Line {line_count}: Error: Missing final newline"
+                    message = f"Warning: Missing final newline (line {line_count})"
 
                 check_messages.append(message)
             else:

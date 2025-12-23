@@ -1,9 +1,9 @@
 """Conditional block formatting rule for Makefiles."""
 
-import re
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import LineUtils
 
 
 class ConditionalRule(FormatterPlugin):
@@ -49,6 +49,7 @@ class ConditionalRule(FormatterPlugin):
         for line_num, line in enumerate(lines, 1):
             original_line = line
             stripped = line.strip()
+            line_index = line_num - 1  # Convert to 0-based index
 
             # Skip empty lines and comments
             if not stripped or stripped.startswith("#"):
@@ -75,7 +76,9 @@ class ConditionalRule(FormatterPlugin):
                 formatted_lines.append(formatted_line)
             else:
                 # Check if this is content inside a conditional that needs indentation
-                if conditional_stack and not self._is_recipe_line(line):
+                if conditional_stack and not LineUtils.is_recipe_line(
+                    line, line_index, lines
+                ):
                     # This is content inside a conditional block (variable assignment, etc.)
                     formatted_line = self._format_conditional_content(
                         line, stripped, conditional_stack, tab_width
@@ -114,58 +117,6 @@ class ConditionalRule(FormatterPlugin):
             for kw in ("ifeq", "ifneq", "ifdef", "ifndef")
         )
 
-    def _is_recipe_line(self, line: str) -> bool:
-        """Check if line is a recipe line that should start with a tab."""
-        stripped = line.strip()
-        if not stripped:
-            return False
-
-        # Recipe lines start with a tab or should start with a tab
-        if line.startswith("\t"):
-            return True
-
-        # Skip variable assignments and makefile directives
-        if "=" in stripped and re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*[+:?]?=", stripped):
-            return False
-
-        if stripped.startswith(("include", "export", "unexport", "vpath", "-include")):
-            return False
-
-        if self._is_conditional_directive(stripped):
-            return False
-
-        # Use sophisticated pattern-based detection like LineUtils
-        # instead of relying on command lists which can never be comprehensive
-
-        # If line is indented, check for recipe indicators
-        if line.startswith(" "):
-            # Recipe prefix indicators (@, -, +)
-            if any(stripped.startswith(prefix) for prefix in ["@", "-", "+"]):
-                return True
-
-            # Make variables and shell patterns common in recipes
-            if any(
-                pattern in stripped
-                for pattern in ["$(", "$@", "$<", "$^", "$$", "${", "`"]
-            ):
-                return True
-
-            # Shell operators that indicate recipe lines
-            if any(
-                op in stripped for op in ["&&", "||", "|", ">", ">>", "<", "2>", "&"]
-            ):
-                return True
-
-            # Common shell built-ins (limited set to avoid false positives)
-            from ...constants.shell_commands import SHELL_COMMAND_INDICATORS
-
-            if any(
-                stripped.startswith(indicator) for indicator in SHELL_COMMAND_INDICATORS
-            ):
-                return True
-
-        return False
-
     def _format_conditional_directive(
         self,
         line: str,
@@ -174,8 +125,12 @@ class ConditionalRule(FormatterPlugin):
         line_num: int,
         tab_width: int = 2,
     ) -> str:
-        """Format a conditional directive with proper indentation."""
+        """Format a conditional directive with proper indentation.
 
+        Note: According to GNU Make syntax, conditionals always start at column 1
+        (even inside recipes), but nested conditionals are indented with spaces
+        for stylistic purposes when indent_nested_conditionals is enabled.
+        """
         # Determine the nesting level based on the directive type
         if stripped.startswith(("endif",)):
             # endif closes the current conditional
@@ -205,6 +160,8 @@ class ConditionalRule(FormatterPlugin):
         indent_level = max(0, indent_level)
 
         # Format the line with proper indentation using tab_width spaces per level
+        # Conditionals always start at column 1 (even inside recipes), but
+        # nested conditionals are indented for stylistic purposes
         spaces = " " * (indent_level * tab_width)
         return spaces + stripped
 

@@ -36,13 +36,11 @@ class RecipeValidationRule(FormatterPlugin):
                 error_msg = "Missing required tab separator in recipe line"
 
                 if check_mode:
-                    gnu_format = config.get("gnu_error_format", False)
+                    gnu_format = config.get("_global", {}).get("gnu_error_format", True)
                     if gnu_format:
-                        check_messages.append(
-                            f"Makefile:{line_num}: Error: {error_msg}"
-                        )
+                        check_messages.append(f"{line_num}: Error: {error_msg}")
                     else:
-                        check_messages.append(f"Line {line_num}: Error: {error_msg}")
+                        check_messages.append(f"Error: {error_msg} (line {line_num})")
                 else:
                     if fix_missing_tabs:
                         # Fix by replacing leading spaces with a tab
@@ -52,11 +50,13 @@ class RecipeValidationRule(FormatterPlugin):
                         changed = True
                     else:
                         # Report as error but don't fix
-                        gnu_format = config.get("gnu_error_format", False)
+                        gnu_format = config.get("_global", {}).get(
+                            "gnu_error_format", True
+                        )
                         if gnu_format:
-                            errors.append(f"Makefile:{line_num}: Error: {error_msg}")
+                            errors.append(f"{line_num}: Error: {error_msg}")
                         else:
-                            errors.append(f"Line {line_num}: Error: {error_msg}")
+                            errors.append(f"Error: {error_msg} (line {line_num})")
                         formatted_lines.append(line)
             else:
                 formatted_lines.append(line)

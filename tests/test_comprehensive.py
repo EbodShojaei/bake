@@ -430,7 +430,11 @@ class TestPhonyTargets:
     def test_phony_grouping(self):
         """Test grouping scattered .PHONY declarations."""
         rule = PhonyRule()
-        config = {"group_phony_declarations": True, "phony_at_top": True}
+        config = {
+            "group_phony_declarations": True,
+            "phony_at_top": True,
+            "auto_insert_phony_declarations": True,
+        }
 
         input_lines = [
             "# Comment",

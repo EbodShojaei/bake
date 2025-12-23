@@ -158,7 +158,7 @@ CC := gcc
 CFLAGS = -Wall -g
 SOURCES = main.c \
   utils.c \
-    helper.c
+  helper.c
 
 all: $(TARGET)
 	$(CC) $(CFLAGS) -o $@ $^

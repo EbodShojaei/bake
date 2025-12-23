@@ -9,7 +9,11 @@ class TestAutoPhonyInsertion:
 
     def test_auto_insert_common_phony_targets(self):
         """Test auto-insertion of common phony targets."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -45,13 +49,22 @@ class TestAutoPhonyInsertion:
         assert "test" in phony_line  # test command
         assert "install" in phony_line  # install command
 
-        # Check that targets are sorted
+        # Check that targets are ordered by declaration order
+        # (order may vary, but should be consistent)
         targets = phony_line.replace(".PHONY:", "").strip().split()
-        assert targets == sorted(targets)
+        # Just verify all expected targets are present (order is by declaration)
+        assert "setup" in targets
+        assert "clean" in targets
+        assert "test" in targets
+        assert "install" in targets
 
     def test_auto_insert_docker_targets(self):
         """Test auto-insertion with Docker-specific targets."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -100,7 +113,11 @@ class TestAutoPhonyInsertion:
 
     def test_skip_pattern_rules(self):
         """Test that pattern rules are not considered phony."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -122,7 +139,11 @@ class TestAutoPhonyInsertion:
 
     def test_skip_variable_assignments(self):
         """Test that variable assignments are not considered targets."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -145,7 +166,11 @@ class TestAutoPhonyInsertion:
 
     def test_skip_conditionals(self):
         """Test that conditional blocks are not considered targets."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -172,7 +197,11 @@ class TestAutoPhonyInsertion:
 
     def test_heuristic_based_detection(self):
         """Test detection based on command patterns."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -204,7 +233,11 @@ class TestAutoPhonyInsertion:
 
     def test_preserve_existing_phony_with_auto_detection(self):
         """Test that existing .PHONY is preserved and enhanced."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -230,9 +263,62 @@ class TestAutoPhonyInsertion:
         assert "test" in phony_line
         assert "install" in phony_line
 
+    def test_consolidate_multiple_phony_declarations(self):
+        """Test that multiple .PHONY declarations are consolidated into one."""
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
+        formatter = MakefileFormatter(config)
+
+        lines = [
+            ".PHONY: format",
+            "",
+            "format:",
+            "\techo 'format'",
+            "",
+            "test:",
+            "\techo 'test'",
+            "",
+            ".PHONY: lint",
+            "",
+            "lint:",
+            "\techo 'lint'",
+        ]
+
+        formatted_lines, errors, warnings = formatter.format_lines(lines)
+
+        assert not errors
+        # Should have only one .PHONY declaration
+        phony_lines = [
+            line for line in formatted_lines if line.strip().startswith(".PHONY:")
+        ]
+        assert (
+            len(phony_lines) == 1
+        ), f"Expected 1 .PHONY declaration, got {len(phony_lines)}: {phony_lines}"
+
+        phony_line = phony_lines[0]
+        # All targets should be in the single .PHONY declaration
+        assert "format" in phony_line
+        assert "test" in phony_line
+        assert "lint" in phony_line
+
+        # Check that targets are ordered by declaration order (not alphabetically)
+        targets = phony_line.replace(".PHONY:", "").strip().split()
+        assert targets == [
+            "format",
+            "test",
+            "lint",
+        ], f"Expected declaration order, got: {targets}"
+
     def test_edge_case_targets_with_special_chars(self):
         """Test targets with special characters."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -260,7 +346,11 @@ class TestAutoPhonyInsertion:
 
     def test_no_false_positives_for_file_targets(self):
         """Test that file-generating targets are not marked as phony."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -287,7 +377,11 @@ class TestAutoPhonyInsertion:
 
     def test_complex_real_world_makefile(self):
         """Test with a complex real-world Makefile."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [
@@ -351,7 +445,11 @@ class TestAutoPhonyInsertion:
 
     def test_warnings_generated(self):
         """Test that appropriate warnings are generated for auto-insertion."""
-        config = Config(formatter=FormatterConfig(auto_insert_phony_declarations=True))
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=True, group_phony_declarations=True
+            )
+        )
         formatter = MakefileFormatter(config)
 
         lines = [

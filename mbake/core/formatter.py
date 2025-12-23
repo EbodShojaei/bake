@@ -16,8 +16,6 @@ from .rules import (
     DuplicateTargetRule,
     FinalNewlineRule,
     PatternSpacingRule,
-    PhonyDetectionRule,
-    PhonyInsertionRule,
     PhonyRule,
     RecipeValidationRule,
     RuleTypeDetectionRule,
@@ -70,9 +68,7 @@ class MakefileFormatter:
             TargetSpacingRule(),  # Format target lines
             PatternSpacingRule(),  # Format pattern rules
             # PHONY-related rules
-            PhonyInsertionRule(),  # Auto-insert missing .PHONY
-            PhonyRule(),  # Group and organize .PHONY
-            PhonyDetectionRule(),  # Detect phony targets
+            PhonyRule(),  # Unified: detect, insert, and organize .PHONY
             # Advanced rules
             ContinuationRule(),  # Handle line continuations
             ConditionalRule(),  # Format conditionals
@@ -91,7 +87,7 @@ class MakefileFormatter:
 
     def format_file(
         self, file_path: Path, check_only: bool = False
-    ) -> tuple[bool, list[str]]:
+    ) -> tuple[bool, list[str], list[str]]:
         """Format a Makefile.
 
         Args:
@@ -99,10 +95,10 @@ class MakefileFormatter:
             check_only: If True, only check formatting without modifying
 
         Returns:
-            tuple of (changed, errors)
+            tuple of (changed, errors, warnings)
         """
         if not file_path.exists():
-            return False, [f"File not found: {file_path}"]
+            return False, [f"File not found: {file_path}"], []
 
         try:
             # Read file
@@ -152,7 +148,7 @@ class MakefileFormatter:
             changed = formatted_content != original_content
 
             if check_only:
-                return changed, errors
+                return changed, errors, warnings
 
             if changed:
                 # Write formatted content back
@@ -165,12 +161,12 @@ class MakefileFormatter:
                 if self.config.verbose:
                     logger.info(f"No changes needed for {file_path}")
 
-            return changed, errors
+            return changed, errors, warnings
 
         except Exception as e:
             error_msg = f"Error processing {file_path}: {e}"
             logger.error(error_msg)
-            return False, [error_msg]
+            return False, [error_msg], []
 
     def format_lines(
         self,
@@ -204,6 +200,7 @@ class MakefileFormatter:
         formatted_lines = original_lines.copy()
         all_errors = []
         all_warnings = []
+        all_check_messages = []
 
         # Apply formatting rules in priority order
         for rule in self.rules:
@@ -227,13 +224,18 @@ class MakefileFormatter:
                             lines_to_format, config_dict, check_only, **context
                         )
 
-                        # Process errors and warnings
+                        # Process errors, warnings, and check messages
                         for error in result.errors:
                             formatted_error = self._format_error(error, 0, config_dict)
                             all_errors.append(formatted_error)
 
                         for warning in result.warnings:
                             all_warnings.append(warning)
+
+                        # In check mode, also collect check_messages
+                        if check_only:
+                            for check_msg in result.check_messages:
+                                all_check_messages.append(check_msg)
 
                         # Merge formatted lines back
                         for formatted_index, original_index in line_mapping.items():
@@ -248,7 +250,7 @@ class MakefileFormatter:
                     )
                     formatted_lines = result.lines
 
-                    # Process errors and warnings
+                    # Process errors, warnings, and check messages
                     for error in result.errors:
                         formatted_error = self._format_error(error, 0, config_dict)
                         all_errors.append(formatted_error)
@@ -256,10 +258,19 @@ class MakefileFormatter:
                     for warning in result.warnings:
                         all_warnings.append(warning)
 
+                    # In check mode, also collect check_messages
+                    if check_only:
+                        for check_msg in result.check_messages:
+                            all_check_messages.append(check_msg)
+
             except Exception as e:
                 error_msg = f"Error in rule {rule.name}: {e}"
                 logger.error(error_msg)
                 all_errors.append(error_msg)
+
+        # In check mode, merge check_messages into warnings for display
+        if check_only and all_check_messages:
+            all_warnings.extend(all_check_messages)
 
         return formatted_lines, all_errors, all_warnings
 
@@ -274,6 +285,13 @@ class MakefileFormatter:
 
     def _format_error(self, message: str, line_num: int, config: dict) -> str:
         """Format an error message with consistent GNU or traditional format."""
+        # Check if message is already formatted (has line number at start)
+        import re
+
+        if re.match(r"^(\d+|Makefile:\d+):\s*(Warning|Error):", message):
+            # Message is already formatted, return as-is
+            return message
+
         gnu_format = config.get("_global", {}).get("gnu_error_format", True)
 
         if gnu_format:
