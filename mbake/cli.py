@@ -3,6 +3,7 @@
 import importlib.util
 import logging
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -118,9 +119,9 @@ normalize_line_continuations = true
 max_line_length = 120
 
 # PHONY settings
+auto_insert_phony_declarations = false
 group_phony_declarations = false
 phony_at_top = false
-auto_insert_phony_declarations = false
 
 # General settings - enable proper formatting
 remove_trailing_whitespace = true
@@ -502,22 +503,36 @@ def format(
                     continue
 
                 # Format file
-                changed, errors = formatter.format_file(file_path, check_only=check)
-
-                # Get warnings from the formatter result
-                result = formatter.format(file_path.read_text(encoding="utf-8"))
-                warnings = result.warnings
+                changed, errors, warnings = formatter.format_file(
+                    file_path, check_only=check
+                )
 
                 if errors:
                     any_errors = True
                     for error in errors:
                         if config.gnu_error_format:
                             # GNU standard format: filename:line: Error: message
-                            if ":" in error and error.split(":")[0].isdigit():
-                                # Error already has line number, prepend filename
-                                output_console.print(
-                                    f"[red]{file_path}:{escape(error)}[/red]"
-                                )
+                            # Check if error already has line number in format:
+                            # - "10: Error:" or "10: Warning:"
+                            # - "Makefile:10: Error:" or "Makefile:10: Warning:"
+                            has_line_number = re.match(
+                                r"^(\d+|Makefile:\d+):\s*(Warning|Error):", error
+                            )
+                            if has_line_number:
+                                # Error already has line number, prepend filename if not already present
+                                if error.startswith("Makefile:"):
+                                    # Replace "Makefile:" with actual filename
+                                    error_with_file = error.replace(
+                                        "Makefile:", f"{file_path}:", 1
+                                    )
+                                    output_console.print(
+                                        f"[red]{escape(error_with_file)}[/red]"
+                                    )
+                                else:
+                                    # Just prepend filename
+                                    output_console.print(
+                                        f"[red]{file_path}:{escape(error)}[/red]"
+                                    )
                             else:
                                 # Error doesn't have line number, add generic format
                                 output_console.print(
@@ -527,15 +542,32 @@ def format(
                             # Traditional format
                             output_console.print(f"[red]Error:[/red] {escape(error)}")
 
-                if warnings:
+                # Only show warnings in check mode or verbose mode
+                if warnings and (check or verbose):
                     for warning in warnings:
                         if config.gnu_error_format:
                             # GNU standard format: filename:line: Warning: message
-                            if ":" in warning and warning.split(":")[0].isdigit():
-                                # Warning already has line number, prepend filename
-                                output_console.print(
-                                    f"[yellow]{file_path}:{escape(warning)}[/yellow]"
-                                )
+                            # Check if warning already has line number in format:
+                            # - "1: Warning:" or "1: Error:"
+                            # - "Makefile:1: Warning:" or "Makefile:1: Error:"
+                            has_line_number = re.match(
+                                r"^(\d+|Makefile:\d+):\s*(Warning|Error):", warning
+                            )
+                            if has_line_number:
+                                # Warning already has line number, prepend filename if not already present
+                                if warning.startswith("Makefile:"):
+                                    # Replace "Makefile:" with actual filename
+                                    warning_with_file = warning.replace(
+                                        "Makefile:", f"{file_path}:", 1
+                                    )
+                                    output_console.print(
+                                        f"[yellow]{escape(warning_with_file)}[/yellow]"
+                                    )
+                                else:
+                                    # Just prepend filename
+                                    output_console.print(
+                                        f"[yellow]{file_path}:{escape(warning)}[/yellow]"
+                                    )
                             else:
                                 # Warning doesn't have line number, add generic format
                                 output_console.print(

@@ -7,8 +7,6 @@ from .duplicate_targets import DuplicateTargetRule
 from .final_newline import FinalNewlineRule
 from .pattern_spacing import PatternSpacingRule
 from .phony import PhonyRule
-from .phony_detection import PhonyDetectionRule
-from .phony_insertion import PhonyInsertionRule
 from .recipe_validation import RecipeValidationRule
 from .rule_type_detection import RuleTypeDetectionRule
 from .shell import ShellFormattingRule
@@ -27,8 +25,6 @@ __all__ = [
     "FinalNewlineRule",
     "PatternSpacingRule",
     "PhonyRule",
-    "PhonyDetectionRule",
-    "PhonyInsertionRule",
     "RecipeValidationRule",
     "RuleTypeDetectionRule",
     "ShellFormattingRule",

@@ -24,13 +24,15 @@ class TargetValidationRule(FormatterPlugin):
         **context: Any,
     ) -> FormatResult:
         """Validate target syntax and return warnings."""
-        warnings = self._validate_target_syntax(lines)
+        warnings = self._validate_target_syntax(lines, config)
         # This rule doesn't modify content, just reports warnings
         return FormatResult(
             lines=lines, changed=False, errors=[], warnings=warnings, check_messages=[]
         )
 
-    def _validate_target_syntax(self, lines: list[str]) -> list[str]:
+    def _validate_target_syntax(
+        self, lines: list[str], config: dict[str, Any]
+    ) -> list[str]:
         """Check for invalid target syntax patterns."""
         warnings = []
 
@@ -50,7 +52,16 @@ class TargetValidationRule(FormatterPlugin):
 
             # Check for invalid target syntax
             if self._is_invalid_target(line, active_prefix):
-                warnings.append(f"Line {i}: Invalid target syntax: {stripped}")
+                line_num = i + 1
+                gnu_format = config.get("_global", {}).get("gnu_error_format", True)
+                if gnu_format:
+                    warnings.append(
+                        f"{line_num}: Warning: Invalid target syntax: {stripped}"
+                    )
+                else:
+                    warnings.append(
+                        f"Warning: Invalid target syntax: {stripped} (line {line_num})"
+                    )
 
         return warnings
 

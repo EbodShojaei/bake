@@ -129,9 +129,9 @@ class DuplicateTargetRule(FormatterPlugin):
 
     def _format_error_message(self, message: str, line_num: int, config: dict) -> str:
         """Format error message according to configuration."""
-        gnu_error_format = config.get("gnu_error_format", False)
+        gnu_error_format = config.get("_global", {}).get("gnu_error_format", True)
 
         if gnu_error_format:
-            return f"Makefile:{line_num}: Error: {message}"
+            return f"{line_num}: Error: {message}"
         else:
-            return f"Line {line_num}: {message}"
+            return f"Error: {message} (line {line_num})"

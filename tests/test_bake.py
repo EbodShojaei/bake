@@ -127,7 +127,7 @@ class TestFinalNewlineRule:
 
         assert result.changed
         assert len(result.check_messages) == 1
-        assert "3: Error: Missing final newline" in result.check_messages[0]
+        assert "3: Warning: Missing final newline" in result.check_messages[0]
 
     def test_skips_when_disabled(self):
         from mbake.core.rules.final_newline import FinalNewlineRule
@@ -190,7 +190,11 @@ class TestPhonyRule:
 
     def test_groups_phony_declarations(self):
         rule = PhonyRule()
-        config = {"group_phony_declarations": True, "phony_at_top": True}
+        config = {
+            "group_phony_declarations": True,
+            "phony_at_top": True,
+            "auto_insert_phony_declarations": True,
+        }
         lines = [
             "# Comment",
             "VAR = value",
@@ -251,7 +255,7 @@ class TestMakefileFormatter:
         test_file = tmp_path / "Makefile"
         test_file.write_text("VAR:=value\ntarget:\n    echo 'hello'\n")
 
-        changed, errors = formatter.format_file(test_file)
+        changed, errors, warnings = formatter.format_file(test_file)
 
         assert not errors
         assert changed  # Should have made changes
@@ -270,7 +274,7 @@ class TestMakefileFormatter:
         original_content = "VAR:=value\ntarget:\n    echo 'hello'\n"
         test_file.write_text(original_content)
 
-        changed, errors = formatter.format_file(test_file, check_only=True)
+        changed, errors, warnings = formatter.format_file(test_file, check_only=True)
 
         assert changed  # Should detect changes needed
 

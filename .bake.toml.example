@@ -21,9 +21,9 @@ normalize_line_continuations = true
 max_line_length = 120
 
 # PHONY settings
+auto_insert_phony_declarations = false
 group_phony_declarations = false
 phony_at_top = false
-auto_insert_phony_declarations = false
 
 # General settings
 remove_trailing_whitespace = true

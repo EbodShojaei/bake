@@ -25,7 +25,7 @@ class TestGNUErrorFormat:
 
         assert len(errors) == 1
         # Our current format includes line numbers and detailed context
-        assert "Line 5: Duplicate target 'default'" in errors[0]
+        assert "5: Error: Duplicate target 'default'" in errors[0]
         assert "defined at lines 2 and 5" in errors[0]
 
     def test_gnu_error_format_disabled(self):
@@ -104,7 +104,7 @@ class TestGNUErrorFormat:
         assert len(duplicate_errors) == 1
 
         # Check exact line numbers for duplicate targets
-        assert "Line 5: Duplicate target 'target'" in duplicate_errors[0]
+        assert "5: Error: Duplicate target 'target'" in duplicate_errors[0]
         assert "defined at lines 2 and 5" in duplicate_errors[0]
         # Final newline error format checking disabled due to check mode issues
         # assert "7: Error: Missing final newline" in newline_errors[0]
@@ -158,7 +158,7 @@ class TestGNUErrorFormat:
         default_error = next((e for e in duplicate_errors if "'default'" in e), None)
 
         assert install_error is not None
-        assert "Line 16: Duplicate target 'install'" in install_error
+        assert "16: Error: Duplicate target 'install'" in install_error
         assert "lines 13 and 16" in install_error
 
         # Verify no default error (conditional targets are mutually exclusive)

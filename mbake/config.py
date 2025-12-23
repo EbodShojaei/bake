@@ -37,9 +37,9 @@ class FormatterConfig:
     max_line_length: int = 120
 
     # PHONY settings
+    auto_insert_phony_declarations: bool = False
     group_phony_declarations: bool = False
     phony_at_top: bool = False
-    auto_insert_phony_declarations: bool = False
 
     # General settings
     remove_trailing_whitespace: bool = True
