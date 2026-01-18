@@ -104,6 +104,7 @@ class RecipeValidationRule(FormatterPlugin):
             or stripped.startswith(
                 (
                     "include",
+                    "-include",
                     "export",
                     "unexport",
                     "define",

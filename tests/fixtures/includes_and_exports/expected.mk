@@ -51,3 +51,5 @@ include   $(wildcard $(INCLUDE_DIR)/*.mk)
 .PHONY: all
 all:
 	@echo "Makefile processed successfully."
+# -include after target should not be treated as part of recipe
+-include $(INCLUDE_DIR)
