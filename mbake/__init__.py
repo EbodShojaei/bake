@@ -1,6 +1,6 @@
 """mbake - A Python-based Makefile formatter and linter."""
 
-__version__ = "1.4.3"
+__version__ = "1.4.4"
 __author__ = "mbake Contributors"
 __description__ = "A Python-based Makefile formatter and linter"
 
