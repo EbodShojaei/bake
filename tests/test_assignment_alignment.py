@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from mbake.config import Config, FormatterConfig
 from mbake.core.formatter import MakefileFormatter
 from mbake.core.rules.assignment_alignment import AssignmentAlignmentRule
