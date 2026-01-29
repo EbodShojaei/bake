@@ -134,6 +134,10 @@ fix_missing_recipe_tabs = true
 indent_nested_conditionals = false
 # Indentation settings
 tab_width = 2
+
+# Variable alignment settings
+align_variable_assignments = false
+align_across_comments = false
 """
 
 
@@ -288,6 +292,16 @@ def config(
                 "Indent nested conditionals",
             ),
             ("tab_width", config.formatter.tab_width, "Tab width in spaces"),
+            (
+                "align_variable_assignments",
+                config.formatter.align_variable_assignments,
+                "Align variable assignments",
+            ),
+            (
+                "align_across_comments",
+                config.formatter.align_across_comments,
+                "Align across comment lines",
+            ),
         ]
 
         for name, value, desc in settings:

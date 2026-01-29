@@ -1,5 +1,6 @@
 """Formatting rules for Makefiles."""
 
+from .assignment_alignment import AssignmentAlignmentRule
 from .assignment_spacing import AssignmentSpacingRule
 from .conditionals import ConditionalRule
 from .continuation import ContinuationRule
@@ -18,6 +19,7 @@ from .target_validation import TargetValidationRule
 from .whitespace import WhitespaceRule
 
 __all__ = [
+    "AssignmentAlignmentRule",
     "AssignmentSpacingRule",
     "ConditionalRule",
     "ContinuationRule",

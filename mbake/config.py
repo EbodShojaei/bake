@@ -53,6 +53,10 @@ class FormatterConfig:
     # Indentation settings
     tab_width: int = 2
 
+    # Variable alignment settings
+    align_variable_assignments: bool = False
+    align_across_comments: bool = False
+
 
 @dataclass
 class Config:
@@ -106,6 +110,8 @@ class Config:
             "fix_missing_recipe_tabs",
             "indent_nested_conditionals",
             "tab_width",
+            "align_variable_assignments",
+            "align_across_comments",
         }
         filtered_formatter_data = {
             k: v for k, v in formatter_data.items() if k in valid_formatter_keys
@@ -186,6 +192,8 @@ class Config:
                 "fix_missing_recipe_tabs": self.formatter.fix_missing_recipe_tabs,
                 "indent_nested_conditionals": self.formatter.indent_nested_conditionals,
                 "tab_width": self.formatter.tab_width,
+                "align_variable_assignments": self.formatter.align_variable_assignments,
+                "align_across_comments": self.formatter.align_across_comments,
             },
             "debug": self.debug,
             "verbose": self.verbose,

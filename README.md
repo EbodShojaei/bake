@@ -99,6 +99,10 @@ normalize_line_continuations = true     # Clean up backslash continuations
 remove_trailing_whitespace = true       # Remove trailing spaces
 fix_missing_recipe_tabs = true          # Convert spaces to tabs in recipes
 
+# Variable alignment
+align_variable_assignments = false      # Align consecutive assignments
+align_across_comments = false           # Continue alignment across comments
+
 # .PHONY management
 auto_insert_phony_declarations = false  # Auto-detect and insert .PHONY
 group_phony_declarations = false        # Group multiple .PHONY lines

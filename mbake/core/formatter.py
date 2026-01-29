@@ -10,6 +10,7 @@ from ..config import Config
 from ..plugins.base import FormatterPlugin
 from ..utils import FormatDisableHandler, FormatRegion
 from .rules import (
+    AssignmentAlignmentRule,
     AssignmentSpacingRule,
     ConditionalRule,
     ContinuationRule,
@@ -65,6 +66,7 @@ class MakefileFormatter:
             TabsRule(),  # Ensure proper recipe tabs
             ShellFormattingRule(),  # Format shell commands
             AssignmentSpacingRule(),  # Format variable assignments
+            AssignmentAlignmentRule(),  # Align variable assignments
             TargetSpacingRule(),  # Format target lines
             PatternSpacingRule(),  # Format pattern rules
             # PHONY-related rules
