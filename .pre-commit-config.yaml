@@ -1,0 +1,47 @@
+repos:
+  - repo: local
+    hooks:
+      - id: mbake-format
+        name: mbake format
+        entry: mbake format
+        language: system
+        types: [makefile]
+        args: [--check]
+        exclude: ^tests/
+        require_serial: true
+
+      - id: mbake-validate
+        name: mbake validate
+        entry: mbake validate
+        language: system
+        types: [makefile]
+        exclude: ^tests/
+        require_serial: true
+
+  # Code formatting
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        language_version: python3
+        files: ^mbake/
+
+  # Linting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.10
+    hooks:
+      - id: ruff
+        files: ^mbake/
+
+  # Type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        args: [mbake]
+        pass_filenames: false
+        always_run: true
+        additional_dependencies:
+          - typer>=0.9.0
+          - rich>=13.0.0
+          - tomli>=1.2.1
