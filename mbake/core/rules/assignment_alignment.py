@@ -20,8 +20,8 @@ class AssignmentAlignmentRule(FormatterPlugin):
     )
 
     def __init__(self) -> None:
-        # Run after assignment_spacing (priority 15) but before most other rules
-        super().__init__("assignment_alignment", priority=16)
+        # Run after target_spacing (priority 18) to ensure VPATH normalization works correctly
+        super().__init__("assignment_alignment", priority=19)
 
     def format(
         self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
@@ -83,8 +83,6 @@ class AssignmentAlignmentRule(FormatterPlugin):
         blocks: list[list[dict]] = []
         current_block: list[dict] = []
         in_continuation = False
-        in_recipe = False
-        in_conditional = False
 
         for i, line in enumerate(lines):
             stripped = line.strip()
@@ -97,38 +95,31 @@ class AssignmentAlignmentRule(FormatterPlugin):
 
             # Skip recipe lines (lines starting with tab)
             if line.startswith("\t"):
-                in_recipe = True
                 if current_block:
                     blocks.append(current_block)
                     current_block = []
                 continue
 
             # Track conditional blocks - don't align across them
-            if stripped.startswith(("ifdef", "ifndef", "ifeq", "ifneq", "if ")):
-                in_conditional = True
-                if current_block:
-                    blocks.append(current_block)
-                    current_block = []
-                continue
-            elif stripped.startswith(("else", "endif")):
-                if stripped.startswith("endif"):
-                    in_conditional = False
+            if stripped.startswith(
+                ("ifdef", "ifndef", "ifeq", "ifneq", "if ", "else", "endif")
+            ):
                 if current_block:
                     blocks.append(current_block)
                     current_block = []
                 continue
 
             # Track if we're entering a target (colon without assignment)
-            if ":" in stripped and not re.search(r":=|\+=|\?=|!=", stripped):
-                # Check if it's a target definition, not a URL or path
-                if re.match(r"^[A-Za-z_][A-Za-z0-9_.-]*\s*:", stripped):
-                    in_recipe = True
-                    if current_block:
-                        blocks.append(current_block)
-                        current_block = []
-                    continue
-
-            in_recipe = False
+            if (
+                ":" in stripped
+                and not re.search(r":=|\+=|\?=|!=", stripped)
+                and re.match(r"^[A-Za-z_][A-Za-z0-9_.-]*\s*:", stripped)
+            ):
+                # It's a target definition, not a URL or path
+                if current_block:
+                    blocks.append(current_block)
+                    current_block = []
+                continue
 
             # Handle empty lines - they always break blocks
             if not stripped:
@@ -141,11 +132,13 @@ class AssignmentAlignmentRule(FormatterPlugin):
             if stripped.startswith("#"):
                 if align_across_comments and current_block:
                     # Include comment in the block as a pass-through
-                    current_block.append({
-                        "line_index": i,
-                        "is_comment": True,
-                        "original": line,
-                    })
+                    current_block.append(
+                        {
+                            "line_index": i,
+                            "is_comment": True,
+                            "original": line,
+                        }
+                    )
                 elif current_block:
                     # Comment breaks the block
                     blocks.append(current_block)
@@ -159,14 +152,16 @@ class AssignmentAlignmentRule(FormatterPlugin):
                 operator = match.group(2)
                 value = match.group(3)
 
-                current_block.append({
-                    "line_index": i,
-                    "is_comment": False,
-                    "var_name": var_name,
-                    "operator": operator,
-                    "value": value,
-                    "original": line,
-                })
+                current_block.append(
+                    {
+                        "line_index": i,
+                        "is_comment": False,
+                        "var_name": var_name,
+                        "operator": operator,
+                        "value": value,
+                        "original": line,
+                    }
+                )
 
                 # Check for line continuation
                 if stripped.endswith("\\"):
@@ -183,7 +178,8 @@ class AssignmentAlignmentRule(FormatterPlugin):
 
         # Filter out blocks with fewer than 2 actual assignments
         return [
-            block for block in blocks
+            block
+            for block in blocks
             if sum(1 for item in block if not item.get("is_comment", False)) >= 2
         ]
 
@@ -199,9 +195,7 @@ class AssignmentAlignmentRule(FormatterPlugin):
         """
         # Find the maximum variable name length (only from actual assignments)
         max_var_len = max(
-            len(item["var_name"])
-            for item in block
-            if not item.get("is_comment", False)
+            len(item["var_name"]) for item in block if not item.get("is_comment", False)
         )
 
         changed = False

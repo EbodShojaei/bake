@@ -36,3 +36,7 @@ fix_missing_recipe_tabs = true
 indent_nested_conditionals = false
 # Indentation settings
 tab_width = 2
+
+# Variable alignment
+align_variable_assignments = false      # Align consecutive assignments
+align_across_comments = false           # Continue alignment across comments
