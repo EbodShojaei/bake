@@ -51,6 +51,10 @@ fix_missing_recipe_tabs = true
 indent_nested_conditionals = false
 # Indentation settings
 tab_width = 2
+
+# Variable alignment settings
+align_variable_assignments = false
+align_across_comments = false
 ```
 
 ### 3. Terminal Usage
@@ -87,6 +91,7 @@ The formatter applies these improvements:
 
 - ✅ **Tabs**: Converts spaces to tabs in recipe lines
 - ✅ **Assignment spacing**: Normalizes spacing around variable assignments (`CC=gcc` → `CC = gcc`)
+- ✅ **Assignment alignment**: Aligns consecutive variable assignments for readability (optional)
 - ✅ **Target spacing**: Fixes spacing around colons in targets (`install:$(TARGET)` → `install: $(TARGET)`)
 - ✅ **PHONY declarations**: Groups and organizes `.PHONY` declarations
 - ✅ **Line continuations**: Normalizes multi-line variable assignments
