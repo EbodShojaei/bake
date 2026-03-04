@@ -411,7 +411,10 @@ def format(
     ),
     debug: bool = typer.Option(False, "--debug", help="Enable debug output."),
     quiet: bool = typer.Option(
-        False, "--quiet", "-q", help="Print diagnostics, but nothing else."
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress all output. With --check, print diagnostics but nothing else.",
     ),
     silent: bool = typer.Option(
         False,
@@ -580,8 +583,8 @@ def format(
                                     f"[red]Error:[/red] {escape(error)}"
                                 )
 
-                # Only show warnings in check mode, verbose mode, or quiet mode
-                if warnings and not silent and (check or verbose or quiet):
+                # Only show warnings in check mode or verbose mode
+                if warnings and not silent and (check or verbose):
                     for warning in warnings:
                         if config.gnu_error_format:
                             # GNU standard format: filename:line: Warning: message
@@ -625,9 +628,10 @@ def format(
                                 f"[yellow]Would reformat:[/yellow] {file_path}"
                             )
                         else:
-                            output_console.print(
-                                f"[green]Formatted:[/green] {file_path}"
-                            )
+                            if not quiet:
+                                output_console.print(
+                                    f"[green]Formatted:[/green] {file_path}"
+                                )
 
                             # Validate syntax if requested
                             if validate_syntax:

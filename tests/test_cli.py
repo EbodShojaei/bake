@@ -232,7 +232,7 @@ class TestCLIQuietSilentFlags:
         )
 
     def test_quiet_flag_suppresses_non_diagnostics(self, runner, test_config):
-        """Test that --quiet suppresses non-diagnostic output like summary."""
+        """Test that --quiet suppresses all output during normal formatting."""
         input_content = "target:\n\techo hello"
 
         with patch("mbake.cli.Config.load_or_default", return_value=test_config):
@@ -254,6 +254,36 @@ class TestCLIQuietSilentFlags:
 
         assert result.exit_code == 0
         assert result.stdout == input_content
+
+    def test_quiet_check_shows_would_reformat(self, runner, test_config):
+        """Test that --quiet --check shows 'Would reformat' diagnostic."""
+        # Input that needs formatting (unspaced assignment)
+        input_content = "VAR=value\ntarget:\n\techo hello"
+
+        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+            result = runner.invoke(
+                app,
+                ["format", "--stdin", "--check", "--quiet"],
+                input=input_content,
+            )
+
+        assert result.exit_code == 1
+        assert "Would reformat" in result.stdout
+
+    def test_quiet_check_no_reformat_needed_no_output(self, runner, test_config):
+        """Test that --quiet --check exits 0 when already formatted."""
+        # Input that is already well-formatted (no changes needed)
+        input_content = "target:\n\techo hello"
+
+        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+            result = runner.invoke(
+                app,
+                ["format", "--stdin", "--check", "--quiet"],
+                input=input_content,
+            )
+
+        assert result.exit_code == 0
+        assert "Would reformat" not in result.stdout
 
     def test_silent_flag_suppresses_all_output(self, runner, test_config):
         """Test that --silent suppresses all output."""
@@ -313,3 +343,4 @@ class TestCLIQuietSilentFlags:
 
         # Should exit 1 (would reformat) and print the diagnostic
         assert result.exit_code == 1
+        assert "Would reformat" in result.stdout
