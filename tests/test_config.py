@@ -220,9 +220,10 @@ class TestLoadOrDefault:
         with (
             tempfile.TemporaryDirectory() as fake_home,
             tempfile.TemporaryDirectory() as cwd,
+            _fake_home(fake_home),
+            _fake_cwd(cwd),
         ):
-            with _fake_home(fake_home), _fake_cwd(cwd):
-                result = Config.load_or_default()
+            result = Config.load_or_default()
         assert isinstance(result, Config)
         assert isinstance(result.formatter, FormatterConfig)
         assert result.debug is False
