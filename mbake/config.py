@@ -75,7 +75,7 @@ class Config:
     )
 
     @staticmethod
-    def _xdg_config_path() -> Path:
+    def determine_config_path() -> Path:
         """Return the XDG config path for mbake.
 
         Order of options:
@@ -99,7 +99,7 @@ class Config:
         ( Checks if home config exists, else checks if XDG_CONFIG_HOME exists,
          else falls back to ~/.config/bake.toml)"""
         if config_path is None:
-            config_path = cls._xdg_config_path()
+            config_path = cls.determine_config_path()
 
         if not config_path.exists():
             raise FileNotFoundError(
@@ -177,7 +177,7 @@ class Config:
         # directory
 
         current_dir_config = Path.cwd() / ".bake.toml"
-        xdg_home_config = cls._xdg_config_path()
+        xdg_home_config = cls.determine_config_path()
 
         if current_dir_config.exists():
             try:

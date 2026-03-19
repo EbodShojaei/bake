@@ -14,10 +14,10 @@ import pytest
 
 from mbake.config import Config, FormatterConfig
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _write_toml(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -35,11 +35,12 @@ def _fake_cwd(tmp: str):
 
 
 # ---------------------------------------------------------------------------
-# _xdg_config_path resolution
+# determine_config_path resolution
 # ---------------------------------------------------------------------------
 
+
 class TestXdgConfigPath:
-    """Tests for Config._xdg_config_path() resolution order."""
+    """Tests for Config.determine_config_path() resolution order."""
 
     def setup_method(self):
         os.environ.pop("XDG_CONFIG_HOME", None)
@@ -49,12 +50,14 @@ class TestXdgConfigPath:
 
     def test_home_bake_toml_wins_over_xdg(self):
         """~/.bake.toml existing takes priority even when XDG_CONFIG_HOME is set."""
-        with tempfile.TemporaryDirectory() as fake_home, \
-             tempfile.TemporaryDirectory() as xdg:
+        with (
+            tempfile.TemporaryDirectory() as fake_home,
+            tempfile.TemporaryDirectory() as xdg,
+        ):
             _write_toml(Path(fake_home) / ".bake.toml", "[formatter]\n")
             os.environ["XDG_CONFIG_HOME"] = xdg
             with _fake_home(fake_home):
-                result = Config._xdg_config_path()
+                result = Config.determine_config_path()
             assert result == Path(fake_home) / ".bake.toml"
 
     def test_home_bake_toml_wins_without_xdg(self):
@@ -62,23 +65,25 @@ class TestXdgConfigPath:
         with tempfile.TemporaryDirectory() as fake_home:
             _write_toml(Path(fake_home) / ".bake.toml", "[formatter]\n")
             with _fake_home(fake_home):
-                result = Config._xdg_config_path()
+                result = Config.determine_config_path()
             assert result == Path(fake_home) / ".bake.toml"
 
     def test_xdg_env_used_when_home_file_absent(self):
         """$XDG_CONFIG_HOME/bake.toml is used when ~/.bake.toml does not exist."""
-        with tempfile.TemporaryDirectory() as fake_home, \
-             tempfile.TemporaryDirectory() as xdg:
+        with (
+            tempfile.TemporaryDirectory() as fake_home,
+            tempfile.TemporaryDirectory() as xdg,
+        ):
             os.environ["XDG_CONFIG_HOME"] = xdg
             with _fake_home(fake_home):
-                result = Config._xdg_config_path()
+                result = Config.determine_config_path()
             assert result == Path(xdg) / "bake.toml"
 
     def test_default_xdg_base_when_nothing_set(self):
         """Falls back to ~/.config/bake.toml when no XDG var and no ~/.bake.toml."""
         with tempfile.TemporaryDirectory() as fake_home:
             with _fake_home(fake_home):
-                result = Config._xdg_config_path()
+                result = Config.determine_config_path()
             assert result == Path(fake_home) / ".config" / "bake.toml"
 
     def test_empty_xdg_env_is_ignored(self):
@@ -86,14 +91,14 @@ class TestXdgConfigPath:
         with tempfile.TemporaryDirectory() as fake_home:
             os.environ["XDG_CONFIG_HOME"] = "   "
             with _fake_home(fake_home):
-                result = Config._xdg_config_path()
+                result = Config.determine_config_path()
             assert result == Path(fake_home) / ".config" / "bake.toml"
 
     def test_returned_path_may_not_exist(self):
         """_xdg_config_path does not require the file to exist."""
         with tempfile.TemporaryDirectory() as fake_home:
             with _fake_home(fake_home):
-                result = Config._xdg_config_path()
+                result = Config.determine_config_path()
             assert isinstance(result, Path)
             assert not result.exists()
 
@@ -101,6 +106,7 @@ class TestXdgConfigPath:
 # ---------------------------------------------------------------------------
 # Config.load()
 # ---------------------------------------------------------------------------
+
 
 class TestLoad:
     """Tests for Config.load()."""
@@ -153,7 +159,9 @@ class TestLoad:
     def test_loads_all_formatter_options(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "full.toml"
-            _write_toml(p, """\
+            _write_toml(
+                p,
+                """\
 [formatter]
 space_around_assignment = false
 space_before_colon = true
@@ -172,7 +180,8 @@ indent_nested_conditionals = true
 tab_width = 8
 align_variable_assignments = true
 align_across_comments = true
-""")
+""",
+            )
             f = Config.load(p).formatter
             assert f.space_around_assignment is False
             assert f.space_before_colon is True
@@ -197,6 +206,7 @@ align_across_comments = true
 # Config.load_or_default()
 # ---------------------------------------------------------------------------
 
+
 class TestLoadOrDefault:
     """Tests for Config.load_or_default() search-order cascade."""
 
@@ -207,8 +217,10 @@ class TestLoadOrDefault:
         os.environ.pop("XDG_CONFIG_HOME", None)
 
     def test_no_files_returns_defaults(self):
-        with tempfile.TemporaryDirectory() as fake_home, \
-             tempfile.TemporaryDirectory() as cwd:
+        with (
+            tempfile.TemporaryDirectory() as fake_home,
+            tempfile.TemporaryDirectory() as cwd,
+        ):
             with _fake_home(fake_home), _fake_cwd(cwd):
                 result = Config.load_or_default()
         assert isinstance(result, Config)
@@ -217,8 +229,10 @@ class TestLoadOrDefault:
 
     def test_cwd_config_beats_everything(self):
         """A .bake.toml in the current directory takes top priority."""
-        with tempfile.TemporaryDirectory() as cwd, \
-             tempfile.TemporaryDirectory() as fake_home:
+        with (
+            tempfile.TemporaryDirectory() as cwd,
+            tempfile.TemporaryDirectory() as fake_home,
+        ):
             _write_toml(Path(cwd) / ".bake.toml", "[formatter]\ntab_width = 7\n")
             _write_toml(Path(fake_home) / ".bake.toml", "[formatter]\ntab_width = 2\n")
             with _fake_home(fake_home), _fake_cwd(cwd):
@@ -227,8 +241,10 @@ class TestLoadOrDefault:
 
     def test_home_bake_toml_used_when_no_cwd_config(self):
         """~/.bake.toml is used when there is no cwd config."""
-        with tempfile.TemporaryDirectory() as cwd, \
-             tempfile.TemporaryDirectory() as fake_home:
+        with (
+            tempfile.TemporaryDirectory() as cwd,
+            tempfile.TemporaryDirectory() as fake_home,
+        ):
             _write_toml(Path(fake_home) / ".bake.toml", "[formatter]\ntab_width = 6\n")
             with _fake_home(fake_home), _fake_cwd(cwd):
                 result = Config.load_or_default()
@@ -236,9 +252,11 @@ class TestLoadOrDefault:
 
     def test_xdg_config_used_when_home_file_absent(self):
         """$XDG_CONFIG_HOME/bake.toml is used when ~/.bake.toml does not exist."""
-        with tempfile.TemporaryDirectory() as cwd, \
-             tempfile.TemporaryDirectory() as fake_home, \
-             tempfile.TemporaryDirectory() as xdg:
+        with (
+            tempfile.TemporaryDirectory() as cwd,
+            tempfile.TemporaryDirectory() as fake_home,
+            tempfile.TemporaryDirectory() as xdg,
+        ):
             _write_toml(Path(xdg) / "bake.toml", "[formatter]\ntab_width = 5\n")
             os.environ["XDG_CONFIG_HOME"] = xdg
             with _fake_home(fake_home), _fake_cwd(cwd):
@@ -268,8 +286,10 @@ class TestLoadOrDefault:
 
     def test_broken_cwd_config_falls_through_to_home(self):
         """Invalid cwd .bake.toml is skipped; home config is tried next."""
-        with tempfile.TemporaryDirectory() as cwd, \
-             tempfile.TemporaryDirectory() as fake_home:
+        with (
+            tempfile.TemporaryDirectory() as cwd,
+            tempfile.TemporaryDirectory() as fake_home,
+        ):
             (Path(cwd) / ".bake.toml").write_text("not valid toml !!!")
             _write_toml(Path(fake_home) / ".bake.toml", "[formatter]\ntab_width = 3\n")
             with _fake_home(fake_home), _fake_cwd(cwd):
@@ -278,8 +298,10 @@ class TestLoadOrDefault:
 
     def test_broken_home_config_falls_through_to_defaults(self):
         """Invalid home config returns defaults rather than raising."""
-        with tempfile.TemporaryDirectory() as cwd, \
-             tempfile.TemporaryDirectory() as fake_home:
+        with (
+            tempfile.TemporaryDirectory() as cwd,
+            tempfile.TemporaryDirectory() as fake_home,
+        ):
             (Path(fake_home) / ".bake.toml").write_text("not valid toml !!!")
             with _fake_home(fake_home), _fake_cwd(cwd):
                 result = Config.load_or_default()
@@ -289,6 +311,7 @@ class TestLoadOrDefault:
 # ---------------------------------------------------------------------------
 # Config.to_dict() round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestToDict:
     """Tests for Config.to_dict()."""
@@ -306,13 +329,23 @@ class TestToDict:
         result = Config(formatter=FormatterConfig())
         keys = set(result.to_dict()["formatter"].keys())
         expected = {
-            "space_around_assignment", "space_before_colon", "space_after_colon",
-            "normalize_line_continuations", "max_line_length",
-            "auto_insert_phony_declarations", "group_phony_declarations", "phony_at_top",
-            "remove_trailing_whitespace", "ensure_final_newline",
-            "normalize_empty_lines", "max_consecutive_empty_lines",
-            "fix_missing_recipe_tabs", "indent_nested_conditionals", "tab_width",
-            "align_variable_assignments", "align_across_comments",
+            "space_around_assignment",
+            "space_before_colon",
+            "space_after_colon",
+            "normalize_line_continuations",
+            "max_line_length",
+            "auto_insert_phony_declarations",
+            "group_phony_declarations",
+            "phony_at_top",
+            "remove_trailing_whitespace",
+            "ensure_final_newline",
+            "normalize_empty_lines",
+            "max_consecutive_empty_lines",
+            "fix_missing_recipe_tabs",
+            "indent_nested_conditionals",
+            "tab_width",
+            "align_variable_assignments",
+            "align_across_comments",
         }
         assert keys == expected
 
