@@ -1,5 +1,6 @@
 """Configuration loading for mbake."""
 
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -73,16 +74,37 @@ class Config:
         False  # Wrap long error messages (can interfere with IDE parsing)
     )
 
+    @staticmethod
+    def determine_config_path() -> Path:
+        """Return the XDG config path for mbake.
+
+        Order of options:
+          1. `~/.bake.toml — if the file exists
+          2. `$XDG_CONFIG_HOME/bake.toml' — if `$XDG_CONFIG_HOME' is set.
+          3. `~/.config/bake.toml — XDG default.
+        """
+        home_path = Path.home() / ".bake.toml"
+        if home_path.exists():
+            return home_path
+
+        xdg_config_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
+        if xdg_config_home:
+            return Path(xdg_config_home) / "bake.toml"
+
+        return Path.home() / ".config" / "bake.toml"
+
     @classmethod
     def load(cls, config_path: Optional[Path] = None) -> "Config":
-        """Load configuration from ~/.bake.toml."""
+        """Load configuration from XDG config path
+        ( Checks if home config exists, else checks if XDG_CONFIG_HOME exists,
+         else falls back to ~/.config/bake.toml)"""
         if config_path is None:
-            config_path = Path.home() / ".bake.toml"
+            config_path = cls.determine_config_path()
 
         if not config_path.exists():
             raise FileNotFoundError(
                 f"Configuration file not found at {config_path}. "
-                "Please create ~/.bake.toml with your formatting preferences."
+                "Please create ~/.config/bake.toml with your formatting preferences."
             )
 
         try:
@@ -151,10 +173,11 @@ class Config:
                     raise
                 return cls(formatter=FormatterConfig())
 
-        # Try to find config file in current directory first, then home directory
+        # Try to find config file in current directory first, then xdg_config
+        # directory
 
         current_dir_config = Path.cwd() / ".bake.toml"
-        home_config = Path.home() / ".bake.toml"
+        xdg_home_config = cls.determine_config_path()
 
         if current_dir_config.exists():
             try:
@@ -163,9 +186,9 @@ class Config:
                 # If current directory config is invalid, fall back to home directory
                 pass
 
-        if home_config.exists():
+        if xdg_home_config.exists():
             try:
-                return cls.load(home_config)
+                return cls.load(xdg_home_config)
             except Exception:
                 # If home directory config is invalid, fall back to defaults
                 pass
