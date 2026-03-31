@@ -926,11 +926,15 @@ def update(
                 latest_prerelease if has_prerelease_update else latest_stable
             )
 
-        # Perform update
+        # Perform update (pip ignores pre-releases unless --pre is passed)
+        install_prerelease = bool(
+            latest_prerelease is not None and target_version == latest_prerelease
+        )
+
         console.print("📦 Updating mbake...", style="dim")
 
         with console.status("Installing update..."):
-            success = update_package("mbake")
+            success = update_package("mbake", prerelease=install_prerelease)
 
         if success:
             console.print(
@@ -943,6 +947,9 @@ def update(
             console.print("[red]❌ Update failed[/red]")
             console.print(
                 "Try updating manually with: [bold]pip install --upgrade mbake[/bold]"
+            )
+            console.print(
+                "For a pre-release: [bold]pip install --upgrade --pre mbake[/bold]"
             )
             raise typer.Exit(1)
 

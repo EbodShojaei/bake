@@ -56,6 +56,7 @@ class SpecialTargetValidationRule(FormatterPlugin):
             ".PRECIOUS": {"duplicatable": True, "requires_prereqs": False},
             ".INTERMEDIATE": {"duplicatable": True, "requires_prereqs": False},
             ".SECONDARY": {"duplicatable": True, "requires_prereqs": False},
+            ".DELETE_ON_ERROR": {"duplicatable": False, "requires_prereqs": False},
             ".IGNORE": {"duplicatable": True, "requires_prereqs": True},
             ".SILENT": {"duplicatable": True, "requires_prereqs": True},
             ".POSIX": {"duplicatable": False, "requires_prereqs": False},
