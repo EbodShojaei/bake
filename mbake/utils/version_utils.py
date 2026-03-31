@@ -137,12 +137,19 @@ def check_for_updates(
         return False, latest_version, current_version
 
 
-def update_package(package_name: str = "mbake", use_pip: bool = True) -> bool:
+def update_package(
+    package_name: str = "mbake",
+    use_pip: bool = True,
+    *,
+    prerelease: bool = False,
+) -> bool:
     """Update the package using pip.
 
     Args:
         package_name: Name of the package to update
         use_pip: Whether to use pip for updating
+        prerelease: If True, pass ``--pre`` so pip can install pre-release versions
+            (a/b/rc, etc.). Required when upgrading to versions like ``1.4.6a1``.
 
     Returns:
         True if update was successful, False otherwise
@@ -151,8 +158,12 @@ def update_package(package_name: str = "mbake", use_pip: bool = True) -> bool:
         raise NotImplementedError("Only pip updates are currently supported")
 
     try:
-        # Use pip to update the package
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", package_name]
+        # Use pip to update the package (--pre is required for pre-releases; otherwise
+        # pip only considers stable releases and may leave the install unchanged.)
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade"]
+        if prerelease:
+            cmd.append("--pre")
+        cmd.append(package_name)
 
         result = subprocess.run(
             cmd,

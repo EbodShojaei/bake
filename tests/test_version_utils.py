@@ -10,6 +10,7 @@ from mbake.utils.version_utils import (
     get_pypi_version,
     is_development_install,
     parse_version,
+    update_package,
 )
 
 
@@ -200,6 +201,35 @@ class TestCheckForUpdates:
         assert update_available is False
         assert latest == "1.4.1"
         assert current == "1.4.1"
+
+
+class TestUpdatePackage:
+    """Tests for pip-based package updates."""
+
+    @patch("mbake.utils.version_utils.subprocess.run")
+    def test_stable_install_omits_pre_flag(self, mock_run):
+        """Stable upgrades must not pass --pre (pip would skip pre-releases anyway)."""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        assert update_package("mbake", prerelease=False) is True
+
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        assert "--pre" not in cmd
+        assert cmd[-1] == "mbake"
+
+    @patch("mbake.utils.version_utils.subprocess.run")
+    def test_prerelease_install_includes_pre_flag(self, mock_run):
+        """Pre-release upgrades must pass --pre so pip can install a/b/rc versions."""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        assert update_package("mbake", prerelease=True) is True
+
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        assert "--pre" in cmd
+        pre_idx = cmd.index("--pre")
+        assert cmd[pre_idx + 1] == "mbake"
 
 
 class TestIsDevelopmentInstall:
