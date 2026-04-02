@@ -6,6 +6,7 @@
 # Note: .EXPORT_ALL_VARIABLES conflicts with .POSIX, so it's omitted
 .NOTPARALLEL:
 .ONESHELL:
+.NOEXPORT:
 
 # Declarative targets (can be duplicated)
 .PHONY: all clean
