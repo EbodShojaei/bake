@@ -403,7 +403,9 @@ def format(
     ),
     debug: bool = typer.Option(False, "--debug", help="Enable debug output."),
     config_file: Optional[Path] = typer.Option(
-        None, "--config", help="Path to configuration file (default: ~/.bake.toml)."
+        None,
+        "--config",
+        help="Path to configuration file (default: {XDG_CONFIG_HOME}/bake.toml).",
     ),
     backup: bool = typer.Option(
         False, "--backup", "-b", help="Create backup files before formatting."
