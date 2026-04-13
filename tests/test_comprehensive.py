@@ -1622,3 +1622,20 @@ class TestSpecialTargets:
 
             assert not errors
             assert formatted_lines == expected_lines
+
+    def test_noexport_special_target(self):
+        """Test that .NOEXPORT is recognized as a valid special target."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_lines = [
+            ".NOEXPORT:",
+            "",
+            "all:",
+            "\t@echo done",
+        ]
+
+        formatted_lines, errors, warnings = formatter.format_lines(input_lines)
+
+        assert not errors
+        assert formatted_lines == input_lines
