@@ -84,6 +84,7 @@ mbake update                            # Update to latest version
 - `--diff`: Show what changes would be made
 - `--backup`: Create backup before formatting
 - `--validate`: Validate syntax after formatting
+- `--timeout`: Timeout to use for syntax checks
 - `--config`: Use custom configuration file
 
 ## Configuration

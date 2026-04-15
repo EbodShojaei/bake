@@ -66,6 +66,8 @@ class Config:
     formatter: FormatterConfig
     debug: bool = False
     verbose: bool = False
+    # Timeout used for make file syntax checking
+    syntax_check_timeout = 10
     # Error message formatting
     gnu_error_format: bool = (
         True  # Use GNU standard error format (file:line: Error: message)
@@ -147,6 +149,8 @@ class Config:
             global_data["debug"] = data["debug"]
         if "verbose" in data:
             global_data["verbose"] = data["verbose"]
+        if "timeout_seconds" in data:
+            global_data["timeout_seconds"] = data["timeout_seconds"]
         if "gnu_error_format" in data:
             global_data["gnu_error_format"] = data["gnu_error_format"]
         if "wrap_error_messages" in data:
@@ -220,6 +224,7 @@ class Config:
             },
             "debug": self.debug,
             "verbose": self.verbose,
+            "syntax_check_timeout": self.syntax_check_timeout,
             "gnu_error_format": self.gnu_error_format,
             "wrap_error_messages": self.wrap_error_messages,
         }
