@@ -382,7 +382,7 @@ def validate(
                         error_msg = result.stderr.strip().replace(
                             str(tmp_path), "stdin"
                         )
-                        console.print(f"[red]✗[/red] stdin: Invalid syntax")
+                        console.print("[red]✗[/red] stdin: Invalid syntax")
                         console.print(f"  [dim]{escape(error_msg)}[/dim]")
                     any_errors = True
             finally:
