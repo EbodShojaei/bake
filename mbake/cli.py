@@ -390,7 +390,7 @@ def validate(
                     tmp_path.unlink()
 
             if any_errors:
-                raise typer.Exit(1)
+                raise typer.Exit(2)
             return
 
         # Validate that files are provided when not using stdin
@@ -435,8 +435,11 @@ def validate(
                 )
 
         if any_errors:
-            raise typer.Exit(1)
+            raise typer.Exit(2)
 
+    except typer.Exit:
+        # Re-raise typer exits without wrapping them
+        raise
     except Exception as e:
         console.print(f"[red]Fatal error:[/red] {e}")
         raise typer.Exit(2) from e

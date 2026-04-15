@@ -142,3 +142,70 @@ class TestValidateCommand:
         finally:
             Path(makefile1_path).unlink()
             Path(makefile2_path).unlink()
+
+    def test_validate_stdin_basic(self, runner):
+        """Test basic stdin validation functionality."""
+        input_content = "target:\n\techo 'hello'\n"
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stderr = ""
+
+            result = runner.invoke(app, ["validate", "--stdin"], input=input_content)
+
+            assert result.exit_code == 0
+            # By default verbose=False, so no "Valid" message for stdin
+            assert result.stdout == ""
+            mock_run.assert_called_once()
+
+            # Check that it used a temp file and cleaned it up
+            args = mock_run.call_args[0][0]
+            assert args[0] == "make"
+            assert args[1] == "-f"
+            assert args[2].endswith(".mk")
+
+    def test_validate_stdin_with_verbose(self, runner):
+        """Test stdin validation with --verbose flag."""
+        input_content = "target:\n\techo 'hello'\n"
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stderr = ""
+
+            result = runner.invoke(
+                app, ["validate", "--stdin", "--verbose"], input=input_content
+            )
+
+            assert result.exit_code == 0
+            assert "Valid" in result.stdout
+            assert "stdin" in result.stdout
+
+    def test_validate_stdin_with_errors(self, runner):
+        """Test stdin validation with syntax errors."""
+        input_content = "target:\necho 'missing tab'\n"
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 2
+            mock_run.return_value.stderr = "Makefile:2: *** missing separator.  Stop."
+
+            result = runner.invoke(app, ["validate", "--stdin"], input=input_content)
+
+            assert result.exit_code == 2
+            assert "Invalid" in result.stdout
+            assert "stdin" in result.stdout
+            assert "missing separator" in result.stdout
+
+    def test_validate_stdin_cannot_specify_files(self, runner):
+        """Test that --stdin cannot be used with file arguments."""
+        result = runner.invoke(app, ["validate", "--stdin", "Makefile"])
+
+        assert result.exit_code == 1
+        assert "Cannot specify files when using --stdin" in result.stdout
+
+    def test_validate_requires_files_or_stdin(self, runner):
+        """Test that validate command requires either files or --stdin."""
+        result = runner.invoke(app, ["validate"])
+
+        assert result.exit_code == 1
+        assert "No files specified" in result.stdout
+        assert "Use --stdin" in result.stdout
