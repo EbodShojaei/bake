@@ -376,7 +376,7 @@ def validate(
                 console.print(f"[yellow]?[/yellow] {file_path}: Validation timed out")
             except FileNotFoundError:
                 console.print(
-                    f"[yellow]?[/yellow] {file_path}: {file_path.name} not found - skipping syntax validation"
+                    f"[yellow]?[/yellow] {file_path}: make not found - skipping syntax validation"
                 )
 
         if any_errors:
@@ -629,7 +629,6 @@ def format(
                                     any_errors = True
                             except (
                                 subprocess.TimeoutExpired,
-                                subprocess.CalledProcessError,
                                 FileNotFoundError,
                             ):
                                 pass  # Skip validation if make not available
