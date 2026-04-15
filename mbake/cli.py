@@ -163,7 +163,7 @@ def init(
     ),
 ) -> None:
     """Initialize configuration file with defaults."""
-    config_path = config_file or Path.home() / ".bake.toml"
+    config_path = config_file or Config.default_config_path()
 
     command_name = get_command_name()
     if config_path.exists() and not force:

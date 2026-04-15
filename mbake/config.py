@@ -93,6 +93,19 @@ class Config:
 
         return Path.home() / ".config" / "bake.toml"
 
+    @staticmethod
+    def default_config_path() -> Path:
+        """Return the default path for creating a new config file.
+
+        Order of preference:
+          1. $XDG_CONFIG_HOME/bake.toml — if $XDG_CONFIG_HOME is set.
+          2. ~/.config/bake.toml — XDG default.
+        """
+        xdg_config_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
+        if xdg_config_home:
+            return Path(xdg_config_home) / "bake.toml"
+        return Path.home() / ".config" / "bake.toml"
+
     @classmethod
     def load(cls, config_path: Optional[Path] = None) -> "Config":
         """Load configuration from XDG config path
