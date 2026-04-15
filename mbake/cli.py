@@ -376,7 +376,7 @@ def validate(
                 console.print(f"[yellow]?[/yellow] {file_path}: Validation timed out")
             except FileNotFoundError:
                 console.print(
-                    f"[yellow]?[/yellow] {file_path}: make not found - skipping syntax validation"
+                    f"[yellow]?[/yellow] {file_path}: 'make' not found - skipping syntax validation"
                 )
 
         if any_errors:
