@@ -324,12 +324,17 @@ def config(
 
 @app.command()
 def validate(
-    files: list[Path] = typer.Argument(..., help="Makefile(s) to validate."),
+    files: list[Path] = typer.Argument(
+        None, help="Makefile(s) to validate (not needed with --stdin)."
+    ),
     config_file: Optional[Path] = typer.Option(
         None, "--config", help="Path to configuration file."
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose output."
+    ),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read from stdin and validate syntax."
     ),
 ) -> None:
     """Validate Makefile syntax using GNU make."""
@@ -341,6 +346,59 @@ def validate(
         )  # Just check config is valid
 
         any_errors = False
+
+        # Handle stdin mode
+        if stdin:
+            if files:
+                console.print(
+                    "[red]Error:[/red] Cannot specify files when using --stdin"
+                )
+                raise typer.Exit(1)
+
+            import sys
+            import tempfile
+
+            content = sys.stdin.read()
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".mk", delete=False
+            ) as tmp_file:
+                tmp_file.write(content)
+                tmp_path = Path(tmp_file.name)
+
+            try:
+                result = subprocess.run(
+                    ["make", "-f", str(tmp_path), "--dry-run", "--just-print"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+
+                if result.returncode == 0:
+                    if verbose:
+                        console.print("[green]✓[/green] stdin: Valid syntax")
+                else:
+                    if result.stderr:
+                        # Clean up error message to refer to 'stdin' instead of temp path
+                        error_msg = result.stderr.strip().replace(
+                            str(tmp_path), "stdin"
+                        )
+                        console.print(f"[red]✗[/red] stdin: Invalid syntax")
+                        console.print(f"  [dim]{escape(error_msg)}[/dim]")
+                    any_errors = True
+            finally:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+
+            if any_errors:
+                raise typer.Exit(1)
+            return
+
+        # Validate that files are provided when not using stdin
+        if not files:
+            console.print(
+                "[red]Error:[/red] No files specified. Use --stdin to read from stdin or provide file paths."
+            )
+            raise typer.Exit(1)
 
         for file_path in files:
             if not file_path.exists():
