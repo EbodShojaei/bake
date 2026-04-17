@@ -141,9 +141,19 @@ align_across_comments = false
 """
 
 
-def setup_logging(verbose: bool = False, debug: bool = False) -> None:
+def setup_logging(
+    verbose: bool = False,
+    debug: bool = False,
+    quiet: bool = False,
+    silent: bool = False,
+) -> None:
     """Set up logging configuration."""
-    level = logging.DEBUG if debug else (logging.INFO if verbose else logging.WARNING)
+    if silent:
+        level = logging.CRITICAL
+    elif quiet:
+        level = logging.WARNING
+    else:
+        level = logging.DEBUG if debug else (logging.INFO if verbose else logging.WARNING)
 
     logging.basicConfig(
         level=level,
@@ -402,6 +412,18 @@ def format(
         False, "--verbose", "-v", help="Enable verbose output."
     ),
     debug: bool = typer.Option(False, "--debug", help="Enable debug output."),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress all output. With --check, print diagnostics but nothing else.",
+    ),
+    silent: bool = typer.Option(
+        False,
+        "--silent",
+        "-s",
+        help="Disable all logging (but still exit with status code '1' upon detecting diagnostics).",
+    ),
     config_file: Optional[Path] = typer.Option(
         None,
         "--config",
@@ -418,7 +440,7 @@ def format(
     ),
 ) -> None:
     """Format Makefiles according to style rules (use 'validate' command for syntax checking)."""
-    setup_logging(verbose, debug)
+    setup_logging(verbose, debug, quiet, silent)
 
     try:
         # Load configuration with fallback to defaults
@@ -446,12 +468,14 @@ def format(
             result = formatter.format(content)
 
             if result.errors:
-                for error in result.errors:
-                    print(f"Error: {error}", file=sys.stderr)
+                if not silent:
+                    for error in result.errors:
+                        print(f"Error: {error}", file=sys.stderr)
                 raise typer.Exit(2)
 
             if check and content != result.content:
-                output_console.print("[yellow]Would reformat stdin[/yellow]")
+                if not silent:
+                    output_console.print("[yellow]Would reformat stdin[/yellow]")
                 raise typer.Exit(1)
 
             # Write formatted content to stdout
@@ -527,41 +551,44 @@ def format(
 
                 if errors:
                     any_errors = True
-                    for error in errors:
-                        if config.gnu_error_format:
-                            # GNU standard format: filename:line: Error: message
-                            # Check if error already has line number in format:
-                            # - "10: Error:" or "10: Warning:"
-                            # - "Makefile:10: Error:" or "Makefile:10: Warning:"
-                            has_line_number = re.match(
-                                r"^(\d+|Makefile:\d+):\s*(Warning|Error):", error
-                            )
-                            if has_line_number:
-                                # Error already has line number, prepend filename if not already present
-                                if error.startswith("Makefile:"):
-                                    # Replace "Makefile:" with actual filename
-                                    error_with_file = error.replace(
-                                        "Makefile:", f"{file_path}:", 1
-                                    )
-                                    output_console.print(
-                                        f"[red]{escape(error_with_file)}[/red]"
-                                    )
+                    if not silent:
+                        for error in errors:
+                            if config.gnu_error_format:
+                                # GNU standard format: filename:line: Error: message
+                                # Check if error already has line number in format:
+                                # - "10: Error:" or "10: Warning:"
+                                # - "Makefile:10: Error:" or "Makefile:10: Warning:"
+                                has_line_number = re.match(
+                                    r"^(\d+|Makefile:\d+):\s*(Warning|Error):", error
+                                )
+                                if has_line_number:
+                                    # Error already has line number, prepend filename if not already present
+                                    if error.startswith("Makefile:"):
+                                        # Replace "Makefile:" with actual filename
+                                        error_with_file = error.replace(
+                                            "Makefile:", f"{file_path}:", 1
+                                        )
+                                        output_console.print(
+                                            f"[red]{escape(error_with_file)}[/red]"
+                                        )
+                                    else:
+                                        # Just prepend filename
+                                        output_console.print(
+                                            f"[red]{file_path}:{escape(error)}[/red]"
+                                        )
                                 else:
-                                    # Just prepend filename
+                                    # Error doesn't have line number, add generic format
                                     output_console.print(
-                                        f"[red]{file_path}:{escape(error)}[/red]"
+                                        f"[red]{file_path}: Error: {escape(error)}[/red]"
                                     )
                             else:
-                                # Error doesn't have line number, add generic format
+                                # Traditional format
                                 output_console.print(
-                                    f"[red]{file_path}: Error: {escape(error)}[/red]"
+                                    f"[red]Error:[/red] {escape(error)}"
                                 )
-                        else:
-                            # Traditional format
-                            output_console.print(f"[red]Error:[/red] {escape(error)}")
 
                 # Only show warnings in check mode or verbose mode
-                if warnings and (check or verbose):
+                if warnings and not silent and (check or verbose):
                     for warning in warnings:
                         if config.gnu_error_format:
                             # GNU standard format: filename:line: Warning: message
@@ -599,35 +626,39 @@ def format(
 
                 if changed:
                     any_changed = True
-                    if check:
-                        output_console.print(
-                            f"[yellow]Would reformat:[/yellow] {file_path}"
-                        )
-                    else:
-                        output_console.print(f"[green]Formatted:[/green] {file_path}")
-
-                        # Validate syntax if requested
-                        if validate_syntax:
-                            try:
-                                proc = subprocess.run(
-                                    ["make", "-f", str(file_path), "--dry-run"],
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=5,
+                    if not silent:
+                        if check:
+                            output_console.print(
+                                f"[yellow]Would reformat:[/yellow] {file_path}"
+                            )
+                        else:
+                            if not quiet:
+                                output_console.print(
+                                    f"[green]Formatted:[/green] {file_path}"
                                 )
-                                if proc.returncode != 0:
-                                    output_console.print(
-                                        "[red]Warning:[/red] Formatted file has syntax errors"
-                                    )
-                                    any_errors = True
-                            except (subprocess.TimeoutExpired, FileNotFoundError):
-                                pass  # Skip validation if make not available
 
-                elif verbose:
+                            # Validate syntax if requested
+                            if validate_syntax:
+                                try:
+                                    proc = subprocess.run(
+                                        ["make", "-f", str(file_path), "--dry-run"],
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=5,
+                                    )
+                                    if proc.returncode != 0:
+                                        output_console.print(
+                                            "[red]Warning:[/red] Formatted file has syntax errors"
+                                        )
+                                        any_errors = True
+                                except (subprocess.TimeoutExpired, FileNotFoundError):
+                                    pass  # Skip validation if make not available
+
+                elif verbose and not silent:
                     output_console.print(f"[dim]Already formatted:[/dim] {file_path}")
 
         # Show summary
-        if len(files) > 1:
+        if len(files) > 1 and not silent and not quiet:
             output_console.print(
                 f"\n[bold]Summary:[/bold] Processed {len(files)} files"
             )
