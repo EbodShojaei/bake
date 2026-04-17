@@ -409,7 +409,9 @@ def format(
         10, "--timeout", help="Set timeout for Makefile syntax check"
     ),
     config_file: Optional[Path] = typer.Option(
-        None, "--config", help="Path to configuration file (default: ~/.bake.toml)."
+        None,
+        "--config",
+        help="Path to configuration file (default: {XDG_CONFIG_HOME}/bake.toml).",
     ),
     backup: bool = typer.Option(
         False, "--backup", "-b", help="Create backup files before formatting."

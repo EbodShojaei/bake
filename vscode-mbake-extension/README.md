@@ -59,7 +59,7 @@ Access these settings through VS Code's settings (`Cmd/Ctrl + ,`) and search for
 
 - **Type**: `string`
 - **Default**: `""`
-- **Description**: Path to the bake configuration file. Leave empty to use default (~/.bake.toml).
+- **Description**: Path to the bake configuration file. Leave empty to use default ({XDG_CONFIG_HOME}/bake.toml).
 
 ### `mbake.formatOnSave`
 
@@ -88,7 +88,7 @@ Add these settings to your VS Code `settings.json`:
 ```json
 {
     "mbake.executablePath": "/usr/local/bin/bake",
-    "mbake.configPath": "/path/to/your/.bake.toml",
+    "mbake.configPath": "/path/to/your/bake.toml",
     "mbake.formatOnSave": true,
     "mbake.verbose": true,
     "mbake.showDiff": false
@@ -183,7 +183,7 @@ bake --help
 
 If you see errors about missing configuration files, either:
 
-1. Create a `~/.bake.toml` configuration file
+1. Create a `{XDG_CONFIG_HOME}/bake.toml` configuration file
 2. Set a custom path in `mbake.configPath`
 3. Use the example configuration provided in the mbake repository
 
@@ -197,7 +197,7 @@ Make sure your file is recognized as a Makefile:
 
 ## Example Configuration File
 
-Create `~/.bake.toml` with these contents:
+Create `{XDG_CONFIG_HOME}/bake.toml` with these contents:
 
 ```toml
 # Global settings
