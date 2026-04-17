@@ -255,7 +255,9 @@ class TabsRule(FormatterPlugin):
             prev_stripped = prev_line.strip()
 
             # Skip empty lines and comments
-            if not prev_stripped or prev_stripped.startswith("#"):
+            if not prev_stripped:
+                break
+            if prev_stripped.startswith("#"):
                 continue
 
             # If we find a line ending with \, this could be a continuation

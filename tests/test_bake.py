@@ -338,3 +338,27 @@ class TestIntegration:
 
         assert not errors
         assert formatted_lines == expected_lines
+
+    def test_multiline_target_with_blank_line(self):
+        """Test that multiline targets with blank lines are not mistreated as recipes."""
+        config = Config(
+            formatter=FormatterConfig(
+                auto_insert_phony_declarations=False,
+                ensure_final_newline=False,
+            )
+        )
+        formatter = MakefileFormatter(config)
+
+        input_lines = [
+            "a:",
+            "",
+            "b \\",
+            ":",
+            "\techo 'hello'",
+        ]
+
+        formatted_lines, errors, warnings = formatter.format_lines(input_lines)
+
+        assert not errors
+        # Should NOT add a tab to 'b \' or ':'
+        assert formatted_lines == input_lines
