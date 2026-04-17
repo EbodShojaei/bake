@@ -106,7 +106,7 @@
                 "mbake.configPath": {
                     "type": "string",
                     "default": "",
-                    "description": "Path to the bake configuration file. Leave empty to use default (~/.bake.toml)."
+                    "description": "Path to the bake configuration file. Leave empty to use default ({XDG_CONFIG_HOME}/bake.toml)."
                 },
                 "mbake.formatOnSave": {
                     "type": "boolean",
