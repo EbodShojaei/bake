@@ -50,6 +50,48 @@ class TestTabsRule:
         assert result.changed
         assert result.lines == ["target:", "\techo 'mixed'"]  # Clean up to single tab
 
+    def test_custom_recipe_prefix(self):
+        rule = TabsRule()
+        config = {"tab_width": 4}
+        # Test with custom .RECIPEPREFIX
+        lines = [
+            ".RECIPEPREFIX = >",
+            "target:",
+            "> echo 'custom prefix'",
+            "    echo 'spaces to be converted'",
+        ]
+
+        result = rule.format(lines, config)
+
+        assert result.changed
+        assert result.lines == [
+            ".RECIPEPREFIX = >",
+            "target:",
+            "> echo 'custom prefix'",
+            "\techo 'spaces to be converted'",
+        ]
+
+    def test_nested_conditional_indentation(self):
+        rule = TabsRule()
+        config = {
+            "tab_width": 4,
+            "indent_nested_conditionals": True,
+        }
+        lines = [
+            "ifeq (1,1)",
+            "    ifeq (2,2)",
+            "target:",
+            "    echo 'nested'",
+            "    endif",
+            "endif",
+        ]
+
+        result = rule.format(lines, config)
+
+        assert result.changed
+        # Recipe line should have exactly one tab when it's not already starting with one
+        assert result.lines[3] == "\techo 'nested'"
+
 
 class TestAssignmentSpacingRule:
     """Test the assignment spacing formatting rule."""
@@ -95,6 +137,36 @@ class TestTargetSpacingRule:
             "target2: dependencies2",
             "target3: dependencies3",
         ]
+
+    def test_target_specific_variable_assignment(self):
+        rule = TargetSpacingRule()
+        config = {"space_before_colon": False, "space_after_colon": True}
+        lines = ["target: VAR := value"]
+
+        result = rule.format(lines, config)
+
+        # Should not modify spacing of assignment operator :=
+        assert not result.changed
+
+    def test_multiple_targets(self):
+        rule = TargetSpacingRule()
+        config = {"space_before_colon": False, "space_after_colon": True}
+        lines = ["target1 target2 :  dep1 dep2"]
+
+        result = rule.format(lines, config)
+
+        assert result.changed
+        assert result.lines == ["target1 target2: dep1 dep2"]
+
+    def test_double_colon_preservation(self):
+        rule = TargetSpacingRule()
+        config = {"space_before_colon": False, "space_after_colon": True}
+        lines = ["target :: dependencies"]
+
+        result = rule.format(lines, config)
+
+        # Should preserve double-colon without modification
+        assert not result.changed
 
 
 class TestWhitespaceRule:
