@@ -204,6 +204,9 @@ Create `{XDG_CONFIG_HOME}/bake.toml` with these contents:
 debug = false
 verbose = false
 
+# Timeout used for syntax checking with 'make -f'
+syntax_check_timeout = 10
+
 # Error message formatting
 gnu_error_format = true         # Use GNU standard error format (file:line: Error: message)
 wrap_error_messages = false     # Wrap long error messages (can interfere with IDE parsing)
