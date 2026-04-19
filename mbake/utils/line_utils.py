@@ -599,7 +599,9 @@ class LineUtils:
             prev_stripped = prev_line.strip()
 
             # Skip empty lines and comments (comments should not break variable assignment context)
-            if not prev_stripped or prev_stripped.startswith("#"):
+            if not prev_stripped:
+                break
+            if prev_stripped.startswith("#"):
                 continue
 
             # If we find another indented line that ends with backslash,
@@ -677,7 +679,9 @@ class LineUtils:
             prev_stripped = prev_line.strip()
 
             # Skip empty lines and comments (comments should not break context)
-            if not prev_stripped or prev_stripped.startswith("#"):
+            if not prev_stripped:
+                break
+            if prev_stripped.startswith("#"):
                 continue
 
             # If we find a target line, this could be a recipe
