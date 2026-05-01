@@ -1639,3 +1639,27 @@ class TestSpecialTargets:
 
         assert not errors
         assert formatted_lines == input_lines
+
+
+class TestAutomakeConditionals:
+    """Test automake-style conditional handling."""
+
+    def test_automake_if_not_converted_to_recipe(self):
+        """Test that automake 'if VARIABLE' is not treated as a recipe line."""
+        config = create_conservative_config()
+        formatter = MakefileFormatter(config)
+
+        input_lines = [
+            ".DELETE_ON_ERROR:",
+            "",
+            "if STRICT",
+            "  WERROR = -Werror",
+            "else",
+            "  WERROR =",
+            "endif",
+        ]
+
+        formatted_lines, errors, warnings = formatter.format_lines(input_lines)
+
+        assert "if STRICT" in formatted_lines
+        assert "\tif STRICT" not in formatted_lines

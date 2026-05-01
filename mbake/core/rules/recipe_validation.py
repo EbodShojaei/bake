@@ -112,6 +112,7 @@ class RecipeValidationRule(FormatterPlugin):
                     "ifneq",
                     "ifdef",
                     "ifndef",
+                    "if ",
                     "else",
                     "endif",
                     "endef",
