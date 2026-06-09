@@ -6,6 +6,9 @@
 debug = false
 verbose = false
 
+# Timeout used for syntax checking with 'make -f'
+syntax_check_timeout = 10
+
 # Error message formatting
 gnu_error_format = true
 wrap_error_messages = false

@@ -14,7 +14,7 @@ pip install mbake
 
 ### 2. Configuration
 
-Your configuration file is located at `~/.bake.toml`. It contains sensible defaults for Makefile formatting:
+Your configuration file is located at `{XDG_CONFIG_HOME}/bake.toml`. It contains sensible defaults for Makefile formatting:
 
 ```toml
 # Global settings
@@ -158,7 +158,7 @@ Once installed, the extension provides:
 Access these settings through VS Code preferences (`Cmd/Ctrl + ,`) and search for "bake":
 
 - **`bake.executablePath`**: Path to bake executable (default: `"bake"`)
-- **`bake.configPath`**: Path to config file (default: uses `~/.bake.toml`)
+- **`bake.configPath`**: Path to config file (default: uses `{XDG_CONFIG_HOME}/bake.toml`)
 - **`bake.formatOnSave`**: Auto-format on save (default: `false`)
 - **`bake.showDiff`**: Show diff when formatting (default: `false`)
 - **`bake.verbose`**: Enable verbose output (default: `false`)
@@ -232,12 +232,12 @@ bake_fmt/
 │   └── plugins/                   # Formatting rule plugins
 ├── tests/                         # Test suite
 ├── vscode-bake-extension/         # VS Code extension
-│   ├── package.json              # Extension manifest
-│   ├── extension.js              # Extension logic
-│   └── README.md                 # Extension documentation
-├── pyproject.toml                # Python package configuration
-├── .bake.toml.example            # Example configuration
-└── ~/.bake.toml                  # Your configuration file
+│   ├── package.json               # Extension manifest
+│   ├── extension.js               # Extension logic
+│   └── README.md                  # Extension documentation
+├── pyproject.toml                 # Python package configuration
+├── .bake.toml.example             # Example configuration
+└── {XDG_CONFIG_HOME}/bake.toml    # Your configuration file
 ```
 
 ## 🚀 Quick Start Examples
@@ -289,8 +289,9 @@ Now every time you save a Makefile, it's automatically formatted!
 
 **Configuration errors:**
 
-- Ensure `~/.bake.toml` exists and is valid TOML
-- Use the provided example: `cp .bake.toml.example ~/.bake.toml`
+- Ensure `{XDG_CONFIG_HOME}/bake.toml` exists and is valid TOML
+- Use the provided example: `cp .bake.toml.example ${XDG_CONFIG_HOME}/bake.toml`
+  or `cp .bake.toml.example ~/.config/bake.toml`
 
 ### VS Code Extension Issues
 

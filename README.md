@@ -29,7 +29,7 @@
 - **Smart formatting**: Tabs for recipes, consistent spacing, line continuation cleanup
 - **Intelligent .PHONY detection**: Automatically identifies and manages phony targets
 - **Syntax validation**: Ensures Makefiles are valid before and after formatting
-- **Configurable rules**: Customize behavior via `~/.bake.toml`
+- **Configurable rules**: Customize behavior via `{XDG_CONFIG_HOME}/bake.toml`
 - **CI/CD ready**: Check mode for automated formatting validation
 - **VSCode extension**: Full editor integration available
 
@@ -84,6 +84,7 @@ mbake update                            # Update to latest version
 - `--diff`: Show what changes would be made
 - `--backup`: Create backup before formatting
 - `--validate`: Validate syntax after formatting
+- `--timeout`: Timeout to use for syntax checks
 - `--config`: Use custom configuration file
 
 ## Configuration

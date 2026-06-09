@@ -104,6 +104,9 @@ DEFAULT_CONFIG = """# mbake configuration file
 debug = false
 verbose = false
 
+# Timeout used for syntax checking with 'make -f'
+syntax_check_timeout = 10
+
 # Error message formatting
 gnu_error_format = true
 wrap_error_messages = false
@@ -346,7 +349,7 @@ def validate(
     setup_logging(verbose)
 
     try:
-        Config.load_or_default(
+        config = Config.load_or_default(
             config_file, explicit=config_file is not None
         )  # Just check config is valid
 
@@ -367,7 +370,7 @@ def validate(
                     ["make", "-f", makefile_name, "--dry-run", "--just-print"],
                     capture_output=True,
                     text=True,
-                    timeout=10,
+                    timeout=config.syntax_check_timeout,
                     cwd=makefile_dir,
                 )
 
@@ -423,9 +426,13 @@ def format(
         "--silent",
         "-s",
         help="Disable all logging (but still exit with status code '1' upon detecting diagnostics).",
+    syntax_check_timeout: int = typer.Option(
+        10, "--timeout", help="Set timeout for Makefile syntax check"
     ),
     config_file: Optional[Path] = typer.Option(
-        None, "--config", help="Path to configuration file (default: ~/.bake.toml)."
+        None,
+        "--config",
+        help="Path to configuration file (default: {XDG_CONFIG_HOME}/bake.toml).",
     ),
     backup: bool = typer.Option(
         False, "--backup", "-b", help="Create backup files before formatting."
@@ -445,6 +452,9 @@ def format(
         config = Config.load_or_default(config_file, explicit=config_file is not None)
         config.verbose = verbose or config.verbose
         config.debug = debug or config.debug
+        config.syntax_check_timeout = (
+            syntax_check_timeout or config.syntax_check_timeout
+        )
 
         # Get appropriately configured console
         output_console = get_console(config)
@@ -642,7 +652,7 @@ def format(
                                         ["make", "-f", str(file_path), "--dry-run"],
                                         capture_output=True,
                                         text=True,
-                                        timeout=5,
+                                        timeout=config.syntax_check_timeout,
                                     )
                                     if proc.returncode != 0:
                                         output_console.print(
@@ -667,10 +677,9 @@ def format(
         # Exit with appropriate code
         if any_errors:
             raise typer.Exit(2)  # Error
-        elif check and any_changed:
+        if check and any_changed:
             raise typer.Exit(1)  # Check failed
-        else:
-            return  # Success
+        return  # Success
 
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
