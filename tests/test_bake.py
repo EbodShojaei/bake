@@ -185,6 +185,121 @@ class TestContinuationRule:
         assert not result.changed
 
 
+class TestContinuationRuleIndentMode:
+    """Test recipe_continuation_indent = 'indent' mode."""
+
+    def test_recipe_continuation_indent_mode(self):
+        """In 'indent' mode, continuation lines get \\t + tab_width spaces."""
+        rule = ContinuationRule()
+        config = {
+            "normalize_line_continuations": True,
+            "max_line_length": 120,
+            "recipe_continuation_indent": "indent",
+            "tab_width": 2,
+        }
+        lines = [
+            "\tuv run benchmark code-eval \\",
+            "\t--extract-scripts \\",
+            "\t--chat-model=gpt-5.2",
+        ]
+
+        result = rule.format(lines, config)
+
+        assert result.changed
+        assert result.lines[0] == "\tuv run benchmark code-eval \\"
+        assert result.lines[1] == "\t  --extract-scripts \\"
+        assert result.lines[2] == "\t  --chat-model=gpt-5.2"
+
+    def test_recipe_continuation_indent_mode_tab_width_4(self):
+        """tab_width controls the extra space count in 'indent' mode."""
+        rule = ContinuationRule()
+        config = {
+            "normalize_line_continuations": True,
+            "max_line_length": 120,
+            "recipe_continuation_indent": "indent",
+            "tab_width": 4,
+        }
+        lines = [
+            "\tdocker build \\",
+            "\t--no-cache \\",
+            "\t--tag=myimage:latest .",
+        ]
+
+        result = rule.format(lines, config)
+
+        assert result.changed
+        assert result.lines[0] == "\tdocker build \\"
+        assert result.lines[1] == "\t    --no-cache \\"
+        assert result.lines[2] == "\t    --tag=myimage:latest ."
+
+    def test_variable_assignment_unaffected_by_indent_mode(self):
+        """Variable-assignment continuations are never affected by indent mode."""
+        rule = ContinuationRule()
+        config = {
+            "normalize_line_continuations": True,
+            "max_line_length": 120,
+            "recipe_continuation_indent": "indent",
+            "tab_width": 2,
+        }
+        # Variable assignment — first line does NOT start with a tab
+        lines = [
+            "SOURCES = file1.c \\",
+            "          file2.c \\",
+            "          file3.c",
+        ]
+
+        result = rule.format(lines, config)
+
+        # Alignment is preserved from the first continuation line (10 spaces)
+        assert result.lines[0] == "SOURCES = file1.c \\"
+        assert result.lines[1] == "          file2.c \\"
+        assert result.lines[2] == "          file3.c"
+
+    def test_align_mode_default_behaviour_unchanged(self):
+        """Default 'align' mode normalises continuation to first continuation line."""
+        rule = ContinuationRule()
+        config = {
+            "normalize_line_continuations": True,
+            "max_line_length": 120,
+            "recipe_continuation_indent": "align",
+            "tab_width": 2,
+        }
+        lines = [
+            "\tuv run benchmark code-eval \\",
+            "\t--extract-scripts \\",
+            "\t--chat-model=gpt-5.2",
+        ]
+
+        result = rule.format(lines, config)
+
+        # In align mode, continuation lines keep their original leading whitespace
+        # (the first continuation line starts with a single tab)
+        assert result.lines[1] == "\t--extract-scripts \\"
+        assert result.lines[2] == "\t--chat-model=gpt-5.2"
+
+    def test_shell_control_structures_bypass_indent_mode(self):
+        """Shell control-structure blocks are not reindented even in indent mode."""
+        rule = ContinuationRule()
+        config = {
+            "normalize_line_continuations": True,
+            "max_line_length": 120,
+            "recipe_continuation_indent": "indent",
+            "tab_width": 2,
+        }
+        lines = [
+            "\tif [ -f file ]; then \\",
+            "\t\techo found \\",
+            "\tfi",
+        ]
+
+        result = rule.format(lines, config)
+
+        # Shell-control path preserves original indentation regardless of mode
+        assert result.lines[0] == "\tif [ -f file ]; then \\"
+        assert result.lines[1] == "\t\techo found \\"
+        assert result.lines[2] == "\tfi"
+
+
 class TestPhonyRule:
     """Test the .PHONY declaration formatting rule."""
 

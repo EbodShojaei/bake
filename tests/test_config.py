@@ -347,6 +347,7 @@ class TestToDict:
             "tab_width",
             "align_variable_assignments",
             "align_across_comments",
+            "recipe_continuation_indent",
         }
         assert keys == expected
 

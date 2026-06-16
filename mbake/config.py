@@ -54,6 +54,13 @@ class FormatterConfig:
     # Indentation settings
     tab_width: int = 2
 
+    # Recipe continuation indentation style
+    # "align"  – continuation lines adopt the indentation of the first continuation
+    #            line (current / default behaviour).
+    # "indent" – continuation lines are indented by one tab plus tab_width spaces,
+    #            giving sub-arguments a visually distinct extra level of indentation.
+    recipe_continuation_indent: str = "align"
+
     # Variable alignment settings
     align_variable_assignments: bool = False
     align_across_comments: bool = False
@@ -149,6 +156,7 @@ class Config:
             "tab_width",
             "align_variable_assignments",
             "align_across_comments",
+            "recipe_continuation_indent",
         }
         filtered_formatter_data = {
             k: v for k, v in formatter_data.items() if k in valid_formatter_keys
@@ -234,6 +242,7 @@ class Config:
                 "tab_width": self.formatter.tab_width,
                 "align_variable_assignments": self.formatter.align_variable_assignments,
                 "align_across_comments": self.formatter.align_across_comments,
+                "recipe_continuation_indent": self.formatter.recipe_continuation_indent,
             },
             "debug": self.debug,
             "verbose": self.verbose,

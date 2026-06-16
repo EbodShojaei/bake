@@ -100,6 +100,12 @@ normalize_line_continuations = true     # Clean up backslash continuations
 remove_trailing_whitespace = true       # Remove trailing spaces
 fix_missing_recipe_tabs = true          # Convert spaces to tabs in recipes
 
+# Recipe continuation indentation (default: "align")
+# "align"  – continuation lines keep the indentation of the first continuation line
+# "indent" – continuation lines are indented by one tab + tab_width spaces,
+#            making sub-arguments visually distinct from the command
+recipe_continuation_indent = "align"
+
 # Variable alignment
 align_variable_assignments = false      # Align consecutive assignments
 align_across_comments = false           # Continue alignment across comments
@@ -136,6 +142,42 @@ Enable auto-insertion in your config:
 [formatter]
 auto_insert_phony_declarations = true
 ```
+
+## Recipe Continuation Indentation
+
+Control how continuation lines inside recipes are indented with `recipe_continuation_indent`.
+
+**`"align"` (default)** — continuation lines follow the indentation of the first continuation line (current behaviour):
+
+<!-- markdownlint-disable MD010 -->
+```makefile
+benchmark:
+	uv run benchmark code-eval \
+	--extract-scripts \
+	--chat-model=gpt-5.2
+```
+<!-- markdownlint-enable MD010 -->
+
+**`"indent"`** — continuation lines receive one extra level of indentation (`tab_width` spaces) so that sub-arguments are visually distinct from the command:
+
+<!-- markdownlint-disable MD010 -->
+```makefile
+benchmark:
+	uv run benchmark code-eval \
+	  --extract-scripts \
+	  --chat-model=gpt-5.2
+```
+<!-- markdownlint-enable MD010 -->
+
+Enable in your config:
+
+```toml
+[formatter]
+recipe_continuation_indent = "indent"
+tab_width = 2  # Controls how many extra spaces are added
+```
+
+> **Note:** Variable-assignment continuations and recipe blocks containing shell control structures (`if`/`for`/`while`/…) are not affected by this setting.
 
 ## Examples
 

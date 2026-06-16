@@ -410,6 +410,24 @@ class TestLineContinuations:
 class TestPhonyTargets:
     """Test .PHONY target handling."""
 
+    def test_recipe_continuation_indent_fixture(self):
+        """recipe_continuation_indent='indent' applies extra indent to recipe continuations."""
+        config = create_conservative_config()
+        config.formatter.recipe_continuation_indent = "indent"
+        config.formatter.tab_width = 2
+        formatter = MakefileFormatter(config)
+
+        input_file = Path("tests/fixtures/recipe_continuation_indent/input.mk")
+        expected_file = Path("tests/fixtures/recipe_continuation_indent/expected.mk")
+
+        input_lines = input_file.read_text(encoding="utf-8").splitlines()
+        expected_lines = expected_file.read_text(encoding="utf-8").splitlines()
+
+        formatted_lines, errors, warnings = formatter.format_lines(input_lines)
+
+        assert not errors
+        assert formatted_lines == expected_lines
+
     def test_phony_targets_fixture(self):
         """Test phony targets fixture."""
         config = create_conservative_config()
