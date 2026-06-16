@@ -31,3 +31,4 @@ help:
 debug: ## Build with debug symbols
 release: ## Build optimized version
 package: ## Create distribution package
+
