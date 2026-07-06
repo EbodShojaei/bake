@@ -77,31 +77,59 @@ class Config:
     )
 
     @staticmethod
-    def determine_config_path() -> Path:
-        """Return the XDG config path for mbake.
+    def determine_config_path() -> Optional[Path]:
+        """Look for mbake's config in common places.
 
-        Order of options:
-          1. `~/.bake.toml — if the file exists
-          2. `$XDG_CONFIG_HOME/bake.toml' — if `$XDG_CONFIG_HOME' is set.
-          3. `~/.config/bake.toml — XDG default.
+        Search scheme:
+          1. ``./.bake.toml``, then ``../.bake.toml``, then ``../../.bake.toml``,
+            etc. until ``/`` is hit.
+          2. ``~/.bake.toml``.
+          3. ``$XDG_CONFIG_HOME/bake.toml`` — if ``$XDG_CONFIG_HOME`` is set.
+          4. ``~/.config/bake.toml`` — XDG default.
+
+        Returns:
+            Path to the config file, or None if it wasn't found.
         """
-        home_path = Path.home() / ".bake.toml"
-        if home_path.exists():
-            return home_path
 
-        xdg_config_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
-        if xdg_config_home:
-            return Path(xdg_config_home) / "bake.toml"
+        def find_file_in_ancestor_directories(
+            filename: str, starting_directory: Path
+        ) -> Optional[Path]:
+            filepath = starting_directory / filename
+            while not filepath.exists():
+                if filepath.parent != Path(filepath.root):
+                    return None
+                filepath = filepath.parent.parent / filename
+            return filepath
 
-        return Path.home() / ".config" / "bake.toml"
+        resolved_config_path = find_file_in_ancestor_directories(
+            ".bake.toml", Path.cwd()
+        )
+        if resolved_config_path is not None:
+            return resolved_config_path
+
+        resolved_config_path = Path.home() / ".bake.toml"
+        if resolved_config_path.exists():
+            return resolved_config_path
+
+        resolved_config_path = (
+            Path(os.environ.get("XDG_CONFIG_HOME", "").strip()) / "bake.toml"
+        )
+
+        if resolved_config_path.exists():
+            return resolved_config_path
+
+        resolved_config_path = Path.home() / ".config" / "bake.toml"
+        if resolved_config_path.exists():
+            return resolved_config_path
+        return None
 
     @staticmethod
     def default_config_path() -> Path:
         """Return the default path for creating a new config file.
 
         Order of preference:
-          1. $XDG_CONFIG_HOME/bake.toml — if $XDG_CONFIG_HOME is set.
-          2. ~/.config/bake.toml — XDG default.
+          1. ``$XDG_CONFIG_HOME/bake.toml`` — if ``$XDG_CONFIG_HOME`` is set.
+          2. ``~/.config/bake.toml`` — XDG default.
         """
         xdg_config_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
         if xdg_config_home:
@@ -109,23 +137,36 @@ class Config:
         return Path.home() / ".config" / "bake.toml"
 
     @classmethod
-    def load(cls, config_path: Optional[Path] = None) -> "Config":
-        """Load configuration from XDG config path
-        ( Checks if home config exists, else checks if XDG_CONFIG_HOME exists,
-         else falls back to ~/.config/bake.toml)"""
-        if config_path is None:
+    def load(cls, config_path: Optional[Path] = None) -> tuple["Config", Path]:
+        """Attempt to load configuration from ``config_path``,
+        or from the default places if ``config_path`` is None.
+
+        Returns:
+            The loaded config and the path it's at.
+
+        Raises:
+            FileNotFoundError: If ``config_path` wasn't found or, when ``config_path`` is None,
+                if the config wasn't found at the default places.
+            ValueError: If the config was found but its parsing failed.
+        """
+        if (
+            config_path is not None and not config_path.exists()
+        ):  # Bail out if a nonexistent config was passed
+            raise FileNotFoundError(f"Configuration file not found at {config_path}")
+        if (
+            config_path is None
+        ):  # If config wasn't explicitly passed, look for it in common places
             config_path = cls.determine_config_path()
-
-        if not config_path.exists():
+        if config_path is None:  # Still nothing?
             raise FileNotFoundError(
-                f"Configuration file not found at {config_path}. "
-                "Please create ~/.config/bake.toml with your formatting preferences."
+                "Configuration file not found at the default places. "
+                "Please create .bake.toml in your project's root or "
+                "~/.config/bake.toml with your formatting preferences."
             )
-
         try:
             with open(config_path, "rb") as f:
                 data = tomllib.load(f)
-        except Exception as e:
+        except tomllib.TOMLDecodeError as e:
             raise ValueError(f"Failed to parse configuration file: {e}") from e
 
         # Extract formatter config, filtering out non-FormatterConfig keys
@@ -168,50 +209,23 @@ class Config:
             global_data["gnu_error_format"] = data["gnu_error_format"]
         if "wrap_error_messages" in data:
             global_data["wrap_error_messages"] = data["wrap_error_messages"]
-
-        return cls(formatter=formatter_config, **global_data)
+        return cls(formatter=formatter_config, **global_data), config_path
 
     @classmethod
     def load_or_default(
-        cls, config_path: Optional[Path] = None, explicit: bool = False
-    ) -> "Config":
-        """Load config or return defaults if not found.
-
-        Args:
-            config_path: Path to config file, or None for default
-            explicit: True if config_path was explicitly specified by user
-        """
-        if config_path is not None:
-            # User explicitly specified a config file
-            try:
-                return cls.load(config_path)
-            except FileNotFoundError:
-                if explicit:
-                    raise
-                return cls(formatter=FormatterConfig())
-
-        # Try to find config file in current directory first, then xdg_config
-        # directory
-
-        current_dir_config = Path.cwd() / ".bake.toml"
-        xdg_home_config = cls.determine_config_path()
-
-        if current_dir_config.exists():
-            try:
-                return cls.load(current_dir_config)
-            except Exception:
-                # If current directory config is invalid, fall back to home directory
-                pass
-
-        if xdg_home_config.exists():
-            try:
-                return cls.load(xdg_home_config)
-            except Exception:
-                # If home directory config is invalid, fall back to defaults
-                pass
-
-        # Return default configuration if no config file found
-        return cls(formatter=FormatterConfig())
+        cls, config_path: Optional[Path] = None
+    ) -> tuple["Config", Optional[Path]]:
+        """Like ``load`` but falls back to the default configuration
+        if the config file isn't present at the default locations"""
+        try:
+            return cls.load(config_path)
+        except FileNotFoundError:
+            if config_path is None:  # Config wasn't found at the default places
+                return cls(formatter=FormatterConfig()), None
+            # Config was passed explicitly but wasn't found. Tell the caller about that
+            raise
+        # Don't handle `ValueError`
+        # Tell the caller that they have an invalid config
 
     def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
