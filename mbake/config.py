@@ -96,7 +96,7 @@ class Config:
         ) -> Optional[Path]:
             filepath = starting_directory / filename
             while not filepath.exists():
-                if filepath.parent != Path(filepath.root):
+                if filepath.parent == Path(filepath.root):
                     return None
                 filepath = filepath.parent.parent / filename
             return filepath
