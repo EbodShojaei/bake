@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import tomllib
 
 from mbake.config import Config, FormatterConfig
 
@@ -248,6 +249,26 @@ class TestLoadOrDefault:
                 result = Config.load_or_default()[0]
         assert result.formatter.tab_width == 7
 
+    def test_ancestor_directories_are_searched(self):
+        """All ancestor directories of CWD are searched for a .bake.toml, not just the CWD.
+        Moreover, the deepest (the closest to CWD) .bake.toml is preferred."""
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            tempfile.TemporaryDirectory() as fake_home,
+        ):
+            cwd = os.path.join(tmpdir, "anc1/anc2/wd/")
+            _write_toml(
+                Path(cwd).parent.parent / ".bake.toml", "[formatter]\ntab_width = 7\n"
+            )
+            _write_toml(
+                Path(cwd).parent.parent.parent / ".bake.toml",
+                "[formatter]\ntab_width = 999\n",
+            )
+            _write_toml(Path(fake_home) / ".bake.toml", "[formatter]\ntab_width = 2\n")
+            with _fake_home(fake_home), _fake_cwd(cwd):
+                result = Config.load_or_default()[0]
+        assert result.formatter.tab_width == 7
+
     def test_home_bake_toml_used_when_no_cwd_config(self):
         """~/.bake.toml is used when there is no cwd config."""
         with (
@@ -287,8 +308,9 @@ class TestLoadOrDefault:
         """Invalid cwd .bake.toml is not skipped, the user is told it's invalid"""
         with tempfile.TemporaryDirectory() as cwd:
             (Path(cwd) / ".bake.toml").write_text("not valid toml !!!")
-            with _fake_cwd(cwd), pytest.raises(ValueError):
+            with _fake_cwd(cwd), pytest.raises(ValueError) as exc_info:
                 Config.load_or_default()
+            assert type(exc_info.value.__cause__) is tomllib.TOMLDecodeError
 
     def test_broken_home_config_is_reported(self):
         """Invalid home config is reported"""
@@ -297,8 +319,13 @@ class TestLoadOrDefault:
             tempfile.TemporaryDirectory() as fake_home,
         ):
             (Path(fake_home) / ".bake.toml").write_text("not valid toml !!!")
-            with _fake_home(fake_home), _fake_cwd(cwd), pytest.raises(ValueError):
+            with (
+                _fake_home(fake_home),
+                _fake_cwd(cwd),
+                pytest.raises(ValueError) as exc_info,
+            ):
                 Config.load_or_default()
+            assert type(exc_info.value.__cause__) is tomllib.TOMLDecodeError
 
 
 # ---------------------------------------------------------------------------
