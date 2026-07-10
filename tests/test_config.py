@@ -126,9 +126,9 @@ class TestLoad:
     def test_missing_explicit_path_raises_file_not_found(self):
         with pytest.raises(FileNotFoundError) as exc_info:
             Config.load(Path("/nonexistent/path/config.toml"))
-        assert (
-            str(exc_info.value)
-            == "Configuration file not found at /nonexistent/path/config.toml"
+        assert str(exc_info.value) in (
+            "Configuration file not found at /nonexistent/path/config.toml",
+            "Configuration file not found at \\nonexistent\\path\\config.toml",
         )
 
     def test_invalid_toml_raises_value_error(self):
