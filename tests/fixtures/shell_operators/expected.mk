@@ -44,3 +44,4 @@ install: all
 
 install-files:
 	install -m755 $(TARGET) $(DESTDIR)$(bindir)/
+

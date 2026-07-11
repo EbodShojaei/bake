@@ -44,7 +44,7 @@ class FormatterConfig:
 
     # General settings
     remove_trailing_whitespace: bool = True
-    ensure_final_newline: bool = False
+    ensure_final_newline: bool = True
     normalize_empty_lines: bool = True
     max_consecutive_empty_lines: int = 2
     fix_missing_recipe_tabs: bool = True
