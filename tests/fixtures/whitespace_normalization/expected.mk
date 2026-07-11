@@ -10,3 +10,4 @@ clean:
 
 install:
 	cp $(TARGET) /usr/local/bin/
+
