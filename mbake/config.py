@@ -145,7 +145,7 @@ class Config:
             The loaded config and the path it's at.
 
         Raises:
-            FileNotFoundError: If ``config_path` wasn't found or, when ``config_path`` is None,
+            FileNotFoundError: If ``config_path`` wasn't found or, when ``config_path`` is None,
                 if the config wasn't found at the default places.
             ValueError: If the config was found but its parsing failed.
         """
