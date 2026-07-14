@@ -111,12 +111,11 @@ class Config:
         if resolved_config_path.exists():
             return resolved_config_path
 
-        resolved_config_path = (
-            Path(os.environ.get("XDG_CONFIG_HOME", "").strip()) / "bake.toml"
-        )
-
-        if resolved_config_path.exists():
-            return resolved_config_path
+        xdg_config_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
+        if xdg_config_home:
+            resolved_config_path = Path(xdg_config_home) / "bake.toml"
+            if resolved_config_path.exists():
+                return resolved_config_path
 
         resolved_config_path = Path.home() / ".config" / "bake.toml"
         if resolved_config_path.exists():
