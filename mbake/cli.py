@@ -138,6 +138,11 @@ indent_nested_conditionals = false
 # Indentation settings
 tab_width = 2
 
+# Recipe continuation indentation style
+# "align"  - continuation lines adopt the indentation of the first continuation line (default)
+# "indent" - continuation lines are indented by one tab plus tab_width spaces
+recipe_continuation_indent = "align"
+
 # Variable alignment settings
 align_variable_assignments = false
 align_across_comments = false
@@ -297,6 +302,11 @@ def config(
                 "Indent nested conditionals",
             ),
             ("tab_width", config.formatter.tab_width, "Tab width in spaces"),
+            (
+                "recipe_continuation_indent",
+                config.formatter.recipe_continuation_indent,
+                "Recipe continuation indent style (align|indent)",
+            ),
             (
                 "align_variable_assignments",
                 config.formatter.align_variable_assignments,

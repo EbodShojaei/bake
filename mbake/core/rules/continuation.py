@@ -21,6 +21,8 @@ class ContinuationRule(FormatterPlugin):
         warnings: list[str] = []
 
         normalize_continuations = config.get("normalize_line_continuations", True)
+        recipe_continuation_indent = config.get("recipe_continuation_indent", "align")
+        tab_width = config.get("tab_width", 2)
 
         if not normalize_continuations:
             return FormatResult(
@@ -53,7 +55,11 @@ class ContinuationRule(FormatterPlugin):
                     j += 1
 
                 # Format the continuation block
-                formatted_block = self._format_continuation_block(continuation_lines)
+                formatted_block = self._format_continuation_block(
+                    continuation_lines,
+                    recipe_continuation_indent=recipe_continuation_indent,
+                    tab_width=tab_width,
+                )
 
                 if formatted_block != continuation_lines:
                     changed = True
@@ -72,7 +78,12 @@ class ContinuationRule(FormatterPlugin):
             check_messages=[],
         )
 
-    def _format_continuation_block(self, lines: list[str]) -> list[str]:
+    def _format_continuation_block(
+        self,
+        lines: list[str],
+        recipe_continuation_indent: str = "align",
+        tab_width: int = 2,
+    ) -> list[str]:
         """Format a block of continuation lines."""
         if not lines:
             return lines
@@ -113,6 +124,13 @@ class ContinuationRule(FormatterPlugin):
                 leading_whitespace += char
             else:
                 break
+
+        # In "indent" mode, recipe continuation lines receive one tab plus
+        # tab_width spaces so that sub-arguments appear visually indented
+        # relative to the command on the first line.  Variable-assignment
+        # continuations always use the "align" (normalise-to-first-line) path.
+        if is_recipe and recipe_continuation_indent == "indent":
+            leading_whitespace = "\t" + " " * tab_width
 
         # Format all continuation lines (from second line onwards)
         for line in lines[1:]:

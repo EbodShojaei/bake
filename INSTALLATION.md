@@ -52,6 +52,11 @@ indent_nested_conditionals = false
 # Indentation settings
 tab_width = 2
 
+# Recipe continuation indentation style
+# "align"  - continuation lines adopt the indentation of the first continuation line (default)
+# "indent" - continuation lines are indented by one tab plus tab_width spaces
+recipe_continuation_indent = "align"
+
 # Variable alignment settings
 align_variable_assignments = false
 align_across_comments = false
