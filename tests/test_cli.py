@@ -208,3 +208,139 @@ main.o: main.c
 
 # Note: Help text tests removed due to ANSI color code issues in CI
 # The core --stdin functionality is tested in TestCLIFormat class
+
+
+class TestCLIQuietSilentFlags:
+    """Test --quiet and --silent flag functionality."""
+
+    @pytest.fixture
+    def runner(self):
+        """Create a CLI runner for testing."""
+        return CliRunner()
+
+    @pytest.fixture
+    def test_config(self):
+        """Create a test configuration with consistent settings."""
+        return Config(
+            formatter=FormatterConfig(
+                space_around_assignment=True,
+                group_phony_declarations=False,
+                phony_at_top=False,
+                auto_insert_phony_declarations=False,
+                ensure_final_newline=False,
+            )
+        )
+
+    def test_quiet_flag_suppresses_non_diagnostics(self, runner, test_config):
+        """Test that --quiet suppresses all output during normal formatting."""
+        input_content = "target:\n\techo hello"
+
+        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+            result = runner.invoke(
+                app, ["format", "--stdin", "--quiet"], input=input_content
+            )
+
+        assert result.exit_code == 0
+        assert result.stdout == input_content
+
+    def test_quiet_flag_short_form(self, runner, test_config):
+        """Test that -q short form works the same as --quiet."""
+        input_content = "target:\n\techo hello"
+
+        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+            result = runner.invoke(
+                app, ["format", "--stdin", "-q"], input=input_content
+            )
+
+        assert result.exit_code == 0
+        assert result.stdout == input_content
+
+    def test_quiet_check_shows_would_reformat(self, runner, test_config):
+        """Test that --quiet --check shows 'Would reformat' diagnostic."""
+        # Input that needs formatting (unspaced assignment)
+        input_content = "VAR=value\ntarget:\n\techo hello"
+
+        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+            result = runner.invoke(
+                app,
+                ["format", "--stdin", "--check", "--quiet"],
+                input=input_content,
+            )
+
+        assert result.exit_code == 1
+        assert "Would reformat" in result.stdout
+
+    def test_quiet_check_no_reformat_needed_no_output(self, runner, test_config):
+        """Test that --quiet --check exits 0 when already formatted."""
+        # Input that is already well-formatted (no changes needed)
+        input_content = "target:\n\techo hello"
+
+        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+            result = runner.invoke(
+                app,
+                ["format", "--stdin", "--check", "--quiet"],
+                input=input_content,
+            )
+
+        assert result.exit_code == 0
+        assert "Would reformat" not in result.stdout
+
+    def test_silent_flag_suppresses_all_output(self, runner, test_config):
+        """Test that --silent suppresses all output."""
+        input_content = "target:\n\techo hello"
+
+        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+            result = runner.invoke(
+                app, ["format", "--stdin", "--silent"], input=input_content
+            )
+
+        assert result.exit_code == 0
+        assert result.stdout == input_content
+
+    def test_silent_flag_short_form(self, runner, test_config):
+        """Test that -s short form works the same as --silent."""
+        input_content = "target:\n\techo hello"
+
+        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+            result = runner.invoke(
+                app, ["format", "--stdin", "-s"], input=input_content
+            )
+
+        assert result.exit_code == 0
+        assert result.stdout == input_content
+
+    def test_silent_still_exits_with_error_on_check_failure(
+        self, runner, test_config
+    ):
+        """Test that --silent still exits with code 1 when check finds reformattable files."""
+        # Input that needs formatting (unspaced assignment)
+        input_content = "VAR=value\ntarget:\n\techo hello"
+
+        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+            result = runner.invoke(
+                app,
+                ["format", "--stdin", "--check", "--silent"],
+                input=input_content,
+            )
+
+        # Should exit 1 (would reformat) but with no output
+        assert result.exit_code == 1
+        assert result.stdout == ""
+
+    def test_quiet_still_exits_with_error_on_check_failure(
+        self, runner, test_config
+    ):
+        """Test that --quiet still exits with code 1 when check finds reformattable files."""
+        # Input that needs formatting (unspaced assignment)
+        input_content = "VAR=value\ntarget:\n\techo hello"
+
+        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+            result = runner.invoke(
+                app,
+                ["format", "--stdin", "--check", "--quiet"],
+                input=input_content,
+            )
+
+        # Should exit 1 (would reformat) and print the diagnostic
+        assert result.exit_code == 1
+        assert "Would reformat" in result.stdout
