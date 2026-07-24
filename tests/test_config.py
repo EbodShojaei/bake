@@ -6,14 +6,19 @@ Run from the project root:
 """
 
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import tomllib
 
 from mbake.config import Config, FormatterConfig
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 # ---------------------------------------------------------------------------
 # Helpers
