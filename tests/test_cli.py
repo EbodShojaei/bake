@@ -1,5 +1,6 @@
 """Tests for CLI functionality."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -37,7 +38,9 @@ class TestCLIFormat:
             "target:\n\techo hello"  # No phony insertion, no final newline
         )
 
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(app, ["format", "--stdin"], input=input_content)
 
         assert result.exit_code == 0
@@ -48,7 +51,9 @@ class TestCLIFormat:
         input_content = "target1:\n\techo hello\ntarget2:\n\techo world"
         expected_content = "target1:\n\techo hello\ntarget2:\n\techo world"  # No phony insertion, no final newline
 
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(app, ["format", "--stdin"], input=input_content)
 
         assert result.exit_code == 0
@@ -59,7 +64,9 @@ class TestCLIFormat:
         # This should trigger some formatting rules that might cause errors
         input_content = "target:\necho hello"  # Missing tab for recipe
 
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(app, ["format", "--stdin"], input=input_content)
 
         # Should still format but might have warnings/errors
@@ -71,7 +78,9 @@ class TestCLIFormat:
         """Test stdin formatting with --check flag."""
         input_content = "target:\n\techo hello"
 
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(
                 app, ["format", "--stdin", "--check"], input=input_content
             )
@@ -87,7 +96,9 @@ class TestCLIFormat:
             "target:\n\techo hello"  # No phony insertion, no final newline
         )
 
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(
                 app, ["format", "--stdin", "--verbose"], input=input_content
             )
@@ -97,7 +108,9 @@ class TestCLIFormat:
 
     def test_format_stdin_cannot_specify_files(self, runner, test_config):
         """Test that --stdin cannot be used with file arguments."""
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(app, ["format", "--stdin", "Makefile"])
 
         assert result.exit_code == 1
@@ -105,7 +118,9 @@ class TestCLIFormat:
 
     def test_format_requires_files_or_stdin(self, runner, test_config):
         """Test that format command requires either files or --stdin."""
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(app, ["format"])
 
         assert result.exit_code == 1
@@ -114,7 +129,9 @@ class TestCLIFormat:
 
     def test_format_stdin_preserves_empty_input(self, runner, test_config):
         """Test that stdin formatting handles empty input gracefully."""
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(app, ["format", "--stdin"], input="")
 
         assert result.exit_code == 0
@@ -137,7 +154,9 @@ main.o: main.c
 \t$(CC) $(CFLAGS) -c main.c
 """
 
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(app, ["format", "--stdin"], input=input_content)
 
         assert result.exit_code == 0
@@ -153,7 +172,9 @@ main.o: main.c
         # Create input that might cause errors
         input_content = "target:\necho hello"  # Missing tab
 
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(app, ["format", "--stdin"], input=input_content)
 
         # Should still succeed but might have warnings
@@ -165,7 +186,9 @@ main.o: main.c
         """Test that --diff flag works with --stdin."""
         input_content = "target:\n\techo hello"
 
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(
                 app, ["format", "--stdin", "--diff"], input=input_content
             )
@@ -182,7 +205,9 @@ main.o: main.c
             "target:\n\techo hello"  # No phony insertion, no final newline
         )
 
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(
                 app, ["format", "--stdin", "--backup"], input=input_content
             )
@@ -197,7 +222,9 @@ main.o: main.c
             "target:\n\techo hello"  # No phony insertion, no final newline
         )
 
-        with patch("mbake.cli.Config.load_or_default", return_value=test_config):
+        with patch(
+            "mbake.cli.Config.load_or_default", return_value=(test_config, Path())
+        ):
             result = runner.invoke(
                 app, ["format", "--stdin", "--validate"], input=input_content
             )
