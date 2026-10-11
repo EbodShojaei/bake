@@ -21,6 +21,9 @@ Your configuration file is located at `{XDG_CONFIG_HOME}/bake.toml`. It contains
 debug = false
 verbose = false
 
+# Timeout in seconds for syntax checking with 'make -f'
+syntax_check_timeout = 10
+
 # Error message formatting
 gnu_error_format = true
 wrap_error_messages = false

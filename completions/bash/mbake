@@ -40,7 +40,7 @@ _mbake_completion() {
                 return 0
                 ;;
             format)
-                COMPREPLY=($(compgen -W "--check -c --diff -d --verbose -v --debug --config --backup -b --validate --help" -- "${cur}"))
+                COMPREPLY=($(compgen -W "--check -c --diff -d --verbose -v --debug --config --backup -b --validate --timeout --help" -- "${cur}"))
                 return 0
                 ;;
             update)
