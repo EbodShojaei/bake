@@ -1,7 +1,8 @@
 """Utility functions for line processing in Makefile formatting."""
 
 import re
-from typing import Any, Callable, Optional, Union
+from collections.abc import Sequence
+from typing import Any, Callable, NamedTuple, Optional, Union
 
 from ..constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS
 from ..constants.shell_commands import (
@@ -9,6 +10,195 @@ from ..constants.shell_commands import (
     NON_FILE_CREATING_COMMANDS,
     SHELL_COMMAND_INDICATORS,
 )
+
+
+class VariableAssignment(NamedTuple):
+    """A makefile variable assignment, split the way GNU make splits it.
+
+    Attributes:
+        modifiers: The 'export', 'unexport', 'override' and 'private' words
+            before the name, in source order (GNU make manual 6.11, lines
+            4942-4944; Appendix A, lines 10883-10902).
+        name: The unexpanded variable name. It may contain variable references
+            (GNU make manual 6.5, lines 4595-4597).
+        operator: One of '=', ':=', '::=', ':::=', '+=', '?=' or '!=' (GNU make
+            manual 6.5, lines 4577-4579 and 4612-4625; 6.6).
+        value: The text after the operator, without its leading whitespace.
+            Trailing whitespace is part of the value and is kept (GNU make
+            manual 6.2.2, lines 4273-4288). It is source text: a comment is not
+            removed (cut the text at LineUtils.find_comment_start first) and
+            escapes such as '\\#' are kept.
+    """
+
+    modifiers: tuple[str, ...]
+    name: str
+    operator: str
+    value: str
+
+
+# Whitespace as GNU make classifies it: blanks (space, TAB) end a variable name
+# and are condensed around a backslash/newline; any whitespace separates words.
+_BLANKS = " \t"
+_WHITESPACE = " \t\n\v\f\r"
+
+# Words that may precede a variable assignment (GNU make manual 6.11, lines
+# 4942-4944; Appendix A, lines 10883-10902).
+_ASSIGNMENT_MODIFIERS = frozenset({"export", "unexport", "override", "private"})
+
+# Assignment operators, longest first (GNU make manual 6.5, lines 4577-4579 and
+# 4612-4625).
+_ASSIGNMENT_OPERATORS = (":::=", "::=", ":=", "+=", "?=", "!=", "=")
+
+
+def _skip_whitespace(text: str, index: int) -> int:
+    """Return the index of the first non-whitespace character at or after index."""
+    while index < len(text) and text[index] in _WHITESPACE:
+        index += 1
+    return index
+
+
+def _end_of_word(text: str, index: int) -> int:
+    """Return the index just past the whitespace-delimited word at index."""
+    while index < len(text) and text[index] not in _WHITESPACE:
+        index += 1
+    return index
+
+
+def _skip_variable_reference(text: str, index: int) -> int:
+    """Return the index just past the variable reference whose '$' is at index.
+
+    This is how GNU make steps over references while it looks for comments,
+    separators and assignment operators:
+    - '$(' and '${' run to the matching ')' or '}'. Only the same kind of
+      bracket nests. An unterminated reference runs to the end of the text.
+    - '$$' and single-character references such as '$@' are two characters.
+    - A '$' at the end of the text ends there.
+    """
+    if index + 1 >= len(text):
+        return len(text)
+    opener = text[index + 1]
+    if opener not in "({":
+        return index + 2
+    closer = ")" if opener == "(" else "}"
+    depth = 1
+    position = index + 2
+    while position < len(text):
+        char = text[position]
+        if char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return position + 1
+        position += 1
+    return len(text)
+
+
+def _backslashes_before(text: str, index: int) -> int:
+    """Return the number of consecutive backslashes just before text[index]."""
+    run_start = index
+    while run_start > 0 and text[run_start - 1] == "\\":
+        run_start -= 1
+    return index - run_start
+
+
+def _has_semicolon_on_second_scan(targets: str) -> bool:
+    """Check if make finds a ';' when it scans a rule's target list again.
+
+    make first looks for an unquoted ';' or '#' in the whole rule line and
+    removes half of the backslashes before each escaped one. If it found no
+    unquoted ';' there, it expands the target words and looks for ';' again,
+    removing half of the remaining backslashes (see
+    LineUtils.find_unquoted_char). A ';' after 1, 5, 9, ... backslashes is
+    escaped on the first scan but not on the second, so it ends the target
+    list before the colon: make 3.81 and 4.4.1 report "missing separator",
+    or ignore the line when nothing comes before the ';'. A ';' after 3, 7,
+    11, ... backslashes stays part of a target
+    name. As on the first scan, text inside variable references is skipped;
+    what references expand to is not modelled.
+
+    Only call this when the line has no unquoted ';' outside references
+    before its comment.
+    """
+    index = 0
+    while index < len(targets):
+        char = targets[index]
+        if char == "$":
+            index = _skip_variable_reference(targets, index)
+            continue
+        if char == ";" and _backslashes_before(targets, index) % 4 == 1:
+            return True
+        index += 1
+    return False
+
+
+def _is_define_or_undefine(text: str) -> bool:
+    """Check if text starts with 'define' or 'undefine' after any modifiers.
+
+    GNU make reads 'export', 'unexport', 'override' and 'private' before
+    'define' and 'undefine' as it does before a variable assignment, so
+    'override define foo: X = 1' starts a define body and 'private undefine
+    foo: X = 1' undefines a variable (GNU make manual 6.7, lines 4776-4781;
+    6.8, lines 4801-4804 and 4844-4850; 6.9, lines 4878-4882). Only the exact
+    words count: 'override define: X = 1' sets X for the targets 'override'
+    and 'define'. An assignment to a variable with one of these names, such
+    as 'override define = 1', also starts with them, so check
+    parse_variable_assignment first.
+    """
+    position = 0
+    while True:
+        position = _skip_whitespace(text, position)
+        word_end = _end_of_word(text, position)
+        word = text[position:word_end]
+        if word in ("define", "undefine"):
+            return True
+        if word not in _ASSIGNMENT_MODIFIERS:
+            return False
+        position = word_end
+
+
+def _assignment_operator_at(text: str, index: int) -> Optional[str]:
+    """Return the assignment operator that starts at index, if any."""
+    for operator in _ASSIGNMENT_OPERATORS:
+        if text.startswith(operator, index):
+            return operator
+    return None
+
+
+def _parse_variable_definition(text: str, start: int) -> Optional[tuple[str, str, int]]:
+    """Parse 'NAME OPERATOR' at text[start:] like GNU make 4.x.
+
+    Returns (name, operator, index after the operator), or None if the text is
+    not a variable definition. That is the case when, outside references:
+    - a '#' (a comment) comes before any operator;
+    - a ':' that does not start ':=', '::=' or ':::=' comes first, which makes
+      the line a rule;
+    - the name is followed by blanks and then by anything but an operator,
+      because a name cannot contain whitespace (GNU make manual 6, lines
+      4091-4092);
+    - the name is empty.
+    """
+    position = _skip_whitespace(text, start)
+    name_start = position
+    while position < len(text):
+        char = text[position]
+        if char == "$":
+            position = _skip_variable_reference(text, position)
+            continue
+        if char == "#":
+            return None
+        name_end = position
+        if char in _BLANKS:
+            position = _skip_whitespace(text, position)
+        operator = _assignment_operator_at(text, position)
+        if operator is not None:
+            if name_end == name_start:
+                return None
+            return text[name_start:name_end], operator, position + len(operator)
+        if char in _BLANKS or char == ":":
+            return None
+        position += 1
+    return None
 
 
 class LineUtils:
@@ -30,6 +220,40 @@ class LineUtils:
     SHELL_COMMAND_PATTERN = re.compile(
         r"^\s*[\w\$@\-\+\(\)\[\]{}./\\]+"
     )  # Common shell command starters
+
+    # Words that make a makefile line a directive rather than a rule when they
+    # are its first whitespace-delimited word (GNU make manual Appendix A,
+    # lines 10847-10913; 'load' and '-load', lines 9028-9034 and 9091).
+    # 'endef' is a directive only where it ends a define body (lines
+    # 4797-4799). 'override' and 'private' are not included because they are
+    # modifiers. Before a variable assignment (see parse_variable_assignment)
+    # or before 'define' or 'undefine' (6.7, lines 4776-4781; 6.9, lines
+    # 4878-4882), the line is that assignment or directive. GNU make 4.4
+    # parses any other line that starts with them as a rule. A line whose
+    # first word is in this set can still be an assignment to a variable of
+    # that name, such as 'export = 1', so check parse_variable_assignment
+    # first.
+    NON_RULE_DIRECTIVE_WORDS = frozenset(
+        {
+            "define",
+            "endef",
+            "undefine",
+            "ifdef",
+            "ifndef",
+            "ifeq",
+            "ifneq",
+            "else",
+            "endif",
+            "include",
+            "-include",
+            "sinclude",
+            "export",
+            "unexport",
+            "vpath",
+            "load",
+            "-load",
+        }
+    )
 
     @staticmethod
     def get_active_recipe_prefix(lines: list[str], line_index: int) -> str:
@@ -893,13 +1117,17 @@ class LineUtils:
         """
         Check if a line ends with a backslash (continuation).
 
+        Same as ends_with_continuation: only an unescaped backslash at the
+        very end of the line continues it, and a backslash followed by
+        whitespace does not (GNU make manual 3.1, lines 730-733; 3.1.1).
+
         Args:
             line: The line to check
 
         Returns:
             True if this is a continuation line
         """
-        return line.rstrip().endswith("\\")
+        return LineUtils.ends_with_continuation(line)
 
     @staticmethod
     def normalize_whitespace(line: str, remove_trailing: bool = True) -> str:
@@ -1059,6 +1287,332 @@ class LineUtils:
                     return True
             i += 1
         return False
+
+    # GNU make parsing helpers. They model how GNU make 4.x reads makefile
+    # syntax (GNU make manual 3.1, 3.1.1, 3.8, 6.5 and 6.11). Pass them makefile
+    # lines only: recipe lines go to the shell as they are (GNU make manual
+    # 3.1, lines 744-746; 5.1) and define bodies are kept verbatim (lines
+    # 748-752; 6.8). They are static: variable values, $(eval) text,
+    # .RECIPEPREFIX, .POSIX and DOS drive letters are not modelled.
+
+    @staticmethod
+    def find_unquoted_char(line: str, chars: str, start: int = 0) -> Optional[int]:
+        """
+        Find the first character from chars that make does not treat as quoted.
+
+        Like GNU make:
+        - a character preceded by an odd number of backslashes is escaped;
+          an even number of backslashes escape each other (GNU make manual
+          3.1, lines 730-737);
+        - characters inside $(...) and ${...} are skipped, as are '$$' and
+          single-character references such as '$@' (lines 739-742);
+        - quotes are not special.
+
+        GNU make removes the escaping backslashes as it scans, and it scans a
+        rule's targets and prerequisites for ';' again after that. So
+        'foo: a\\;b' still gets the inline recipe 'b', although this function
+        reports the ';' as escaped. is_target_specific_variable models the
+        second scan of the targets.
+
+        Args:
+            line: The text to search
+            chars: The characters to look for. A '$' always starts a variable
+                reference, so it is never found.
+            start: The index to start searching from
+
+        Returns:
+            The index of the first unquoted character from chars, or None
+        """
+        index = max(start, 0)
+        while index < len(line):
+            char = line[index]
+            if char == "$":
+                index = _skip_variable_reference(line, index)
+                continue
+            if char in chars and _backslashes_before(line, index) % 2 == 0:
+                return index
+            index += 1
+        return None
+
+    @staticmethod
+    def find_comment_start(line: str) -> Optional[int]:
+        """
+        Find where the make comment on a makefile line starts.
+
+        '#' starts a comment unless it is escaped as '\\#' or appears inside a
+        variable reference or function call (GNU make manual 3.1, lines
+        730-742). make 3.81 does not follow lines 739-742: it treats a '#'
+        inside $(...) as a comment.
+
+        Only use this on makefile syntax, never on recipe lines (lines
+        744-746) or define bodies (lines 748-752). For a line continued with a
+        backslash, search the logical line from join_logical_line.
+
+        Args:
+            line: The line to search
+
+        Returns:
+            The index of the '#' that starts the comment, or None
+        """
+        return LineUtils.find_unquoted_char(line, "#")
+
+    @staticmethod
+    def parse_variable_assignment(text: str) -> Optional[VariableAssignment]:
+        """
+        Parse a variable assignment the way GNU make 4.x does.
+
+        The name is followed by '=', ':=', '::=', ':::=', '+=', '?=' or '!='
+        (GNU make manual 6.5, lines 4577-4579 and 4612-4625). It may contain
+        variable references, and letters of any case, but no whitespace, ':'
+        or '#' (lines 4091-4092). Any number of the modifiers 'export',
+        'unexport', 'override' and 'private' may come first (6.11, lines
+        4942-4944; Appendix A, lines 10883-10902). A word that is both a
+        directive and a variable name, as in 'export = 1', is a variable.
+
+        These are not assignments: rule lines, 'define' and 'undefine'
+        directives, 'export NAME' without an operator, and an empty name.
+
+        The value keeps its trailing whitespace (lines 4273-4288). It is
+        source text: a comment is not removed, so cut the text at
+        find_comment_start first, and escapes such as '\\#' are kept. Pass the
+        logical line from join_logical_line when the assignment continues
+        over several lines.
+
+        Args:
+            text: A makefile line, without the recipe prefix
+
+        Returns:
+            The parsed assignment, or None if the text is not an assignment
+        """
+        modifiers: list[str] = []
+        position = 0
+        while True:
+            position = _skip_whitespace(text, position)
+            if position >= len(text):
+                return None
+            definition = _parse_variable_definition(text, position)
+            if definition is not None:
+                name, operator, value_start = definition
+                value = text[_skip_whitespace(text, value_start) :]
+                return VariableAssignment(tuple(modifiers), name, operator, value)
+            word_end = _end_of_word(text, position)
+            word = text[position:word_end]
+            if word not in _ASSIGNMENT_MODIFIERS:
+                return None
+            modifiers.append(word)
+            position = word_end
+
+    @staticmethod
+    def is_target_specific_variable(line: str) -> bool:
+        """
+        Check if a makefile line sets a target- or pattern-specific variable.
+
+        The form is 'TARGETS : VARIABLE-ASSIGNMENT' or 'TARGETS :: ...' (GNU
+        make manual 6.11, lines 4938-4951; 6.12, lines 4994-4999). As in GNU
+        make 4.x:
+        - the assignment can use any operator and modifier, and a name in any
+          case (see parse_variable_assignment);
+        - the line is cut at its first unquoted ';' or '#' before the test,
+          so 'foo: ;X=1' is an inline recipe (4.2, lines 1488 and 1499-1503)
+          and 'foo: # X = 1' is a plain rule (3.1, lines 730-737). A ';' after
+          the assignment belongs to the value: 'foo: X = a;b' sets 'a;b';
+        - the target list ends at the first ':' outside references that is
+          not escaped with a backslash. If the line has no unquoted ';', make
+          scans the target list for ';' once more (see find_unquoted_char),
+          and a ';' after 1, 5, 9, ... backslashes ends it there. So make
+          stops with "missing separator" on 'a\\;b foo: X = 1', which is not
+          target-specific, but 'a\\;b foo: X = 1;2' sets X to '1;2';
+        - plain assignments, such as 'CC := a:b', and directive lines, such
+          as 'export foo: X = 1' or 'override define foo: X = 1', are not
+          target-specific (6.7, lines 4776-4781; 6.9, lines 4878-4882).
+
+        Known limit: make 4.4 reads a '::' followed directly by an escaped ';'
+        and '=' ('foo::\\;=1') as an inline recipe; this check reports it as
+        target-specific.
+
+        A line that starts with the recipe prefix in a rule context is a
+        recipe line; do not pass it. For a continued line, pass the logical
+        line from join_logical_line.
+
+        Args:
+            line: The makefile line to check
+
+        Returns:
+            True if the line sets a target- or pattern-specific variable
+        """
+        text = line.strip(_WHITESPACE)
+        if not text or text.startswith("#"):
+            return False
+        first_word = text[: _end_of_word(text, 0)]
+        # 'endef' only ends a define body (GNU make manual 6.8, lines
+        # 4797-4799). Elsewhere GNU make 4.4 reads it as an ordinary word, so
+        # 'endef foo: X = 1' is target-specific; only the other words count.
+        if first_word in LineUtils.NON_RULE_DIRECTIVE_WORDS and first_word != "endef":
+            return False
+        if LineUtils.parse_variable_assignment(text) is not None:
+            return False
+        if _is_define_or_undefine(text):
+            return False
+        cut = LineUtils.find_unquoted_char(text, ";#")
+        head = text if cut is None else text[:cut]
+        colon = LineUtils.find_unquoted_char(head, ":")
+        # A bare '&' is only the grouped-target separator, so '&: X = 1' has
+        # no targets and make 4.x ignores it (GNU make manual 4.10, lines
+        # 2501-2502).
+        if colon is None or head[:colon].strip(_WHITESPACE) in ("", "&"):
+            return False
+        rescans_targets = cut is None or text[cut] == "#"
+        if rescans_targets and _has_semicolon_on_second_scan(head[:colon]):
+            return False
+        rest = head[colon + 1 :]
+        if rest.startswith(":"):
+            # A double-colon rule's target list (4.13).
+            rest = rest[1:]
+        return LineUtils.parse_variable_assignment(rest) is not None
+
+    @staticmethod
+    def is_reference_only(text: str) -> bool:
+        """
+        Check if a logical line is only variable references or function calls.
+
+        The text, cut at its make comment, must contain at least one $(...)
+        or ${...} and nothing else but whitespace, as in '$(info ...)',
+        '$(eval $(call T,x))' or '${VAR}'. Unless it starts with the recipe
+        prefix in a rule context, make expands such a line and reads the
+        result as makefile syntax, which also ends any rule context (GNU make
+        manual 3.8, lines 1209-1229). '$(eval ...)', '$(info ...)' and other
+        calls that expand to nothing are harmless there (8.10, lines
+        6381-6390); a reference that expands to a command, such as '$(MAKE)',
+        makes make fail with "missing separator". This check only classifies
+        the text; it does not decide what the author meant. '$$' and
+        single-character references such as '$@' count as other text. An
+        unterminated reference runs to the end of the text.
+
+        Pass the logical line from join_logical_line: a physical line that
+        ends with a continuation backslash has text after its references.
+
+        Args:
+            text: The logical line to check
+
+        Returns:
+            True if the line holds only references, whitespace and a comment
+        """
+        comment = LineUtils.find_comment_start(text)
+        if comment is not None:
+            text = text[:comment]
+        found = False
+        index = 0
+        while index < len(text):
+            char = text[index]
+            if char in _WHITESPACE:
+                index += 1
+            elif char == "$" and text[index + 1 : index + 2] in ("(", "{"):
+                index = _skip_variable_reference(text, index)
+                found = True
+            else:
+                return False
+        return found
+
+    @staticmethod
+    def count_trailing_backslashes(text: str) -> int:
+        """
+        Count the backslashes at the very end of text.
+
+        Args:
+            text: The text to check
+
+        Returns:
+            The number of consecutive backslashes that end the text
+        """
+        return len(text) - len(text.rstrip("\\"))
+
+    @staticmethod
+    def ends_with_continuation(line: str) -> bool:
+        """
+        Check if a line continues on the next physical line.
+
+        Only a backslash that is the last character of the line and is not
+        escaped by another backslash continues it, so the line must end with
+        an odd number of backslashes (GNU make manual 3.1, lines 730-733;
+        3.1.1, lines 762-769; 5.1.1, lines 2910-2915). Trailing whitespace is
+        not stripped first: a backslash followed by a space does not continue
+        the line.
+
+        Args:
+            line: The physical line to check
+
+        Returns:
+            True if the line ends with an unescaped backslash
+        """
+        return LineUtils.count_trailing_backslashes(line) % 2 == 1
+
+    @staticmethod
+    def has_dangling_backslash(line: str) -> bool:
+        """
+        Check if a line ends with an unescaped backslash and then whitespace.
+
+        make does not continue such a line, because the backslash is not the
+        last character (see ends_with_continuation). Removing the trailing
+        whitespace would make the line continue.
+
+        Args:
+            line: The physical line to check
+
+        Returns:
+            True if the line ends with an unescaped backslash and then only
+            whitespace
+        """
+        stripped = line.rstrip()
+        return stripped != line and LineUtils.ends_with_continuation(stripped)
+
+    @staticmethod
+    def join_logical_line(lines: Sequence[str], start: int) -> tuple[str, int]:
+        """
+        Join the physical lines of the logical line that starts at lines[start].
+
+        This is how GNU make reads makefile syntax that is not a recipe (GNU
+        make manual 3.1.1, lines 776-781). Each backslash/newline becomes a
+        single space together with all the whitespace around it: the blanks
+        before the backslash, the blanks at the start of the next line, and
+        any backslash/newlines that follow. All other whitespace is kept,
+        including the leading whitespace of the first line and the trailing
+        whitespace of the last one, which can be part of a variable value
+        (6.2.2, lines 4273-4288). Like make, the escaped backslashes before a
+        backslash/newline are halved: 'a\\\\\\' then 'b' gives 'a\\ b'.
+        A comment continues the same way (3.1, lines 730-733).
+
+        A continuation on the last line ends the logical line, read as if the
+        file ended with a newline: ['X = a \\'] gives 'X = a '. .POSIX mode
+        (lines 783-786) is not modelled.
+        Recipe lines keep their backslash/newlines (5.1.1, lines 2917-2920),
+        so do not join them with this.
+
+        Args:
+            lines: The physical lines
+            start: The index of the first physical line of the logical line
+
+        Returns:
+            The logical line and the index of the first line after it
+
+        Raises:
+            IndexError: If start is not a valid index into lines
+        """
+        if not 0 <= start < len(lines):
+            raise IndexError(f"line index {start} out of range")
+        text = ""
+        index = start
+        while True:
+            piece = lines[index]
+            if index > start:
+                piece = piece.lstrip(_BLANKS)
+            index += 1
+            backslashes = LineUtils.count_trailing_backslashes(piece)
+            if backslashes % 2 == 0:
+                return text + piece, index
+            text += piece[: len(piece) - backslashes] + "\\" * (backslashes // 2)
+            text = text.rstrip(_BLANKS) + " "
+            if index >= len(lines):
+                return text, index
 
 
 class ShellUtils:
