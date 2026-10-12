@@ -1,5 +1,5 @@
 # mbake configuration file
-# Copy this to ~/.bake.toml and customize as needed
+# Copy this to .bake.toml in your project (or to ~/.config/bake.toml) and customize as needed
 # Generate with: bake init
 
 # Global settings

@@ -63,6 +63,24 @@ def get_console(config: Optional[Config] = None) -> Console:
     return console
 
 
+def _warn_invalid_config(path: Path, error: Exception) -> None:
+    """Report a discovered config file that could not be loaded.
+
+    Written to stderr so that ``format --stdin`` output stays clean, in the GNU
+    ``program: warning:`` form rather than ``FILE:LINE:`` so that editor
+    integrations do not report it as a Makefile diagnostic.
+    """
+    # Keep the warning on one line: collapse whitespace in the reason and
+    # escape control characters in the path.
+    reason = " ".join(str(error).split())
+    shown = "".join(c if c.isprintable() else repr(c)[1:-1] for c in str(path))
+    typer.echo(
+        f"{get_command_name()}: warning: ignoring invalid configuration file "
+        f"'{shown}': {reason}",
+        err=True,
+    )
+
+
 def version_callback(value: bool) -> None:
     """Show version and exit."""
     if value:
@@ -199,17 +217,35 @@ def init(
 @app.command()
 def config(
     show_path: bool = typer.Option(False, "--path", help="Show config file path."),
-    config_path: Optional[Path] = typer.Option(
+    config_file: Optional[Path] = typer.Option(
         None, "--config", help="Path to configuration file."
     ),
 ) -> None:
     """Show current configuration."""
+    # Use the same lookup as format and validate
+    config_path = config_file or Config.find_config_path(
+        on_invalid=_warn_invalid_config
+    )
+
+    if show_path:
+        # Plain output without Rich markup or wrapping, so scripts can use it
+        typer.echo(str(config_path))
+        return
+
+    command_name = get_command_name()
+    # The path may name any parent directory, so a [bracketed] part of it is
+    # escaped rather than read as Rich markup
+    shown_path = escape(str(config_path))
+    if not config_path.exists():
+        console.print(f"[red]Configuration file not found at {shown_path}[/red]")
+        console.print(
+            f"Run [bold]{command_name} init[/bold] to create one with defaults"
+        )
+        raise typer.Exit(1)
+
     try:
-        config, actual_config_path = Config.load(config_path)
-        if show_path:
-            console.print(actual_config_path)
-            return
-        console.print(f"[bold]Configuration from {actual_config_path}[/bold]\n")
+        config = Config.load(config_path)
+        console.print(f"[bold]Configuration from {shown_path}[/bold]\n")
 
         # Display config settings
         console.print("[bold cyan]Formatter Settings:[/bold cyan]")
@@ -308,17 +344,9 @@ def config(
         console.print(f"  verbose: {config.verbose}")
         console.print(f"  gnu_error_format: {config.gnu_error_format}")
         console.print(f"  wrap_error_messages: {config.wrap_error_messages}")
-    except FileNotFoundError as e:
-        if config_path is None:
-            console.print("[red]Configuration file not found[/red]")
-        else:
-            console.print(f"[red]Configuration file not found at {config_path}[/red]")
-        console.print(
-            f"Run [bold]{get_command_name()} init[/bold] to create one with defaults"
-        )
-        raise typer.Exit(1) from e
+
     except Exception as e:
-        console.print(f"[red]Error:[/red] Failed to load config: {e}")
+        console.print(f"[red]Error:[/red] Failed to load config: {escape(str(e))}")
         raise typer.Exit(1) from e
 
 
@@ -327,7 +355,7 @@ def validate(
     files: list[Path] = typer.Argument(
         None, help="Makefile(s) to validate (not needed with --stdin)."
     ),
-    config_path: Optional[Path] = typer.Option(
+    config_file: Optional[Path] = typer.Option(
         None, "--config", help="Path to configuration file."
     ),
     verbose: bool = typer.Option(
@@ -341,8 +369,11 @@ def validate(
     setup_logging(verbose)
 
     try:
-        # Validate the config and use it later
-        config = Config.load_or_default(config_path)[0]
+        config = Config.load_or_default(
+            config_file,
+            explicit=config_file is not None,
+            on_invalid=_warn_invalid_config,
+        )
 
         any_errors = False
 
@@ -465,10 +496,14 @@ def format(
     syntax_check_timeout: int = typer.Option(
         10, "--timeout", help="Set timeout for Makefile syntax check"
     ),
-    config_path: Optional[Path] = typer.Option(
+    config_file: Optional[Path] = typer.Option(
         None,
         "--config",
-        help="Path to configuration file (default: {XDG_CONFIG_HOME}/bake.toml).",
+        help=(
+            "Path to configuration file (default: the nearest .bake.toml in the "
+            "current or a parent directory, else ~/.bake.toml, else "
+            "{XDG_CONFIG_HOME}/bake.toml)."
+        ),
     ),
     backup: bool = typer.Option(
         False, "--backup", "-b", help="Create backup files before formatting."
@@ -485,7 +520,11 @@ def format(
 
     try:
         # Load configuration with fallback to defaults
-        config = Config.load_or_default(config_path)[0]
+        config = Config.load_or_default(
+            config_file,
+            explicit=config_file is not None,
+            on_invalid=_warn_invalid_config,
+        )
         config.verbose = verbose or config.verbose
         config.debug = debug or config.debug
         config.syntax_check_timeout = (

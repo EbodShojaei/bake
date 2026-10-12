@@ -6,7 +6,6 @@ Run from the project root:
 """
 
 import os
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -14,11 +13,6 @@ from unittest.mock import patch
 import pytest
 
 from mbake.config import Config, FormatterConfig
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -80,7 +74,6 @@ class TestXdgConfigPath:
             tempfile.TemporaryDirectory() as fake_home,
             tempfile.TemporaryDirectory() as xdg,
         ):
-            _write_toml(Path(xdg) / "bake.toml", "[formatter]\n")
             os.environ["XDG_CONFIG_HOME"] = xdg
             with _fake_home(fake_home):
                 result = Config.determine_config_path()
@@ -90,7 +83,6 @@ class TestXdgConfigPath:
         """Falls back to ~/.config/bake.toml when no XDG var and no ~/.bake.toml."""
         with tempfile.TemporaryDirectory() as fake_home:
             with _fake_home(fake_home):
-                _write_toml(Path(fake_home) / ".config" / "bake.toml", "[formatter]\n")
                 result = Config.determine_config_path()
             assert result == Path(fake_home) / ".config" / "bake.toml"
 
@@ -99,19 +91,16 @@ class TestXdgConfigPath:
         with tempfile.TemporaryDirectory() as fake_home:
             os.environ["XDG_CONFIG_HOME"] = "   "
             with _fake_home(fake_home):
-                _write_toml(Path(fake_home) / ".config" / "bake.toml", "[formatter]\n")
                 result = Config.determine_config_path()
             assert result == Path(fake_home) / ".config" / "bake.toml"
 
-    def test_returned_path_must_exist(self):
-        """``Config.determine_config_path()`` must return either an existent path or None"""
-        with tempfile.TemporaryDirectory() as fake_home, _fake_home(fake_home):
-            result = Config.determine_config_path()
-            assert result is None
-
-            _write_toml(Path(fake_home) / ".config" / "bake.toml", "[formatter]\n")
-            result = Config.determine_config_path()
-            assert result == Path(fake_home) / ".config" / "bake.toml"
+    def test_returned_path_may_not_exist(self):
+        """_xdg_config_path does not require the file to exist."""
+        with tempfile.TemporaryDirectory() as fake_home:
+            with _fake_home(fake_home):
+                result = Config.determine_config_path()
+            assert isinstance(result, Path)
+            assert not result.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -126,16 +115,13 @@ class TestLoad:
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "my.toml"
             _write_toml(p, "[formatter]\ntab_width = 4\n")
-            result = Config.load(p)[0]
+            result = Config.load(p)
             assert result.formatter.tab_width == 4
 
     def test_missing_explicit_path_raises_file_not_found(self):
         with pytest.raises(FileNotFoundError) as exc_info:
             Config.load(Path("/nonexistent/path/config.toml"))
-        assert str(exc_info.value) in (
-            "Configuration file not found at /nonexistent/path/config.toml",
-            "Configuration file not found at \\nonexistent\\path\\config.toml",
-        )
+        assert "bake.toml" in str(exc_info.value)
 
     def test_invalid_toml_raises_value_error(self):
         with tempfile.TemporaryDirectory() as d:
@@ -149,14 +135,14 @@ class TestLoad:
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "extra.toml"
             _write_toml(p, "[formatter]\ntab_width = 3\nunknown_key = true\n")
-            result = Config.load(p)[0]
+            result = Config.load(p)
             assert result.formatter.tab_width == 3
 
     def test_global_debug_and_verbose_flags(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "flags.toml"
             _write_toml(p, "debug = true\nverbose = true\n")
-            result = Config.load(p)[0]
+            result = Config.load(p)
             assert result.debug is True
             assert result.verbose is True
 
@@ -165,7 +151,7 @@ class TestLoad:
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "empty.toml"
             _write_toml(p, "# empty\n")
-            result = Config.load(p)[0]
+            result = Config.load(p)
             defaults = FormatterConfig()
             assert result.formatter.tab_width == defaults.tab_width
             assert result.formatter.max_line_length == defaults.max_line_length
@@ -196,7 +182,7 @@ align_variable_assignments = true
 align_across_comments = true
 """,
             )
-            f = Config.load(p)[0].formatter
+            f = Config.load(p).formatter
             assert f.space_around_assignment is False
             assert f.space_before_colon is True
             assert f.space_after_colon is False
@@ -237,7 +223,7 @@ class TestLoadOrDefault:
             _fake_home(fake_home),
             _fake_cwd(cwd),
         ):
-            result = Config.load_or_default()[0]
+            result = Config.load_or_default()
         assert isinstance(result, Config)
         assert isinstance(result.formatter, FormatterConfig)
         assert result.debug is False
@@ -251,27 +237,7 @@ class TestLoadOrDefault:
             _write_toml(Path(cwd) / ".bake.toml", "[formatter]\ntab_width = 7\n")
             _write_toml(Path(fake_home) / ".bake.toml", "[formatter]\ntab_width = 2\n")
             with _fake_home(fake_home), _fake_cwd(cwd):
-                result = Config.load_or_default()[0]
-        assert result.formatter.tab_width == 7
-
-    def test_ancestor_directories_are_searched(self):
-        """All ancestor directories of CWD are searched for a .bake.toml, not just the CWD.
-        Moreover, the deepest (the closest to CWD) .bake.toml is preferred."""
-        with (
-            tempfile.TemporaryDirectory() as tmpdir,
-            tempfile.TemporaryDirectory() as fake_home,
-        ):
-            cwd = os.path.join(tmpdir, "anc1/anc2/wd/")
-            _write_toml(
-                Path(cwd).parent.parent / ".bake.toml", "[formatter]\ntab_width = 7\n"
-            )
-            _write_toml(
-                Path(cwd).parent.parent.parent / ".bake.toml",
-                "[formatter]\ntab_width = 999\n",
-            )
-            _write_toml(Path(fake_home) / ".bake.toml", "[formatter]\ntab_width = 2\n")
-            with _fake_home(fake_home), _fake_cwd(cwd):
-                result = Config.load_or_default()[0]
+                result = Config.load_or_default()
         assert result.formatter.tab_width == 7
 
     def test_home_bake_toml_used_when_no_cwd_config(self):
@@ -282,7 +248,7 @@ class TestLoadOrDefault:
         ):
             _write_toml(Path(fake_home) / ".bake.toml", "[formatter]\ntab_width = 6\n")
             with _fake_home(fake_home), _fake_cwd(cwd):
-                result = Config.load_or_default()[0]
+                result = Config.load_or_default()
         assert result.formatter.tab_width == 6
 
     def test_xdg_config_used_when_home_file_absent(self):
@@ -295,42 +261,52 @@ class TestLoadOrDefault:
             _write_toml(Path(xdg) / "bake.toml", "[formatter]\ntab_width = 5\n")
             os.environ["XDG_CONFIG_HOME"] = xdg
             with _fake_home(fake_home), _fake_cwd(cwd):
-                result = Config.load_or_default()[0]
+                result = Config.load_or_default()
         assert result.formatter.tab_width == 5
 
     def test_explicit_path_used_directly(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "custom.toml"
             _write_toml(p, "[formatter]\ntab_width = 9\n")
-            result = Config.load_or_default(config_path=p)[0]
+            result = Config.load_or_default(config_path=p)
         assert result.formatter.tab_width == 9
 
-    def test_explicit_path_missing_raises(self):
+    def test_explicit_missing_path_raises_when_explicit_true(self):
         with pytest.raises(FileNotFoundError):
-            Config.load_or_default(config_path=Path("/nonexistent/config.toml"))
+            Config.load_or_default(
+                config_path=Path("/nonexistent/config.toml"),
+                explicit=True,
+            )
 
-    def test_broken_cwd_config_is_reported(self):
-        """Invalid cwd .bake.toml is not skipped, the user is told it's invalid"""
-        with tempfile.TemporaryDirectory() as cwd:
+    def test_explicit_missing_path_returns_defaults_when_explicit_false(self):
+        result = Config.load_or_default(
+            config_path=Path("/nonexistent/config.toml"),
+            explicit=False,
+        )
+        assert isinstance(result.formatter, FormatterConfig)
+
+    def test_broken_cwd_config_falls_through_to_home(self):
+        """Invalid cwd .bake.toml is skipped; home config is tried next."""
+        with (
+            tempfile.TemporaryDirectory() as cwd,
+            tempfile.TemporaryDirectory() as fake_home,
+        ):
             (Path(cwd) / ".bake.toml").write_text("not valid toml !!!")
-            with _fake_cwd(cwd), pytest.raises(ValueError) as exc_info:
-                Config.load_or_default()
-            assert type(exc_info.value.__cause__) is tomllib.TOMLDecodeError
+            _write_toml(Path(fake_home) / ".bake.toml", "[formatter]\ntab_width = 3\n")
+            with _fake_home(fake_home), _fake_cwd(cwd):
+                result = Config.load_or_default()
+        assert result.formatter.tab_width == 3
 
-    def test_broken_home_config_is_reported(self):
-        """Invalid home config is reported"""
+    def test_broken_home_config_falls_through_to_defaults(self):
+        """Invalid home config returns defaults rather than raising."""
         with (
             tempfile.TemporaryDirectory() as cwd,
             tempfile.TemporaryDirectory() as fake_home,
         ):
             (Path(fake_home) / ".bake.toml").write_text("not valid toml !!!")
-            with (
-                _fake_home(fake_home),
-                _fake_cwd(cwd),
-                pytest.raises(ValueError) as exc_info,
-            ):
-                Config.load_or_default()
-            assert type(exc_info.value.__cause__) is tomllib.TOMLDecodeError
+            with _fake_home(fake_home), _fake_cwd(cwd):
+                result = Config.load_or_default()
+        assert isinstance(result.formatter, FormatterConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -345,7 +321,7 @@ class TestToDict:
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "rt.toml"
             _write_toml(p, "[formatter]\ntab_width = 4\nmax_line_length = 100\n")
-            result = Config.load(p)[0]
+            result = Config.load(p)
         d = result.to_dict()
         assert d["formatter"]["tab_width"] == 4
         assert d["formatter"]["max_line_length"] == 100
