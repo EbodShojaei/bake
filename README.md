@@ -185,6 +185,9 @@ CUSTOM_FORMAT= \
 #bake-format on
 ```
 
+The lines between the markers are not reformatted and stay directly after their `# bake-format off` line, even when formatting adds or removes lines elsewhere. At the end of the file, the usual final-newline handling still applies.
+Line numbers in error and warning messages count the lines inside disabled regions.
+
 ## CI/CD Integration
 
 ```yaml
