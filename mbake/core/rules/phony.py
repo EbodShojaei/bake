@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils.line_utils import MakefileParser, PhonyAnalyzer
+from ...utils.line_utils import LineUtils, MakefileParser, PhonyAnalyzer
 
 
 class PhonyRule(FormatterPlugin):
@@ -508,7 +508,12 @@ class PhonyRule(FormatterPlugin):
                 if is_double_colon or "%" in target_list:
                     continue
 
-                if re.match(r"^\s*[A-Z_][A-Z0-9_]*\s*[+:?]?=", target_body):
+                # Skip target-specific variable assignments of any form (GNU
+                # make manual 6.11, lines 4938-4951). The upper-case pattern
+                # also skips lines such as 'endif # clean: OPT = -O0'.
+                if re.match(
+                    r"^\s*[A-Z_][A-Z0-9_]*\s*[+:?]?=", target_body
+                ) or LineUtils.is_target_specific_variable(stripped):
                     continue
 
                 target_names_on_line = [

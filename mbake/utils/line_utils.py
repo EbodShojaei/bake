@@ -1,7 +1,7 @@
 """Utility functions for line processing in Makefile formatting."""
 
 import re
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Any, Callable, NamedTuple, Optional, Union
 
 from ..constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS
@@ -94,6 +94,29 @@ def _skip_variable_reference(text: str, index: int) -> int:
     return len(text)
 
 
+def _reference_spans(text: str) -> Optional[list[tuple[int, int]]]:
+    """Return the (start, end) of each $(...) and ${...} reference in text.
+
+    Returns None if text holds anything but whitespace and such references.
+    '$$' and single-character references such as '$@' count as other text.
+    A reference ends as in _skip_variable_reference, so an unterminated one
+    runs to the end of the text.
+    """
+    spans = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char in _WHITESPACE:
+            index += 1
+        elif char == "$" and text[index + 1 : index + 2] in ("(", "{"):
+            end = _skip_variable_reference(text, index)
+            spans.append((index, end))
+            index = end
+        else:
+            return None
+    return spans
+
+
 def _backslashes_before(text: str, index: int) -> int:
     """Return the number of consecutive backslashes just before text[index]."""
     run_start = index
@@ -132,8 +155,8 @@ def _has_semicolon_on_second_scan(targets: str) -> bool:
     return False
 
 
-def _is_define_or_undefine(text: str) -> bool:
-    """Check if text starts with 'define' or 'undefine' after any modifiers.
+def _define_or_undefine_word(text: str) -> Optional[str]:
+    """Return 'define' or 'undefine' if text starts with it after any modifiers.
 
     GNU make reads 'export', 'unexport', 'override' and 'private' before
     'define' and 'undefine' as it does before a variable assignment, so
@@ -151,10 +174,18 @@ def _is_define_or_undefine(text: str) -> bool:
         word_end = _end_of_word(text, position)
         word = text[position:word_end]
         if word in ("define", "undefine"):
-            return True
+            return word
         if word not in _ASSIGNMENT_MODIFIERS:
-            return False
+            return None
         position = word_end
+
+
+def _is_define_or_undefine(text: str) -> bool:
+    """Check if text starts with 'define' or 'undefine' after any modifiers.
+
+    See _define_or_undefine_word.
+    """
+    return _define_or_undefine_word(text) is not None
 
 
 def _assignment_operator_at(text: str, index: int) -> Optional[str]:
@@ -1500,18 +1531,93 @@ class LineUtils:
         comment = LineUtils.find_comment_start(text)
         if comment is not None:
             text = text[:comment]
-        found = False
-        index = 0
-        while index < len(text):
-            char = text[index]
-            if char in _WHITESPACE:
-                index += 1
-            elif char == "$" and text[index + 1 : index + 2] in ("(", "{"):
-                index = _skip_variable_reference(text, index)
-                found = True
-            else:
+        return bool(_reference_spans(text))
+
+    @staticmethod
+    def is_function_call_only(text: str, functions: Collection[str]) -> bool:
+        """
+        Check if a logical line is only calls to the given make functions.
+
+        Like is_reference_only, but every reference must be a call
+        '$(NAME ARGUMENTS)' or '${NAME ARGUMENTS}' with NAME in functions:
+        the name follows the bracket directly, and a blank separates it from
+        the arguments (GNU make manual 8.1, lines 5588-5605). So '$(info)' is
+        a reference to the variable 'info', not a call. An unterminated call
+        does not count. With functions such as 'eval' and 'info', whose result
+        is the empty string (8.10, lines 6388-6390; 8.13, lines 6595-6601),
+        this finds lines that make reads as makefile syntax without error.
+
+        Pass the logical line from join_logical_line.
+
+        Args:
+            text: The logical line to check
+            functions: The names of the functions that may be called
+
+        Returns:
+            True if the line holds at least one call, only calls to these
+            functions, whitespace and a comment
+        """
+        comment = LineUtils.find_comment_start(text)
+        if comment is not None:
+            text = text[:comment]
+        spans = _reference_spans(text)
+        if not spans:
+            return False
+        for start, end in spans:
+            opener = text[start + 1]
+            closer = ")" if opener == "(" else "}"
+            # The reference ends where its brackets balance, or at the end of
+            # the text when they never do.
+            if text.count(opener, start + 1, end) != text.count(closer, start + 1, end):
                 return False
-        return found
+            name_end = start + 2
+            while name_end < end and text[name_end] not in _BLANKS:
+                name_end += 1
+            if name_end == end or text[start + 2 : name_end] not in functions:
+                return False
+        return True
+
+    @staticmethod
+    def directive_word(text: str) -> Optional[str]:
+        """
+        Return the directive that a makefile line starts with, or None.
+
+        Like GNU make 4.x, which looks for assignments before directives:
+        - an assignment is not a directive, even to a variable named like
+          one, as in 'export = 1' (see parse_variable_assignment);
+        - 'define' and 'undefine' may follow the modifiers 'export',
+          'unexport', 'override' and 'private' (GNU make manual 6.7, lines
+          4776-4781; 6.9, lines 4878-4882), so 'override define X' gives
+          'define';
+        - every other directive is the first word, from
+          NON_RULE_DIRECTIVE_WORDS (Appendix A, lines 10847-10913). A
+          modifier before it is not allowed: make rejects
+          'override vpath %.c src'.
+
+        'endef' is returned wherever it is the first word, although it only
+        ends a define body inside one (6.8, lines 4797-4799). make 3.81 does
+        not know 'undefine', 'load', or modifiers other than 'override'
+        before 'define'.
+
+        Pass a makefile line, cut at find_comment_start, or such a logical
+        line from join_logical_line; never a recipe line.
+
+        Args:
+            text: The makefile line to check
+
+        Returns:
+            The directive word, or None if the line does not start with one
+        """
+        if LineUtils.parse_variable_assignment(text) is not None:
+            return None
+        word = _define_or_undefine_word(text)
+        if word is not None:
+            return word
+        start = _skip_whitespace(text, 0)
+        first_word = text[start : _end_of_word(text, start)]
+        if first_word in LineUtils.NON_RULE_DIRECTIVE_WORDS:
+            return first_word
+        return None
 
     @staticmethod
     def count_trailing_backslashes(text: str) -> int:
@@ -2324,8 +2430,13 @@ class PhonyAnalyzer:
                 if any("%" in name for name in target_names):
                     continue
 
-                # Check if this is a target-specific variable assignment
-                if re.match(r"^\s*[A-Z_][A-Z0-9_]*\s*[+:?]?=", target_body):
+                # Check if this is a target-specific variable assignment, of
+                # any form (GNU make manual 6.11, lines 4938-4951). The
+                # upper-case pattern also skips lines such as
+                # 'endif # clean: OPT = -O0'.
+                if re.match(
+                    r"^\s*[A-Z_][A-Z0-9_]*\s*[+:?]?=", target_body
+                ) or LineUtils.is_target_specific_variable(stripped):
                     continue
 
                 # Get recipe lines for this target
