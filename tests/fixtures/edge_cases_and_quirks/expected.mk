@@ -47,6 +47,7 @@ empty-recipe:
 
 #Recipe with only whitespace
 whitespace-only:
+	
 
 #Long lines that might need wrapping
 very-long-target-name-that-might-cause-formatting-issues: very-long-dependency-name-that-also-might-cause-issues

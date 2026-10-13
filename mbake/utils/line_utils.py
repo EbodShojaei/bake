@@ -49,6 +49,19 @@ _ASSIGNMENT_MODIFIERS = frozenset({"export", "unexport", "override", "private"})
 # 4612-4625).
 _ASSIGNMENT_OPERATORS = (":::=", "::=", ":=", "+=", "?=", "!=", "=")
 
+# Functions whose result is always the empty string (GNU make manual 8.10,
+# lines 6388-6390; 8.13, lines 6565-6601). Bare variable references and other
+# calls, such as '$(MAKE)' or '$(call ...)', can expand to a command, which
+# make rejects outside a recipe, so those lines are still repaired.
+_EMPTY_RESULT_FUNCTIONS = frozenset({"eval", "info", "warning", "error"})
+
+# Functions whose result is made of what some of their arguments expand to:
+# '$(foreach VAR,LIST,TEXT)' joins the expansions of TEXT with spaces (GNU make
+# manual 8.6, lines 6146-6159), and '$(if CONDITION,THEN-PART[,ELSE-PART])'
+# gives one of its two parts (8.4, lines 6013-6030). {name: the indexes of
+# those arguments}
+_WRAPPER_FUNCTIONS = {"foreach": (2,), "if": (1, 2)}
+
 
 def _skip_whitespace(text: str, index: int) -> int:
     """Return the index of the first non-whitespace character at or after index."""
@@ -230,6 +243,76 @@ def _parse_variable_definition(text: str, start: int) -> Optional[tuple[str, str
             return None
         position += 1
     return None
+
+
+def _function_calls(text: str) -> Optional[list[tuple[str, str, str]]]:
+    """
+    Split text into the make function calls that it is made of.
+
+    A call is '$(NAME ARGUMENTS)' or '${NAME ARGUMENTS}', where a blank
+    separates the name from the arguments, and it ends where the brackets of
+    its own kind balance (GNU make manual 8.1, lines 5588-5613).
+
+    Returns:
+        The name, the arguments and the opening bracket of each call, or None
+        if text holds anything but such calls and whitespace, such as a
+        variable reference or an unterminated call
+    """
+    calls: list[tuple[str, str, str]] = []
+    index = 0
+    while index < len(text):
+        if text[index] in _WHITESPACE:
+            index += 1
+            continue
+        opener = text[index + 1 : index + 2]
+        if text[index] != "$" or opener not in ("(", "{"):
+            return None
+        closer = ")" if opener == "(" else "}"
+        depth = 0
+        end = index + 1
+        while end < len(text):
+            if text[end] == opener:
+                depth += 1
+            elif text[end] == closer:
+                depth -= 1
+                if depth == 0:
+                    break
+            end += 1
+        if end == len(text):
+            return None
+        inside = text[index + 2 : end]
+        name_end = 0
+        while name_end < len(inside) and inside[name_end] not in _BLANKS:
+            name_end += 1
+        if name_end == len(inside):
+            return None
+        calls.append((inside[:name_end], inside[name_end:], opener))
+        index = end + 1
+    return calls
+
+
+def _split_arguments(arguments: str, opener: str, count: int) -> list[str]:
+    """
+    Split the arguments of a function call at its commas, into at most count.
+
+    Like make, only commas outside brackets of the call's own kind separate
+    arguments (GNU make manual 8.1, lines 5603-5613), and the last argument
+    takes the rest of the text.
+    """
+    closer = ")" if opener == "(" else "}"
+    parts: list[str] = []
+    depth = 0
+    part_start = 0
+    for index, char in enumerate(arguments):
+        if char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+        elif char == "," and depth == 0 and len(parts) < count - 1:
+            parts.append(arguments[part_start:index])
+            part_start = index + 1
+    parts.append(arguments[part_start:])
+    return parts
 
 
 class LineUtils:
@@ -1578,6 +1661,48 @@ class LineUtils:
         return True
 
     @staticmethod
+    def expands_to_blanks(text: str) -> bool:
+        """
+        Check if a makefile line only calls functions whose result is empty.
+
+        Calls to 'eval', 'info', 'warning' and 'error' count (see
+        _EMPTY_RESULT_FUNCTIONS), and so do '$(foreach ...)' and '$(if ...)'
+        calls whose TEXT, THEN-PART and ELSE-PART are blank or such calls, as in
+        the manual's '$(foreach prog,$(PROGRAMS),$(eval $(call
+        PROGRAM_template,$(prog))))' (GNU make manual 8.10, line 6427). make reads
+        such a line as makefile syntax and ignores the blanks that it expands to.
+
+        Args:
+            text: The logical line, cut at its comment
+
+        Returns:
+            True if the line holds at least one call, and only such calls and
+            whitespace
+        """
+        if LineUtils.is_function_call_only(text, _EMPTY_RESULT_FUNCTIONS):
+            return True
+        calls = _function_calls(text)
+        if not calls or not any(name in _WRAPPER_FUNCTIONS for name, _, _ in calls):
+            return False
+        for name, arguments, opener in calls:
+            if name in _EMPTY_RESULT_FUNCTIONS:
+                continue
+            indexes = _WRAPPER_FUNCTIONS.get(name)
+            if indexes is None:
+                return False
+            parts = _split_arguments(arguments, opener, 3)
+            if len(parts) < (3 if name == "foreach" else 2):
+                return False
+            for index in indexes:
+                if (
+                    index < len(parts)
+                    and parts[index].strip(_WHITESPACE)
+                    and not LineUtils.expands_to_blanks(parts[index])
+                ):
+                    return False
+        return True
+
+    @staticmethod
     def directive_word(text: str) -> Optional[str]:
         """
         Return the directive that a makefile line starts with, or None.
@@ -1617,6 +1742,34 @@ class LineUtils:
         first_word = text[start : _end_of_word(text, start)]
         if first_word in LineUtils.NON_RULE_DIRECTIVE_WORDS:
             return first_word
+        return None
+
+    @staticmethod
+    def define_body_directive(text: str) -> Optional[str]:
+        """
+        Return 'define' or 'endef' if make reads a define body line as one.
+
+        Inside a define body make reads logical lines and only looks at the first
+        word of a line that does not start with the recipe prefix: 'define' nests
+        another body and 'endef' ends the innermost one, each when a blank or the
+        end of the line follows the word (GNU make manual 6.8, lines 4797-4799
+        and 4823-4827). So 'endef # comment' ends a body and 'endef#comment'
+        does not.
+
+        Args:
+            text: The logical line from LineUtils.join_logical_line, with its
+                comment
+
+        Returns:
+            'define', 'endef' or None
+        """
+        start = len(text) - len(text.lstrip(_WHITESPACE))
+        for word in ("define", "endef"):
+            end = start + len(word)
+            if text.startswith(word, start) and (
+                end == len(text) or text[end] in _BLANKS
+            ):
+                return word
         return None
 
     @staticmethod

@@ -46,4 +46,4 @@ another: ;  echo "World"
 
 # Function calls with error conditions
 CHECK_FILE = $(if $(wildcard $(1)),$(1),$(error File $(1) not found))
-REQUIRED_FILE = $(call CHECK_FILE,important.h)
+REQUIRED_FILE = $(call CHECK_FILE,important.h) 
