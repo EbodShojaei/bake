@@ -174,6 +174,9 @@ class LineState:
             of, in the readings that have RECIPE, as indexes like rule_line.
             None where the readings are not known one by one, so that the
             line may be part of the recipe of any rule above it.
+        recipe_prefix_known: False where make computes the value of
+            .RECIPEPREFIX, with '!=' or with ':=' of a reference, so that the
+            recipe prefix that make reads is not known (see recipe_prefix).
     """
 
     kind: str
@@ -187,6 +190,7 @@ class LineState:
     logical_start: int
     readings: frozenset[str] = frozenset()
     recipe_owners: Optional[frozenset[int]] = frozenset()
+    recipe_prefix_known: bool = True
 
     @property
     def in_define(self) -> bool:
@@ -229,6 +233,101 @@ def scan_makefile(
         A LineState for each line of lines
     """
     return _Scanner(lines, hidden).scan()
+
+
+def recipe_prefixes(
+    lines: Sequence[str], hidden: Optional[Mapping[int, Sequence[str]]] = None
+) -> list[str]:
+    """
+    Return the recipe prefix that make reads at each line.
+
+    That is LineState.recipe_prefix of scan_makefile(lines, hidden): the
+    prefix that every assignment and define of .RECIPEPREFIX above the line
+    sets (GNU make manual, lines 5158-5169), with '+=', define and the lines
+    that '# bake-format off' hides read as make 4.4.1 reads them. The prefix
+    only changes where a line names .RECIPEPREFIX, so a makefile that never
+    does keeps the TAB and is not scanned.
+
+    Args:
+        lines: The physical lines of the makefile
+        hidden: As for scan_makefile
+
+    Returns:
+        The recipe prefix of each line of lines
+    """
+    if not _names_recipe_prefix(lines, hidden):
+        return ["\t"] * len(lines)
+    return [state.recipe_prefix for state in scan_makefile(lines, hidden)]
+
+
+def line_by_line_prefixes(lines: Sequence[str]) -> list[str]:
+    """
+    Return the recipe prefix at each line as the rules used to read it.
+
+    That is LineUtils.get_active_recipe_prefix(lines, index) for each line:
+    the last line above that matches its pattern for '.RECIPEPREFIX = X' or
+    '.RECIPEPREFIX := X'. It misses '+=', define, modifiers, other operators,
+    values that are not one character, comments, the empty value, continued
+    lines and the lines that '# bake-format off' hides, and it reads such a
+    line also in a define body or as a recipe line.
+
+    Args:
+        lines: The lines that a rule reads
+
+    Returns:
+        The prefix of each line in that reading
+    """
+    found: list[str] = []
+    prefix = "\t"
+    for line in lines:
+        found.append(prefix)
+        if ".RECIPEPREFIX" in line:
+            prefix = _line_sets_prefix(line, prefix)
+    return found
+
+
+def _line_sets_prefix(line: str, prefix: str) -> str:
+    """
+    Return the prefix after one line in the reading of line_by_line_prefixes.
+
+    LineUtils.get_active_recipe_prefix reads the lines above an index. A line
+    above that sets the prefix to a known character shows whether this line
+    sets it: the result stays that character only if it does not, or if it
+    sets that very character, which a second known character tells apart.
+    """
+    for known in ("\0", "\1"):
+        value = LineUtils.get_active_recipe_prefix(
+            [f".RECIPEPREFIX = {known}", line], 2
+        )
+        if value != known:
+            return value
+    return prefix
+
+
+def is_automake_conditional(code: str) -> bool:
+    """
+    Check if a logical line opens an automake conditional.
+
+    That is 'if NAME' or 'if !NAME'. Its 'else' and 'endif' look like make's,
+    and automake replaces all three lines before make reads the file.
+
+    Args:
+        code: The logical line, cut at its comment
+
+    Returns:
+        True if the line is such an 'if'
+    """
+    return _AUTOMAKE_IF.fullmatch(code.strip(_WHITESPACE)) is not None
+
+
+def _names_recipe_prefix(
+    lines: Sequence[str], hidden: Optional[Mapping[int, Sequence[str]]]
+) -> bool:
+    """Check if any line, hidden lines included, names .RECIPEPREFIX."""
+    regions = (hidden or {}).values()
+    return any(".RECIPEPREFIX" in line for line in lines) or any(
+        ".RECIPEPREFIX" in line for region in regions for line in region
+    )
 
 
 def define_body_lines(
@@ -1042,7 +1141,7 @@ def _classify(code: str) -> tuple[str, Optional[str]]:
         return RULE, None
     if LineUtils.expands_to_blanks(code):
         return FUNCTION_CALL, None
-    if _AUTOMAKE_IF.fullmatch(code.strip(_WHITESPACE)):
+    if is_automake_conditional(code):
         return CONDITIONAL, "if"
     return OTHER, None
 
@@ -1460,6 +1559,7 @@ class _Scanner:
         rule_line = self.rule if self.in_rule else None
         branches = tuple((c.ident, c.branch) for c in self.conditionals)
         recipe_prefix = self.prefix
+        recipe_prefix_known = self.prefix_value.prefix is not None
         text = line.text
         if self.define_depth > 0:
             kind = self._read_body_line(text, prefixed)
@@ -1495,6 +1595,7 @@ class _Scanner:
             logical_start=self.anchors[start],
             readings=readings,
             recipe_owners=owners,
+            recipe_prefix_known=recipe_prefix_known,
         )
 
     def _read_body_line(self, text: str, prefixed: bool) -> str:

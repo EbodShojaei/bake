@@ -5,6 +5,10 @@ from typing import Any
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils
 
+# Conditional directives that format() moves to column 1 or keeps, instead of
+# treating them as recipe lines.
+_CONDITIONAL_PREFIXES = ("ifeq", "ifneq", "ifdef", "ifndef", "else", "endif")
+
 
 class TabsRule(FormatterPlugin):
     """Ensures tabs are used for recipe indentation instead of spaces."""
@@ -56,9 +60,7 @@ class TabsRule(FormatterPlugin):
 
             # Handle conditional directives - these should start at column 1 according to GNU Make syntax
             # BUT: nested conditionals inside else blocks should preserve indentation
-            if line.startswith(" ") and stripped.startswith(
-                ("ifeq", "ifneq", "ifdef", "ifndef", "else", "endif")
-            ):
+            if line.startswith(" ") and stripped.startswith(_CONDITIONAL_PREFIXES):
 
                 # Check if this is a nested conditional that should preserve indentation
                 if self._is_nested_conditional(line_index, lines, stripped):
@@ -73,36 +75,7 @@ class TabsRule(FormatterPlugin):
                     else:
                         formatted_lines.append(line)
             # Check if this is a recipe line (command that should be executed)
-            # Recipe lines are indented lines that are not:
-            # - Variable assignments
-            # - Include statements
-            # - Variable definition continuations
-            # - Function calls
-            # - Other makefile constructs
-            # - Lines that start with the active .RECIPEPREFIX character
-            elif (
-                line.startswith(" ")
-                and stripped  # Not empty
-                and not stripped.startswith("#")  # Not a comment
-                and not self._is_target_definition(stripped)  # Not a target definition
-                # Note: we DO want to process continuation lines for tab conversion
-                and not self._is_variable_assignment_line(
-                    stripped
-                )  # Not a variable assignment
-                and not stripped.startswith(
-                    ("include", "-include", "vpath")
-                )  # Not include/vpath
-                and not self._is_variable_continuation(
-                    line, line_index, lines
-                )  # Not variable continuation
-                and not LineUtils.is_makefile_construct(
-                    stripped
-                )  # Not a makefile construct
-                and not (
-                    line.startswith(active_prefix)
-                    or line.startswith(active_prefix + "\t")
-                )  # Not direct .RECIPEPREFIX line
-            ):
+            elif self.converts_to_recipe(line, line_index, lines, active_prefix):
                 # Convert leading spaces to tab for recipe lines
                 content = line.lstrip()
                 # Apply conditional nesting indentation if enabled
@@ -206,6 +179,48 @@ class TabsRule(FormatterPlugin):
             errors=errors,
             warnings=warnings,
             check_messages=[],
+        )
+
+    def converts_to_recipe(
+        self, line: str, line_index: int, lines: list[str], active_prefix: str
+    ) -> bool:
+        """
+        Check if format() turns a line that starts with spaces into a recipe line.
+
+        format() then replaces the leading spaces with a TAB. These are the
+        lines that start with a space and are not:
+        - blank lines or comments;
+        - conditional directives, which format() moves to column 1 or keeps;
+        - target definitions or variable assignments;
+        - include or vpath directives;
+        - continuations of a variable definition;
+        - function calls and other makefile constructs;
+        - lines that start with the active .RECIPEPREFIX character.
+
+        Args:
+            line: The line to check
+            line_index: Index of the line in lines
+            lines: All lines that format() reads
+            active_prefix: The recipe prefix that format() reads at the line
+
+        Returns:
+            True if format() converts the line into a recipe line
+        """
+        stripped = line.strip()
+        return (
+            line.startswith(" ")
+            and bool(stripped)  # Not empty
+            and not stripped.startswith("#")  # Not a comment
+            and not stripped.startswith(_CONDITIONAL_PREFIXES)
+            and not self._is_target_definition(stripped)  # Not a target definition
+            # Note: we DO want to process continuation lines for tab conversion
+            and not self._is_variable_assignment_line(stripped)
+            and not stripped.startswith(("include", "-include", "vpath"))
+            and not self._is_variable_continuation(line, line_index, lines)
+            and not LineUtils.is_makefile_construct(stripped)
+            and not (
+                line.startswith(active_prefix) or line.startswith(active_prefix + "\t")
+            )  # Not direct .RECIPEPREFIX line
         )
 
     def _is_nested_conditional(
