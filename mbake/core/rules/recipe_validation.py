@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils
+from ...utils.rule_context import scan_makefile
 
 # Conditional directives keep a rule context: the lines they select can be
 # recipe lines of the rule above them (GNU make manual 7.1, lines 5315-5333).
@@ -118,6 +119,10 @@ class _LineFacts:
             else:
                 self.starts.append(index)
         self.define_masks: dict[str, list[bool]] = {}
+        # For each line, the recipe prefix that make reads there and whether
+        # it is known; worked out on first use (see make_prefix)
+        self._make_prefixes: Optional[list[tuple[str, bool]]] = None
+        self._without_hidden: Optional[_LineFacts] = None
         # make's model of define bodies: {recipe prefix: {start of a logical
         # line: the depth of the define bodies that it is in}}
         self.body_depths: dict[str, dict[int, int]] = {}
@@ -129,6 +134,38 @@ class _LineFacts:
         self._texts: dict[int, str] = {}
         self._kinds: dict[int, Optional[str]] = {}
         self._defines: dict[int, bool] = {}
+
+    def without_hidden(self) -> "_LineFacts":
+        """Return the facts about the same lines with no hidden lines read."""
+        if self._without_hidden is None:
+            self._without_hidden = self if not self.hidden else _LineFacts(self.lines)
+        return self._without_hidden
+
+    def make_prefix(self, index: int) -> tuple[str, bool]:
+        """
+        Return the recipe prefix that make reads at a line, and whether it is known.
+
+        The rules read .RECIPEPREFIX line by line, from plain '.RECIPEPREFIX = X'
+        and ':=' lines that they can see. make also reads '+=', 'define', the
+        lines that '# bake-format off' hides, and values that it computes
+        (GNU make manual 16.2, lines 5158-5169), which rule_context.scan_makefile
+        follows. A makefile that never names .RECIPEPREFIX keeps the TAB and is
+        not scanned.
+        """
+        if self._make_prefixes is None:
+            named = any(".RECIPEPREFIX" in line for line in self.lines) or any(
+                ".RECIPEPREFIX" in line
+                for region in self.hidden.values()
+                for line in region
+            )
+            if named:
+                self._make_prefixes = [
+                    (state.recipe_prefix, state.recipe_prefix_known)
+                    for state in scan_makefile(self.lines, self.hidden)
+                ]
+            else:
+                self._make_prefixes = [("\t", True)] * len(self.lines)
+        return self._make_prefixes[index]
 
     def hides_lines(self, first: int, last: int) -> bool:
         """Check if hidden lines follow any of the lines first to last."""
@@ -370,7 +407,27 @@ class RecipeValidationRule(FormatterPlugin):
             return False
 
         # Check if this should be a recipe line based on context
-        return self._should_be_recipe_line(facts, line_index)
+        if not self._should_be_recipe_line(facts, line_index):
+            return False
+
+        # The rule context may come only from lines that '# bake-format off'
+        # hides, such as a rule inside the region whose recipe follows the
+        # closing marker. The rules read .RECIPEPREFIX line by line, from
+        # plain '=' and ':=' lines that they can see, so there the prefix
+        # make reads may be one they do not see: set inside the region, with
+        # '+=' or 'define', or computed (GNU make manual 16.2, lines
+        # 5158-5169). A TAB added to a line that already starts with make's
+        # prefix turns the recipe line into makefile text that make rejects
+        # ("missing separator"), so such a line, or one whose prefix cannot
+        # be known, is left as it is. Where visible lines give the rule
+        # context, nothing changes.
+        if facts.hidden and not self._should_be_recipe_line(
+            facts.without_hidden(), line_index
+        ):
+            make_prefix, prefix_known = facts.make_prefix(line_index)
+            if not prefix_known or (make_prefix and line.startswith(make_prefix)):
+                return False
+        return True
 
     def _get_special_make_targets(self) -> set[str]:
         """Get all special Makefile targets."""
