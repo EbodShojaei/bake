@@ -340,6 +340,13 @@ class PhonyRule(FormatterPlugin):
                     if index in new_indexes
                 },
             )
+            if phony_line not in formatted_lines:
+                # No place before a rule or variable: the rules of these
+                # targets are hidden by '# bake-format off' or not in this
+                # file. The declaration still tells make that the targets
+                # are phony (GNU make manual 4.6, lines 2053-2056), so it
+                # goes at the end instead of being lost.
+                formatted_lines = formatted_lines + [phony_line]
         else:
             # Place at absolute top
             formatted_lines = [phony_line, ""] + lines_without_phony
@@ -455,6 +462,17 @@ class PhonyRule(FormatterPlugin):
 
         for i, line in enumerate(lines):
             if i in skip_indices:
+                # The targets of this declaration that have no rule in the
+                # visible lines (hidden by '# bake-format off', or not in
+                # this file) get no individual declaration, so theirs stays
+                # here: make needs it to treat them as phony (GNU make
+                # manual 4.6, lines 2053-2056).
+                declared = self._phony_line_targets(line)
+                kept = [t for t in declared if t not in target_positions]
+                if kept == declared:
+                    formatted_lines.append(line)
+                elif kept:
+                    formatted_lines.append(f".PHONY: {' '.join(kept)}")
                 continue
             if i in insertions:
                 formatted_lines.append(insertions[i])
@@ -549,6 +567,14 @@ class PhonyRule(FormatterPlugin):
         readings = cleanup_readings(lines, hidden, strip_dangling)
         return orphaned_recipe_lines(readings, removed)
 
+    @staticmethod
+    def _phony_line_targets(line: str) -> list[str]:
+        """Return the targets named on one '.PHONY:' line, in order."""
+        content = line.strip()[7:].strip()
+        if content.endswith("\\"):
+            content = content[:-1].strip()
+        return [t.strip() for t in content.split() if t.strip()]
+
     def _extract_phony_targets(self, lines: list[str]) -> list[str]:
         """Extract targets from existing .PHONY declarations."""
         phony_targets = []
@@ -592,8 +618,15 @@ class PhonyRule(FormatterPlugin):
                     ordered_targets.append(target_name)
                     seen_targets.add(target_name)
 
-        # Add any remaining targets
-        for target in phony_targets:
+        # Add the remaining targets: first those that existing .PHONY lines
+        # declare, in their declared order, then any others. A set gives no
+        # stable order, and a declaration whose targets have no visible rule
+        # must come back unchanged.
+        for target in self._extract_phony_targets(lines):
+            if target in phony_targets and target not in seen_targets:
+                ordered_targets.append(target)
+                seen_targets.add(target)
+        for target in sorted(phony_targets):
             if target not in seen_targets:
                 ordered_targets.append(target)
 
