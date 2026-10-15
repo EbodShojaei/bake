@@ -1,9 +1,10 @@
 """Conditional block formatting rule for Makefiles."""
 
-from typing import Any
+from typing import Any, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils
+from ...utils.rule_context import scan_makefile, significant_whitespace_lines
 
 
 class ConditionalRule(FormatterPlugin):
@@ -46,6 +47,14 @@ class ConditionalRule(FormatterPlugin):
         # Track conditional nesting depth and context
         conditional_stack: list[dict[str, Any]] = []  # Stack to track nesting levels
 
+        # Trailing whitespace can be part of a variable value (GNU make manual
+        # 6.2.2, lines 4273-4288). WhitespaceRule judges it when it removes
+        # trailing whitespace; otherwise only whitespace that make reads is
+        # kept here. Each line is read as makefile syntax, since TabsRule may
+        # move a re-indented line into a rule context.
+        remove_trailing_whitespace = config.get("remove_trailing_whitespace", True)
+        value_lines: Optional[set[int]] = None
+
         for line_num, line in enumerate(lines, 1):
             original_line = line
             stripped = line.strip()
@@ -80,8 +89,30 @@ class ConditionalRule(FormatterPlugin):
                     line, line_index, lines
                 ):
                     # This is content inside a conditional block (variable assignment, etc.)
+                    if not remove_trailing_whitespace and value_lines is None:
+                        value_lines = significant_whitespace_lines(
+                            lines,
+                            scan_makefile(
+                                lines, context.get("disabled_region_lines") or {}
+                            ),
+                            as_syntax=True,
+                        )
+                    if remove_trailing_whitespace:
+                        # WhitespaceRule removes the trailing whitespace later,
+                        # also after a final backslash, which makes the line
+                        # continue (GNU make manual 3.1.1, lines 762-769);
+                        # there it knows which lines that changes (see
+                        # empty_recipes_to_keep).
+                        keep_trailing = True
+                    else:
+                        # Only whitespace that make reads is kept; the
+                        # whitespace after a final backslash goes, as it
+                        # always did (see value_whitespace_lines).
+                        keep_trailing = (
+                            value_lines is not None and line_index in value_lines
+                        )
                     formatted_line = self._format_conditional_content(
-                        line, stripped, conditional_stack, tab_width
+                        line, stripped, conditional_stack, tab_width, keep_trailing
                     )
                     if formatted_line != original_line:
                         changed = True
@@ -166,9 +197,18 @@ class ConditionalRule(FormatterPlugin):
         return spaces + stripped
 
     def _format_conditional_content(
-        self, line: str, stripped: str, conditional_stack: list, tab_width: int = 2
+        self,
+        line: str,
+        stripped: str,
+        conditional_stack: list,
+        tab_width: int = 2,
+        keep_trailing: bool = False,
     ) -> str:
-        """Format content inside conditional blocks."""
+        """Format content inside conditional blocks.
+
+        keep_trailing keeps the trailing whitespace of the line, which can be
+        part of a variable value.
+        """
         if not conditional_stack:
             return line
 
@@ -176,4 +216,6 @@ class ConditionalRule(FormatterPlugin):
         indent_level = len(conditional_stack)
         spaces = " " * (indent_level * tab_width)
 
+        if keep_trailing:
+            return spaces + line.lstrip()
         return spaces + stripped

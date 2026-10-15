@@ -481,7 +481,7 @@ class TestWhitespaceNormalization:
 
         input_lines = ["VAR = value  ", "target: dep   ", "\techo 'hello'  "]
 
-        expected_lines = ["VAR = value", "target: dep", "\techo 'hello'"]
+        expected_lines = ["VAR = value  ", "target: dep", "\techo 'hello'"]
 
         result = rule.format(input_lines, config)
         assert result.changed

@@ -12,6 +12,7 @@ target2: dep3 dep4
 
 # Empty target
 empty-target:
+	
 
 # Target with no dependencies
 standalone:

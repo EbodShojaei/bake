@@ -34,7 +34,7 @@ CLEANED_SOURCES = $(subst src/,,$(SOURCES:.c=.o)) \
 # Variable with conditional assignment and continuation
 EXTRA_LIBS ?= -lm \
               -lpthread \
-              -ldl
+              -ldl 
 
 # Test: Assignment spacing with multi-line values (from demo.mk)
 CPPCHECK_FLAGS = --enable=all --inline-suppr \

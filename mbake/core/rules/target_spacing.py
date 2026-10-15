@@ -73,14 +73,27 @@ class TargetSpacingRule(FormatterPlugin):
 
                 # Normalize VPATH to fix invalid syntax and maintain consistent style
                 if var_name == "VPATH":
+                    # Only the directories are normalized. The text from the
+                    # end of the value through an inline comment stays as
+                    # written: the comment holds no directories, and make
+                    # keeps the whitespace before it in the value (GNU make
+                    # manual 3.1, lines 730-742; 6.2.2, lines 4273-4288).
+                    # Whitespace after the comment goes as before.
+                    comment = LineUtils.find_comment_start(value_part)
+                    value_text = value_part if comment is None else value_part[:comment]
+                    dirs_text = value_text.rstrip()
+                    tail = value_part[len(dirs_text) :]
+                    if comment is not None:
+                        tail = tail.rstrip()
+
                     # Split by colons and spaces, then rejoin based on original style
-                    dirs = re.split(r"[: ]+", value_part.strip())
+                    dirs = re.split(r"[: ]+", dirs_text.strip())
                     # Filter out empty strings
                     clean_dirs = [d for d in dirs if d.strip()]
 
                     # Determine style: if original had any colons, use colon-separated
                     # Otherwise preserve space-separated style
-                    if ":" in value_part:
+                    if ":" in dirs_text:
                         # Normalize to colon-separated (fixes invalid mixed syntax)
                         normalized_dirs = ":".join(clean_dirs)
                     else:
@@ -88,14 +101,15 @@ class TargetSpacingRule(FormatterPlugin):
                         normalized_dirs = " ".join(clean_dirs)
 
                     # Handle empty VPATH case - preserve original spacing
-                    if not normalized_dirs:
-                        # If original value was just whitespace, preserve it
-                        normalized_dirs = value_part if not value_part.strip() else " "
+                    if not normalized_dirs and dirs_text:
+                        normalized_dirs = " "
 
                     # Ensure proper spacing after target colon
                     if target_part and not target_part.endswith(": "):
                         target_part = target_part.rstrip(":") + ": "
-                    new_line = f"{target_part}{var_name} {operator} {normalized_dirs}"
+                    new_line = (
+                        f"{target_part}{var_name} {operator} {normalized_dirs}{tail}"
+                    )
                     if new_line != line:
                         changed = True
                         formatted_lines.append(new_line)

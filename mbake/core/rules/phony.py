@@ -1,10 +1,17 @@
 """Unified PHONY declaration rule: detection, insertion, and grouping."""
 
 import re
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import Any, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils, MakefileParser, PhonyAnalyzer
+from ...utils.rule_context import (
+    ENDEF,
+    cleanup_readings,
+    orphaned_recipe_lines,
+    scan_makefile,
+)
 
 
 class PhonyRule(FormatterPlugin):
@@ -30,6 +37,8 @@ class PhonyRule(FormatterPlugin):
         # Get format-disabled line information from context
         disabled_line_indices = context.get("disabled_line_indices", set())
         block_start_index = context.get("block_start_index", 0)
+        # {index of a '# bake-format off' line: the lines it hides}
+        hidden = context.get("disabled_region_lines") or {}
 
         # Always detect phony targets (for check mode)
         detected_targets = PhonyAnalyzer.detect_phony_targets_excluding_conditionals(
@@ -102,6 +111,7 @@ class PhonyRule(FormatterPlugin):
                 errors,
                 warnings,
                 check_messages,
+                hidden,
             )
 
         # .PHONY exists - enhance and organize
@@ -153,6 +163,7 @@ class PhonyRule(FormatterPlugin):
                 errors,
                 warnings,
                 check_messages,
+                hidden,
             )
         else:
             # Ungroup mode: ensure all .PHONY declarations are individual
@@ -165,6 +176,7 @@ class PhonyRule(FormatterPlugin):
                 errors,
                 warnings,
                 check_messages,
+                hidden,
             )
 
     def _insert_phony_declarations(
@@ -175,6 +187,7 @@ class PhonyRule(FormatterPlugin):
         errors: list[str],
         warnings: list[str],
         check_messages: list[str],
+        hidden: Mapping[int, Sequence[str]],
     ) -> FormatResult:
         """Insert .PHONY declarations for detected targets."""
         group_phony = config.get("group_phony_declarations", True)
@@ -190,13 +203,9 @@ class PhonyRule(FormatterPlugin):
         new_phony_line = f".PHONY: {' '.join(target_names)}"
 
         if phony_at_top:
-            insert_index = MakefileParser.find_phony_insertion_point(lines)
-            formatted_lines = []
-            for i, line in enumerate(lines):
-                if i == insert_index:
-                    formatted_lines.append(new_phony_line)
-                    formatted_lines.append("")  # Add blank line after
-                formatted_lines.append(line)
+            formatted_lines = self._insert_after_header(
+                lines, new_phony_line, config, hidden
+            )
         else:
             formatted_lines = [new_phony_line, ""] + lines
 
@@ -271,6 +280,7 @@ class PhonyRule(FormatterPlugin):
         errors: list[str],
         warnings: list[str],
         check_messages: list[str],
+        hidden: Mapping[int, Sequence[str]],
     ) -> FormatResult:
         """Group all .PHONY declarations into a single declaration."""
         # Order targets by declaration order
@@ -295,23 +305,41 @@ class PhonyRule(FormatterPlugin):
         phony_at_top = config.get("phony_at_top", True)
 
         # Remove all existing .PHONY declarations first
-        lines_without_phony = []
-        for line in lines:
+        removed = [
+            i for i, line in enumerate(lines) if line.strip().startswith(".PHONY:")
+        ]
+        blanked = self._orphaned_recipe_lines(lines, removed, config, hidden)
+        if blanked is None:
+            # Another rule may need a line that a .PHONY line may own as its
+            # empty recipe, so the .PHONY lines stay as they are.
+            return FormatResult(
+                lines=lines,
+                changed=False,
+                errors=errors,
+                warnings=warnings,
+                check_messages=check_messages,
+            )
+        lines_without_phony: list[str] = []
+        # {index in lines: index in lines_without_phony}
+        new_indexes: dict[int, int] = {}
+        for i, line in enumerate(lines):
             if not line.strip().startswith(".PHONY:"):
-                lines_without_phony.append(line)
+                new_indexes[i] = len(lines_without_phony)
+                lines_without_phony.append("" if i in blanked else line)
 
         # Insert grouped declaration at the appropriate location
         if phony_at_top:
             # Use smart placement (same logic as when inserting new .PHONY)
-            insert_index = MakefileParser.find_phony_insertion_point(
-                lines_without_phony
+            formatted_lines = self._insert_after_header(
+                lines_without_phony,
+                phony_line,
+                config,
+                {
+                    new_indexes[index]: region
+                    for index, region in hidden.items()
+                    if index in new_indexes
+                },
             )
-            formatted_lines = []
-            for i, line in enumerate(lines_without_phony):
-                if i == insert_index:
-                    formatted_lines.append(phony_line)
-                    formatted_lines.append("")  # Add blank line after
-                formatted_lines.append(line)
         else:
             # Place at absolute top
             formatted_lines = [phony_line, ""] + lines_without_phony
@@ -339,6 +367,7 @@ class PhonyRule(FormatterPlugin):
         errors: list[str],
         warnings: list[str],
         check_messages: list[str],
+        hidden: Mapping[int, Sequence[str]],
     ) -> FormatResult:
         """Split grouped .PHONY declarations into individual declarations."""
         # Find all .PHONY line indices
@@ -408,6 +437,17 @@ class PhonyRule(FormatterPlugin):
         # Build new lines with individual declarations
         formatted_lines = []
         skip_indices = set(phony_line_indices)
+        blanked = self._orphaned_recipe_lines(lines, phony_line_indices, config, hidden)
+        if blanked is None:
+            # Another rule may need a line that a .PHONY line may own as its
+            # empty recipe, so the .PHONY lines stay as they are.
+            return FormatResult(
+                lines=lines,
+                changed=False,
+                errors=errors,
+                warnings=warnings,
+                check_messages=check_messages,
+            )
         insertions: dict[int, str] = {}
 
         for target_name, target_line_index in target_positions.items():
@@ -418,7 +458,7 @@ class PhonyRule(FormatterPlugin):
                 continue
             if i in insertions:
                 formatted_lines.append(insertions[i])
-            formatted_lines.append(line)
+            formatted_lines.append("" if i in blanked else line)
 
         # Only warn if we actually split grouped declarations (not if already individual)
         if has_grouped_declarations:
@@ -437,6 +477,77 @@ class PhonyRule(FormatterPlugin):
             warnings=warnings,
             check_messages=check_messages,
         )
+
+    @staticmethod
+    def _insert_after_header(
+        lines: list[str],
+        phony_line: str,
+        config: dict,
+        hidden: Mapping[int, Sequence[str]],
+    ) -> list[str]:
+        """
+        Insert the .PHONY line after the header of the file.
+
+        The line goes where MakefileParser.find_phony_insertion_point finds,
+        followed by a blank line. Inside a define body no blank line is added:
+        there it would be part of the variable's value (GNU make manual 6.8,
+        lines 4795-4799), and it would stay behind when a later run moves the
+        .PHONY line. After a line of only whitespace, which can be an empty
+        recipe that WhitespaceRule keeps (5.1, lines 2890-2891), a blank line
+        goes before the .PHONY line as well, where blank lines are normalized:
+        removing the .PHONY line on a later run leaves a blank line there.
+        Blank lines are ignored (lines 2884-2886).
+        """
+        insert_index = MakefileParser.find_phony_insertion_point(lines)
+        if insert_index >= len(lines):
+            return list(lines)
+        if PhonyRule._inside_define_body(lines, insert_index, hidden):
+            block = [phony_line]
+        elif (
+            insert_index > 0
+            and lines[insert_index - 1].isspace()
+            and config.get("normalize_empty_lines", True)
+        ):
+            block = ["", phony_line, ""]
+        else:
+            block = [phony_line, ""]
+        return lines[:insert_index] + block + lines[insert_index:]
+
+    @staticmethod
+    def _inside_define_body(
+        lines: list[str], index: int, hidden: Mapping[int, Sequence[str]]
+    ) -> bool:
+        """Check if make may read a line put before lines[index] in a define body."""
+        if not any("define" in line for line in lines) and not any(
+            "define" in line for region in hidden.values() for line in region
+        ):
+            return False
+        state = scan_makefile(lines, hidden)[index]
+        return (
+            state.may_be_define_body or state.kind == ENDEF or ENDEF in state.readings
+        )
+
+    @staticmethod
+    def _orphaned_recipe_lines(
+        lines: list[str],
+        removed: list[int],
+        config: dict,
+        hidden: Mapping[int, Sequence[str]],
+    ) -> Optional[set[int]]:
+        """
+        Find the whitespace-only recipe lines that the removed .PHONY lines leave.
+
+        They become blank lines (see orphaned_recipe_lines). None means that
+        one of them may be the empty recipe of another rule, so that the
+        .PHONY lines stay as they are (GNU make manual 5.1, lines 2881-2891;
+        5.9, lines 4040-4055). The lines are read as WhitespaceRule reads
+        them, so that the next run decides the same way.
+        """
+        if not removed:
+            return set()
+        strip_dangling = config.get("remove_trailing_whitespace", True)
+        readings = cleanup_readings(lines, hidden, strip_dangling)
+        return orphaned_recipe_lines(readings, removed)
 
     def _extract_phony_targets(self, lines: list[str]) -> list[str]:
         """Extract targets from existing .PHONY declarations."""

@@ -5,9 +5,16 @@ making the Makefile more readable.
 """
 
 import re
-from typing import Any
+from collections.abc import Collection
+from typing import Any, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import LineUtils
+from ...utils.rule_context import (
+    define_body_lines,
+    scan_makefile,
+    significant_whitespace_lines,
+)
 
 
 class AssignmentAlignmentRule(FormatterPlugin):
@@ -46,8 +53,32 @@ class AssignmentAlignmentRule(FormatterPlugin):
         warnings: list[str] = []
         check_messages: list[str] = []
 
-        # Find and process assignment blocks
-        blocks = self._find_assignment_blocks(lines, align_across_comments)
+        # Find and process assignment blocks. A define body is the value of a
+        # variable, so its lines are left as they are (GNU make manual 6.8,
+        # lines 4795-4799).
+        hidden = context.get("disabled_region_lines") or {}
+        remove_trailing_whitespace = config.get("remove_trailing_whitespace", True)
+        body_lines = define_body_lines(
+            lines, hidden, strip_dangling=remove_trailing_whitespace
+        )
+        # The trailing whitespace of a value is part of it (GNU make manual
+        # 6.2.2, lines 4273-4288). WhitespaceRule judges it when it removes
+        # trailing whitespace; otherwise only whitespace that make reads is
+        # kept here, and the whitespace after a final backslash, which does
+        # not continue the line (3.1.1, lines 762-769).
+        value_lines: Optional[set[int]] = None
+        if not remove_trailing_whitespace:
+            value_lines = significant_whitespace_lines(
+                lines, scan_makefile(lines, hidden), as_syntax=True
+            )
+            value_lines.update(
+                index
+                for index, line in enumerate(lines)
+                if LineUtils.has_dangling_backslash(line)
+            )
+        blocks = self._find_assignment_blocks(
+            lines, align_across_comments, body_lines, value_lines
+        )
 
         for block in blocks:
             block_changed = self._align_block(formatted_lines, block)
@@ -69,13 +100,21 @@ class AssignmentAlignmentRule(FormatterPlugin):
         )
 
     def _find_assignment_blocks(
-        self, lines: list[str], align_across_comments: bool
+        self,
+        lines: list[str],
+        align_across_comments: bool,
+        body_lines: Collection[int] = (),
+        value_lines: Optional[Collection[int]] = None,
     ) -> list[list[dict]]:
         """Find consecutive blocks of variable assignments.
 
         Args:
             lines: List of lines to analyze
             align_across_comments: If True, include comment lines in blocks
+            body_lines: The indexes of the lines of define bodies, which end a
+                block and are never aligned
+            value_lines: The indexes of the lines whose trailing whitespace
+                is kept, or None to keep it on every line
 
         Returns:
             List of blocks, where each block is a list of assignment info dicts
@@ -86,6 +125,13 @@ class AssignmentAlignmentRule(FormatterPlugin):
 
         for i, line in enumerate(lines):
             stripped = line.strip()
+
+            if i in body_lines:
+                in_continuation = False
+                if current_block:
+                    blocks.append(current_block)
+                    current_block = []
+                continue
 
             # Track line continuations
             if in_continuation:
@@ -145,8 +191,13 @@ class AssignmentAlignmentRule(FormatterPlugin):
                     current_block = []
                 continue
 
-            # Check for variable assignment
-            match = self.ASSIGNMENT_PATTERN.match(stripped)
+            # Check for variable assignment. The value keeps its trailing
+            # whitespace, which make keeps too (GNU make manual 6.2.2, lines
+            # 4273-4288).
+            if value_lines is None or i in value_lines:
+                match = self.ASSIGNMENT_PATTERN.match(line.lstrip())
+            else:
+                match = self.ASSIGNMENT_PATTERN.match(stripped)
             if match:
                 var_name = match.group(1)
                 operator = match.group(2)

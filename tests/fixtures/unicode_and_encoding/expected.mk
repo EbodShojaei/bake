@@ -61,4 +61,4 @@ unicode-files:
 	ls -la *.txt
 
 # Variable with mixed ASCII and Unicode
-MIXED_VAR = Hello世界مرحبا¡Hola!Привет🌍
+MIXED_VAR = Hello世界مرحبا¡Hola!Привет🌍 
