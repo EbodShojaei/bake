@@ -29,7 +29,7 @@
 - **Smart formatting**: Tabs for recipes, consistent spacing, line continuation cleanup
 - **Intelligent .PHONY detection**: Automatically identifies and manages phony targets
 - **Syntax validation**: Ensures Makefiles are valid before and after formatting
-- **Configurable rules**: Customize behavior via `{XDG_CONFIG_HOME}/bake.toml`
+- **Configurable rules**: Customize behavior via a project `.bake.toml` or `{XDG_CONFIG_HOME}/bake.toml`
 - **CI/CD ready**: Check mode for automated formatting validation
 - **VSCode extension**: Full editor integration available
 
@@ -75,6 +75,7 @@ mbake validate Makefile                 # Check Makefile syntax with GNU make
 # Configuration
 mbake init                              # Create config file
 mbake config                            # Show current settings
+mbake config --path                     # Show which config file is used
 mbake update                            # Update to latest version
 ```
 
@@ -88,6 +89,18 @@ mbake update                            # Update to latest version
 - `--config`: Use custom configuration file
 
 ## Configuration
+
+mbake looks for a configuration file in this order:
+
+1. `--config PATH`, if given
+2. `.bake.toml` in the current directory, or else in the nearest parent directory that has one
+3. `~/.bake.toml` if it exists, otherwise `$XDG_CONFIG_HOME/bake.toml` (default `~/.config/bake.toml`),
+   which `mbake init` creates
+
+A `.bake.toml` from step 2 that cannot be loaded is skipped with a warning on stderr, and the search
+continues in the parent directories. A file from step 3 that cannot be loaded is also skipped with a
+warning, and the built-in defaults are used; `mbake config` reports it as an error instead. An invalid
+`--config` file is always an error. Run `mbake config` to see which file is used and its settings.
 
 Create a config file with `mbake init`. Key settings:
 
