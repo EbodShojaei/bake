@@ -1,9 +1,12 @@
 """Tab formatting rule for Makefile recipes."""
 
+import re
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils
+from ...utils.rule_context import define_body_lines
 
 # Conditional directives that format() moves to column 1 or keeps, instead of
 # treating them as recipe lines.
@@ -30,7 +33,18 @@ class TabsRule(FormatterPlugin):
         tab_width = config.get("tab_width", 4)
         conditional_stack: list[str] = [] if indent_conditionals else []
 
+        # The lines of define bodies are the value of a variable, kept as
+        # written (GNU make manual 6.8, lines 4795-4799); see _lines_to_leave.
+        hidden = context.get("disabled_region_lines") or {}
+        leave = self._lines_to_leave(
+            lines, hidden, config.get("remove_trailing_whitespace", True)
+        )
+
         for line_index, line in enumerate(lines):
+            if line_index in leave:
+                formatted_lines.append(line)
+                continue
+
             # Skip empty lines
             if not line.strip():
                 formatted_lines.append(line)
@@ -180,6 +194,54 @@ class TabsRule(FormatterPlugin):
             warnings=warnings,
             check_messages=[],
         )
+
+    # A rule line whose target holds '$', '{' or '%': a template that
+    # $(eval $(call ...)) turns into a rule, whose recipe lines need a TAB
+    _RULE_LINE = re.compile(r"^([^\s:#=][^:#=]*?)\s*::?(?!=)")
+
+    @classmethod
+    def _lines_to_leave(
+        cls,
+        lines: list[str],
+        hidden: Mapping[int, Sequence[str]],
+        strip_dangling: bool,
+    ) -> set[int]:
+        """
+        Return the indexes of the define-body lines that format() leaves as written.
+
+        A define body is the value of a variable, so its lines are data, not
+        recipe lines (GNU make manual 6.8, lines 4795-4799): leading spaces
+        there must not become a TAB. The one exception is a body that holds a
+        rule template, a rule line whose target has '$', '{' or '%': after
+        $(eval $(call ...)) make reads its recipe lines as recipe lines, so
+        they keep getting their TAB, as before.
+
+        With strip_dangling, the lines are read as WhitespaceRule leaves them
+        when it removes trailing whitespace: a backslash that whitespace
+        followed then continues the line, which can swallow a 'define'
+        line, and this rule, which runs first, must make the same choice.
+        """
+        body = define_body_lines(lines, hidden, strip_dangling=strip_dangling)
+        if not body:
+            return set()
+        leave: set[int] = set()
+        run: list[int] = []
+        for index in sorted(body):
+            if run and index != run[-1] + 1:
+                leave.update(cls._body_run_to_leave(lines, run))
+                run = []
+            run.append(index)
+        leave.update(cls._body_run_to_leave(lines, run))
+        return leave
+
+    @classmethod
+    def _body_run_to_leave(cls, lines: list[str], run: list[int]) -> set[int]:
+        """Return the lines of one body to leave: all of them unless it is a template."""
+        for index in run:
+            match = cls._RULE_LINE.match(lines[index].strip())
+            if match and any(c in match.group(1) for c in "$%{"):
+                return set()
+        return set(run)
 
     def converts_to_recipe(
         self, line: str, line_index: int, lines: list[str], active_prefix: str
