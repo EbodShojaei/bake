@@ -57,6 +57,19 @@ def parse_version(version_str: str) -> tuple[int, ...]:
         raise VersionError(f"Invalid version format: {version_str}") from e
 
 
+def _is_prerelease(version_str: str) -> bool:
+    """Return True for pre-release versions such as '1.5.0a1' or '1.4.2rc0'.
+
+    Uses the same suffixes as parse_version, which compares a pre-release equal
+    to its base version.
+    """
+    if ".post" in version_str:
+        return False
+    return any(
+        suffix in version_str for suffix in ["rc", "alpha", "beta", "a", "b", "pre"]
+    )
+
+
 def get_pypi_version(
     package_name: str = "mbake", timeout: int = 5, include_prerelease: bool = False
 ) -> Optional[str]:
@@ -94,8 +107,9 @@ def get_pypi_version(
                 if not versions:
                     return None
 
-                # Sort by parsed version and return the latest
-                versions.sort(key=lambda x: x[0])
+                # Sort by parsed version and return the latest. A final release
+                # ranks above a pre-release of the same version (1.5.0 > 1.5.0a1).
+                versions.sort(key=lambda x: (x[0], not _is_prerelease(x[1])))
                 latest_version: str = versions[-1][1]
                 return latest_version
             else:
@@ -131,7 +145,13 @@ def check_for_updates(
         current_parsed = parse_version(current_version)
         latest_parsed = parse_version(latest_version)
 
-        update_available = latest_parsed > current_parsed
+        # parse_version treats a pre-release as its base version, so an
+        # installed pre-release (1.5.0a1) is also offered its final release.
+        update_available = latest_parsed > current_parsed or (
+            latest_parsed == current_parsed
+            and _is_prerelease(current_version)
+            and not _is_prerelease(latest_version)
+        )
         return update_available, latest_version, current_version
     except VersionError:
         return False, latest_version, current_version
