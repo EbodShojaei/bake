@@ -1471,6 +1471,35 @@ class LineUtils:
         return LineUtils.find_unquoted_char(line, "#")
 
     @staticmethod
+    def has_semicolon_on_second_scan(text: str) -> bool:
+        """
+        Check if make finds a ';' in part of a rule line when it scans it again.
+
+        make looks for the first unquoted ';' or '#' of a rule line (see
+        find_unquoted_char) and removes half of the backslashes before each
+        escaped one. If it found no unquoted ';' before the comment, it
+        expands the targets and the prerequisites and looks for ';' in them
+        once more. A ';' after 1, 5, 9, ... backslashes is escaped on the
+        first scan but not on the second: in the targets it ends the target
+        list, and in the prerequisites it starts an inline recipe, so
+        'foo: a\\;b' has the prerequisite 'a' and the recipe 'b' (GNU make
+        manual 3.1, lines 730-737; 4.2, lines 1499-1503). A ';' after 3, 7,
+        11, ... backslashes stays text. Text inside variable references is
+        skipped; what references expand to is not modelled.
+
+        Only call this when the rule line has no unquoted ';' outside
+        references before its comment.
+
+        Args:
+            text: The targets or the prerequisites of a rule line, cut at its
+                comment
+
+        Returns:
+            True if make finds a ';' in the text on that second scan
+        """
+        return _has_semicolon_on_second_scan(text)
+
+    @staticmethod
     def parse_variable_assignment(text: str) -> Optional[VariableAssignment]:
         """
         Parse a variable assignment the way GNU make 4.x does.

@@ -248,6 +248,51 @@ class RecipeValidationRule(FormatterPlugin):
             check_messages=check_messages,
         )
 
+    def line_facts(
+        self, lines: list[str], hidden: Optional[Mapping[int, list[str]]] = None
+    ) -> _LineFacts:
+        """
+        Return the facts about lines that is_missing_recipe_tab can reuse.
+
+        Pass the result to every is_missing_recipe_tab call for the same
+        lines, so that each fact is worked out once instead of once per call.
+
+        Args:
+            lines: The lines to check, which must not change while the facts
+                are in use
+            hidden: {index of a '# bake-format off' line: the lines it hides},
+                as format() gets them in context['disabled_region_lines']
+        """
+        return _LineFacts(lines, hidden)
+
+    def is_missing_recipe_tab(
+        self,
+        line: str,
+        line_index: int,
+        all_lines: list[str],
+        active_prefix: str,
+        facts: Optional[_LineFacts] = None,
+    ) -> bool:
+        """
+        Check if format() turns a line into a recipe line by adding a TAB.
+
+        format() does that when fix_missing_recipe_tabs is on, and reports
+        the line otherwise.
+
+        Args:
+            line: The line to check
+            line_index: Index of the line in all_lines
+            all_lines: All lines that format() reads
+            active_prefix: The recipe prefix in effect at the line
+            facts: line_facts(all_lines, ...), if known
+
+        Returns:
+            True if the line should be a recipe but is missing a tab
+        """
+        return self._is_missing_recipe_tab(
+            line, line_index, all_lines, active_prefix, facts
+        )
+
     def _is_missing_recipe_tab(
         self,
         line: str,
