@@ -697,14 +697,17 @@ def format(
                     else:
                         output_console.print(f"[green]Formatted:[/green] {file_path}")
 
-                        # Validate syntax if requested
+                        # Validate syntax if requested. Run make from the
+                        # Makefile's directory so relative includes resolve
+                        # the same way they do for the 'validate' command.
                         if validate_syntax:
                             try:
                                 proc = subprocess.run(
-                                    ["make", "-f", str(file_path), "--dry-run"],
+                                    ["make", "-f", file_path.name, "--dry-run"],
                                     capture_output=True,
                                     text=True,
                                     timeout=config.syntax_check_timeout,
+                                    cwd=file_path.parent,
                                 )
                                 if proc.returncode != 0:
                                     output_console.print(
