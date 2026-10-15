@@ -52,6 +52,7 @@ _mbake() {
                         '--backup[Create backup files]' \
                         '-b[Create backup files]' \
                         '--validate[Validate syntax after formatting]' \
+                        '--timeout[Timeout for --validate syntax check]' \
                         '--help[Show help]'
                     ;;
                 update)

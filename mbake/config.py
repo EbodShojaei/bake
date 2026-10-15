@@ -24,6 +24,19 @@ def get_active_command_name() -> str:
     return "mbake"
 
 
+# Largest accepted syntax_check_timeout, in seconds (one day).
+MAX_SYNTAX_CHECK_TIMEOUT = 86400
+
+
+def is_valid_syntax_check_timeout(value: object) -> bool:
+    """Return True for a positive number of seconds no larger than one day."""
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and 0 < value <= MAX_SYNTAX_CHECK_TIMEOUT
+    )
+
+
 @dataclass
 class FormatterConfig:
     """Configuration for Makefile formatting rules."""
@@ -66,8 +79,6 @@ class Config:
     formatter: FormatterConfig
     debug: bool = False
     verbose: bool = False
-    # Timeout used for make file syntax checking
-    syntax_check_timeout = 10
     # Error message formatting
     gnu_error_format: bool = (
         True  # Use GNU standard error format (file:line: Error: message)
@@ -75,6 +86,9 @@ class Config:
     wrap_error_messages: bool = (
         False  # Wrap long error messages (can interfere with IDE parsing)
     )
+    # Timeout in seconds for 'make' syntax checks. Declared last so that
+    # positional Config(...) arguments keep their meaning.
+    syntax_check_timeout: float = 10
 
     @staticmethod
     def determine_config_path() -> Path:
@@ -162,8 +176,12 @@ class Config:
             global_data["debug"] = data["debug"]
         if "verbose" in data:
             global_data["verbose"] = data["verbose"]
-        if "timeout_seconds" in data:
-            global_data["timeout_seconds"] = data["timeout_seconds"]
+        # One bad value must not discard the rest of the file, so anything
+        # other than a positive number of seconds keeps the default.
+        if "syntax_check_timeout" in data and is_valid_syntax_check_timeout(
+            data["syntax_check_timeout"]
+        ):
+            global_data["syntax_check_timeout"] = data["syntax_check_timeout"]
         if "gnu_error_format" in data:
             global_data["gnu_error_format"] = data["gnu_error_format"]
         if "wrap_error_messages" in data:

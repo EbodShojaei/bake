@@ -33,6 +33,7 @@ complete -c mbake -n "__fish_seen_subcommand_from format" -l debug -d "Enable de
 complete -c mbake -n "__fish_seen_subcommand_from format" -l config -r -d "Path to configuration file"
 complete -c mbake -n "__fish_seen_subcommand_from format" -l backup -s b -d "Create backup files"
 complete -c mbake -n "__fish_seen_subcommand_from format" -l validate -d "Validate syntax after formatting"
+complete -c mbake -n "__fish_seen_subcommand_from format" -l timeout -r -d "Timeout for --validate syntax check"
 complete -c mbake -n "__fish_seen_subcommand_from format" -s h -l help -d "Show this help message and exit"
 
 # update command

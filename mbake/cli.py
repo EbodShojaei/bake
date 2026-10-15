@@ -14,7 +14,7 @@ from rich.logging import RichHandler
 from rich.markup import escape
 
 from . import __version__
-from .config import Config
+from .config import MAX_SYNTAX_CHECK_TIMEOUT, Config, is_valid_syntax_check_timeout
 from .core.formatter import MakefileFormatter
 from .utils.version_utils import (
     VersionError,
@@ -154,6 +154,15 @@ def setup_logging(verbose: bool = False, debug: bool = False) -> None:
         datefmt="[%X]",
         handlers=[RichHandler(console=console, rich_tracebacks=True)],
     )
+
+
+def _check_syntax_check_timeout(value: Optional[float]) -> Optional[float]:
+    """Reject --timeout values that are not a positive number of seconds."""
+    if value is not None and not is_valid_syntax_check_timeout(value):
+        raise typer.BadParameter(
+            f"must be greater than 0 and at most {MAX_SYNTAX_CHECK_TIMEOUT} seconds"
+        )
+    return value
 
 
 @app.command()
@@ -317,6 +326,7 @@ def config(
         console.print("\n[bold]Global Settings[/bold]")
         console.print(f"  debug: {config.debug}")
         console.print(f"  verbose: {config.verbose}")
+        console.print(f"  syntax_check_timeout: {config.syntax_check_timeout}")
         console.print(f"  gnu_error_format: {config.gnu_error_format}")
         console.print(f"  wrap_error_messages: {config.wrap_error_messages}")
 
@@ -373,7 +383,7 @@ def validate(
                     ["make", "-f", str(tmp_path), "--dry-run", "--just-print"],
                     capture_output=True,
                     text=True,
-                    timeout=10,
+                    timeout=config.syntax_check_timeout,
                 )
 
                 if result.returncode == 0:
@@ -388,6 +398,12 @@ def validate(
                         console.print("[red]✗[/red] stdin: Invalid syntax")
                         console.print(f"  [dim]{escape(error_msg)}[/dim]")
                     any_errors = True
+            except subprocess.TimeoutExpired:
+                console.print("[yellow]?[/yellow] stdin: Validation timed out")
+            except FileNotFoundError:
+                console.print(
+                    "[yellow]?[/yellow] stdin: 'make' not found - skipping syntax validation"
+                )
             finally:
                 if tmp_path.exists():
                     tmp_path.unlink()
@@ -466,8 +482,14 @@ def format(
         False, "--verbose", "-v", help="Enable verbose output."
     ),
     debug: bool = typer.Option(False, "--debug", help="Enable debug output."),
-    syntax_check_timeout: int = typer.Option(
-        10, "--timeout", help="Set timeout for Makefile syntax check"
+    syntax_check_timeout: Optional[float] = typer.Option(
+        None,
+        "--timeout",
+        callback=_check_syntax_check_timeout,
+        help=(
+            "Timeout in seconds for the --validate syntax check "
+            "(default: syntax_check_timeout from the config file, or 10)."
+        ),
     ),
     config_file: Optional[Path] = typer.Option(
         None,
@@ -492,9 +514,8 @@ def format(
         config = Config.load_or_default(config_file, explicit=config_file is not None)
         config.verbose = verbose or config.verbose
         config.debug = debug or config.debug
-        config.syntax_check_timeout = (
-            syntax_check_timeout or config.syntax_check_timeout
-        )
+        if syntax_check_timeout is not None:
+            config.syntax_check_timeout = syntax_check_timeout
 
         # Get appropriately configured console
         output_console = get_console(config)
