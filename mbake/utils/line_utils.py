@@ -11,6 +11,215 @@ from ..constants.shell_commands import (
     SHELL_COMMAND_INDICATORS,
 )
 
+# The characters other than a newline at which str.splitlines() ends a line.
+# GNU make ends a line only at a newline (GNU make manual 3.1.1, lines 757-758
+# and 766-769) and reads all of them as part of the line. make 3.81 and 4.4.1
+# read CR, VT and FF as whitespace only in some places, such as before a
+# directive or an assignment; elsewhere they are data, such as in make 3.81's
+# target names and at the end of a value or a recipe line. FS, GS, RS, NEL,
+# LS and PS are never whitespace to make (they are not whitespace in the C
+# locale, and NEL, LS and PS are bytes of UTF-8 sequences to make).
+_WHITESPACE_BREAKS = "\r\x0b\x0c"
+_DATA_BREAKS = "\x1c\x1d\x1e\x85\N{LINE SEPARATOR}\N{PARAGRAPH SEPARATOR}"
+_SPLITLINES_BREAKS = _WHITESPACE_BREAKS + _DATA_BREAKS
+_SPLITLINES_BREAK_PATTERN = re.compile(f"[{_SPLITLINES_BREAKS}]")
+_WHITESPACE_BREAK_PATTERN = re.compile(f"[{_WHITESPACE_BREAKS}]")
+
+# Stand-ins for those characters while the formatting rules run, one for each,
+# in the same order. They are Unicode noncharacters, which Unicode reserves
+# for a program's internal use, and str.isspace() is False for them.
+_STAND_INS = "".join(chr(0xFDD0 + index) for index in range(len(_SPLITLINES_BREAKS)))
+_TO_STAND_INS = str.maketrans(_SPLITLINES_BREAKS, _STAND_INS)
+_FROM_STAND_INS = str.maketrans(_STAND_INS, _SPLITLINES_BREAKS)
+
+
+def _holds_stand_in(text: str) -> bool:
+    """Check if text holds one of the stand-ins of protect_line_breaks()."""
+    return any(stand_in in text for stand_in in _STAND_INS)
+
+
+def _physical_line_pieces(text: str) -> tuple[list[str], str]:
+    """Split text at its line endings as GNU make does.
+
+    Returns the lines that end with a line ending, without it, and the text
+    after the last line ending. A carriage return right before a newline is
+    part of the line ending: make 3.81 and 4.4.1 drop it. Text that has no
+    newline but ends with a carriage return (classic Mac line endings) ends
+    its lines at each carriage return.
+    """
+    if "\n" in text:
+        pieces = text.split("\n")
+        rest = pieces.pop()
+        return [piece[:-1] if piece.endswith("\r") else piece for piece in pieces], rest
+    if text.endswith("\r"):
+        pieces = text.split("\r")
+        rest = pieces.pop()
+        return pieces, rest
+    return [], text
+
+
+def _is_edge_whitespace(char: str) -> bool:
+    """Check if char is whitespace that may start or end a line's content.
+
+    This is whitespace as str.isspace() sees it, as in the formatting rules,
+    except FS, GS, RS, NEL, LS and PS, which are data for make everywhere.
+    """
+    return char.isspace() and char not in _DATA_BREAKS
+
+
+def _whitespace_edges(line: str) -> tuple[int, int]:
+    """Return where the content of line starts and ends.
+
+    The content runs from the first to the last character that is not edge
+    whitespace (see _is_edge_whitespace). For a line of whitespace only, both
+    are the length of the line.
+    """
+    start = 0
+    while start < len(line) and _is_edge_whitespace(line[start]):
+        start += 1
+    if start == len(line):
+        return start, start
+    end = len(line)
+    while _is_edge_whitespace(line[end - 1]):
+        end -= 1
+    return start, end
+
+
+def _split_line_edges(line: str, terminated: bool) -> list[str]:
+    """Split one physical line at the CR, VT and FF in its edges.
+
+    A CR, VT or FF in the content of the line (see _whitespace_edges) is data
+    and stays. One in the leading or trailing whitespace, or in a line of
+    whitespace only, still ends a line, as with str.splitlines(). terminated
+    says whether a line ending followed the line in the text.
+    """
+    if not _WHITESPACE_BREAK_PATTERN.search(line):
+        return [line]
+    start, end = _whitespace_edges(line)
+    if start == end:
+        parts = _WHITESPACE_BREAK_PATTERN.split(line)
+    else:
+        head = _WHITESPACE_BREAK_PATTERN.split(line[:start])
+        tail = _WHITESPACE_BREAK_PATTERN.split(line[end:])
+        parts = head[:-1] + [head[-1] + line[start:end] + tail[0]] + tail[1:]
+    if not terminated and len(parts) > 1 and not parts[-1]:
+        # A break at the very end of the text adds no empty line
+        parts.pop()
+    return parts
+
+
+def split_makefile_lines(text: str) -> list[str]:
+    """Split makefile text into physical lines the way GNU make reads them.
+
+    Only a newline ends a line: "the newline character is special and marks
+    the end of a statement" (GNU make manual 3.1.1, lines 757-758), and a
+    physical line is "a single line ending with a newline" (lines 766-769).
+    make 3.81 and 4.4.1 drop the one carriage return right before a newline
+    (CRLF line endings) and read every other character as part of the line.
+    str.splitlines() also ends lines at CR, VT, FF, FS, GS, RS, NEL, LS and PS,
+    which cut values, comments and recipe lines in two.
+
+    FS, GS, RS, NEL, LS and PS now never end a line. CR, VT and FF stay in
+    the content of a line, from its first to its last character that is not
+    whitespace. Elsewhere they keep their str.splitlines() handling for now,
+    so that the output stays as before there: in the leading or trailing
+    whitespace of a line, in a line of whitespace only, and as the line
+    endings of text that has no newline but ends with a carriage return
+    (classic Mac line endings). A carriage return at the very end of the
+    text therefore still ends the last line. make reads CR, VT and FF as
+    whitespace only in some of these places, such as before a directive or
+    an assignment; in others they are data, such as in make 3.81's target
+    names and at the end of a value or a recipe line. protect_line_breaks()
+    keeps the formatting rules from reading the characters that stay as
+    whitespace.
+
+    For text without CR, VT, FF, FS, GS, RS, NEL, LS and PS, other than the
+    carriage returns of CRLF line endings, the result equals
+    str.splitlines(): a final newline adds no empty line, and '' gives [].
+    Text that holds one of the stand-ins of protect_line_breaks(), which no
+    makefile needs, is split by str.splitlines(), as before.
+
+    Args:
+        text: The makefile text
+
+    Returns:
+        The physical lines, without their line endings
+    """
+    if _holds_stand_in(text):
+        return text.splitlines()
+    pieces, rest = _physical_line_pieces(text)
+    lines: list[str] = []
+    for piece in pieces:
+        lines.extend(_split_line_edges(piece, terminated=True))
+    if rest:
+        lines.extend(_split_line_edges(rest, terminated=False))
+    return lines
+
+
+def normalize_newlines(text: str) -> str:
+    """Return text with its line endings as newlines, as universal newlines read it.
+
+    CRLF and a lone carriage return become a newline, as with Python's
+    universal newlines, except for a carriage return that
+    split_makefile_lines() keeps in a line: that one stays. Every other
+    character stays too.
+
+    Args:
+        text: The makefile text
+
+    Returns:
+        The text with those line endings as newlines
+    """
+    if _holds_stand_in(text):
+        return text.replace("\r\n", "\n").replace("\r", "\n")
+    pieces, rest = _physical_line_pieces(text)
+    normalized = []
+    for piece in pieces + [rest]:
+        if "\r" in piece:
+            start, end = _whitespace_edges(piece)
+            piece = (
+                piece[:start].replace("\r", "\n")
+                + piece[start:end]
+                + piece[end:].replace("\r", "\n")
+            )
+        normalized.append(piece)
+    return "\n".join(normalized)
+
+
+def protect_line_breaks(lines: Sequence[str]) -> Optional[list[str]]:
+    """Hide CR, VT, FF, FS, GS, RS, NEL, LS and PS in lines from the rules.
+
+    The formatting rules read these characters as whitespace, so they would
+    strip or collapse them, although make reads them as part of the line (see
+    split_makefile_lines). They are replaced with stand-ins that are not
+    whitespace, so the rules leave them where they are: FS, GS, RS, NEL, LS
+    and PS everywhere, and CR, VT and FF in the content of a line, from its
+    first to its last character that is not whitespace.
+    restore_line_breaks() puts the characters back.
+
+    Args:
+        lines: The lines to format
+
+    Returns:
+        The lines with stand-ins, or None if a line already holds a stand-in
+    """
+    if any(_holds_stand_in(line) for line in lines):
+        return None
+    protected = []
+    for line in lines:
+        if _SPLITLINES_BREAK_PATTERN.search(line):
+            # FS, GS, RS, NEL, LS and PS are never edge whitespace, so they
+            # are all in the content
+            start, end = _whitespace_edges(line)
+            line = line[:start] + line[start:end].translate(_TO_STAND_INS) + line[end:]
+        protected.append(line)
+    return protected
+
+
+def restore_line_breaks(text: str) -> str:
+    """Put back the characters that protect_line_breaks() replaced in text."""
+    return text.translate(_FROM_STAND_INS)
+
 
 class VariableAssignment(NamedTuple):
     """A makefile variable assignment, split the way GNU make splits it.
@@ -2638,6 +2847,14 @@ class PhonyAnalyzer:
                         or "(" in target_name
                         or ")" in target_name
                     ):
+                        continue
+
+                    # Skip targets whose names hold CR, VT, FF, FS, GS, RS,
+                    # NEL, LS or PS (the stand-ins of protect_line_breaks()):
+                    # make 3.81 keeps a CR, VT or FF at the end of a target
+                    # name and make 4.4.1 drops it, and a '.PHONY' line cannot
+                    # end with one, so such targets are not declared
+                    if _holds_stand_in(target_name):
                         continue
 
                     # Analyze if target is phony

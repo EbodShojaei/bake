@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -16,6 +17,7 @@ from rich.markup import escape
 from . import __version__
 from .config import Config
 from .core.formatter import MakefileFormatter
+from .utils.line_utils import normalize_newlines, split_makefile_lines
 from .utils.version_utils import (
     VersionError,
     check_for_updates,
@@ -34,6 +36,31 @@ try:
         )
 except ImportError:
     pass
+
+
+def _read_stdin_text() -> str:
+    """Return the text on standard input with every character as it was sent.
+
+    make ends a line only at a newline (GNU make manual 3.1.1, lines 757-758),
+    so a carriage return inside a line is data. On Windows, text-mode stdin
+    uses universal newlines and turns such a carriage return into a newline,
+    so read the bytes and decode them with the encoding and error handler of
+    sys.stdin. On Windows, the carriage returns that normalize_newlines()
+    reads as line endings, such as those of CRLF, are still read as newlines,
+    as before.
+    """
+    stream = sys.stdin
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:
+        return stream.read()
+    data: bytes = buffer.read()
+    text = data.decode(
+        getattr(stream, "encoding", None) or "utf-8",
+        getattr(stream, "errors", None) or "strict",
+    )
+    if os.name == "nt":
+        text = normalize_newlines(text)
+    return text
 
 
 def get_command_name() -> str:
@@ -358,10 +385,9 @@ def validate(
                 )
                 raise typer.Exit(1)
 
-            import sys
             import tempfile
 
-            content = sys.stdin.read()
+            content = _read_stdin_text()
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".mk", delete=False
             ) as tmp_file:
@@ -510,9 +536,7 @@ def format(
                 )
                 raise typer.Exit(1)
 
-            import sys
-
-            content = sys.stdin.read()
+            content = _read_stdin_text()
             result = formatter.format(content)
 
             if result.errors:
@@ -558,7 +582,8 @@ def format(
                     backup_path = file_path.with_suffix(
                         f"{file_path.suffix}.{timestamp}.bak"
                     )
-                    backup_path.write_text(file_path.read_text(encoding="utf-8"))
+                    # A byte-for-byte copy of the original
+                    backup_path.write_bytes(file_path.read_bytes())
                     if verbose:
                         output_console.print(
                             f"[dim]Created backup: {backup_path}[/dim]"
@@ -566,9 +591,12 @@ def format(
 
                 # Show diff if requested
                 if diff:
-                    original_content = file_path.read_text(encoding="utf-8")
+                    # Read and split the file as format_file does
+                    with open(file_path, encoding="utf-8", newline="") as source:
+                        raw_content = source.read()
+                    original_content = normalize_newlines(raw_content)
                     formatted_lines, errors, warnings = formatter.format_lines(
-                        original_content.splitlines()
+                        split_makefile_lines(raw_content)
                     )
                     formatted_content = "\n".join(formatted_lines)
                     if (
@@ -580,8 +608,8 @@ def format(
                     if formatted_content != original_content:
                         console.print(f"\n[bold]Diff for {file_path}:[/bold]")
                         # Simple diff display
-                        original_lines = original_content.splitlines()
-                        formatted_lines_list = formatted_content.splitlines()
+                        original_lines = split_makefile_lines(original_content)
+                        formatted_lines_list = split_makefile_lines(formatted_content)
 
                         for orig, fmt in zip(original_lines, formatted_lines_list):
                             if orig != fmt:

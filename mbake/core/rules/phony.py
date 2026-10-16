@@ -5,7 +5,12 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils.line_utils import LineUtils, MakefileParser, PhonyAnalyzer
+from ...utils.line_utils import (
+    LineUtils,
+    MakefileParser,
+    PhonyAnalyzer,
+    restore_line_breaks,
+)
 from ...utils.rule_context import (
     ENDEF,
     cleanup_readings,
@@ -49,6 +54,29 @@ class PhonyRule(FormatterPlugin):
         has_phony = MakefileParser.has_phony_declarations(lines)
         auto_insert_enabled = config.get("auto_insert_phony_declarations", False)
         group_phony = config.get("group_phony_declarations", True)
+
+        # Leave the .PHONY lines as written when one holds CR, VT, FF, FS,
+        # GS, RS, NEL, LS or PS inside it, for which the rules see a
+        # stand-in (see protect_line_breaks; restoring changes only such a
+        # line). make can read the character as part of a target name
+        # ('.PHONY: b<FF> a' declares 'b<FF>'), and grouping or splitting
+        # the line can move it to the end of a line, where make drops it
+        # and the next run ends the line there.
+        if (
+            has_phony
+            and not check_mode
+            and any(
+                line.strip().startswith(".PHONY:") and restore_line_breaks(line) != line
+                for line in lines
+            )
+        ):
+            return FormatResult(
+                lines=lines,
+                changed=False,
+                errors=errors,
+                warnings=warnings,
+                check_messages=check_messages,
+            )
 
         if not has_phony:
             # No .PHONY exists - insert if enabled
