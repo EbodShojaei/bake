@@ -327,8 +327,17 @@ class PhonyRule(FormatterPlugin):
                 new_indexes[i] = len(lines_without_phony)
                 lines_without_phony.append("" if i in blanked else line)
 
-        # Insert grouped declaration at the appropriate location
-        if phony_at_top:
+        # Insert grouped declaration at the appropriate location. A declaration
+        # that owns whitespace-only recipe lines (blanked) moves as before.
+        in_place = (
+            None
+            if blanked
+            else self._declaration_in_place(lines, removed, phony_line, config, hidden)
+        )
+        if in_place is not None:
+            # The declaration is already where inserting it would put it.
+            formatted_lines = in_place
+        elif phony_at_top:
             # Use smart placement (same logic as when inserting new .PHONY)
             formatted_lines = self._insert_after_header(
                 lines_without_phony,
@@ -530,6 +539,65 @@ class PhonyRule(FormatterPlugin):
         else:
             block = [phony_line, ""]
         return lines[:insert_index] + block + lines[insert_index:]
+
+    @staticmethod
+    def _declaration_in_place(
+        lines: list[str],
+        removed: list[int],
+        phony_line: str,
+        config: dict,
+        hidden: Mapping[int, Sequence[str]],
+    ) -> Optional[list[str]]:
+        """
+        Return lines with the .PHONY line rewritten where it is, or None.
+
+        Grouping removes every .PHONY line and inserts the grouped line,
+        followed by a blank line, at the top of the file or after its header
+        (see _insert_after_header). On the next run the blank line that the
+        previous run put after the declaration stayed behind, and the line
+        went in again before or after it (find_phony_insertion_point passes
+        over a blank line unless it ends the header comments). So below the
+        header the second run added a blank line before the declaration,
+        even as the first line of a file that began with it, and with
+        normalize_empty_lines off every run added one more blank line. When
+        removing the only .PHONY line and the empty line after it, then
+        inserting the grouped line, gives back the same lines, the
+        declaration is already where it goes: only its text is replaced, and
+        the next run changes nothing.
+
+        Inserting it again would only add a blank line before or after it.
+        make ignores blank lines (GNU make manual 3.1, lines 733-734; 5.1,
+        lines 2884-2886) except in define bodies, where they are part of the
+        value (6.8, lines 4795-4799 and 4806-4809), and the insertion adds
+        none there. After a line that ends with a backslash, the blank line
+        decides whether make reads the .PHONY line as part of that line (3.1,
+        lines 730-733; 3.1.1, lines 762-769), so the declaration is inserted
+        again there, as before, unless the insertion puts it right back after
+        that line: then it would only gain a blank line below it.
+        """
+        if len(removed) != 1:
+            return None
+        index = removed[0]
+        if index + 1 >= len(lines) or lines[index + 1] != "":
+            return None
+        # rstrip: until S7, WhitespaceRule strips the whitespace after a
+        # dangling backslash, so the line continues in the output.
+        if index > 0 and LineUtils.ends_with_continuation(lines[index - 1].rstrip()):
+            without = lines[:index] + lines[index + 1 :]
+            if MakefileParser.find_phony_insertion_point(without) != index:
+                return None
+        in_place = lines[:index] + [phony_line] + lines[index + 1 :]
+        rest = lines[:index] + lines[index + 2 :]
+        if not config.get("phony_at_top", True):
+            return in_place if [phony_line, ""] + rest == in_place else None
+        # Neither removed line is a '# bake-format off' line; the ones after
+        # them move up by two.
+        rest_hidden = {
+            position if position < index else position - 2: region
+            for position, region in hidden.items()
+        }
+        inserted = PhonyRule._insert_after_header(rest, phony_line, config, rest_hidden)
+        return in_place if inserted == in_place else None
 
     @staticmethod
     def _inside_define_body(
