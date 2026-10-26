@@ -5,7 +5,7 @@ from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.pattern_utils import PatternUtils
-from ...utils.rule_context import define_body_lines
+from ...utils.rule_context import RecipeTextLines, define_body_lines
 
 
 class AssignmentSpacingRule(FormatterPlugin):
@@ -24,13 +24,15 @@ class AssignmentSpacingRule(FormatterPlugin):
         warnings: list[str] = []
 
         space_around_assignment = config.get("space_around_assignment", True)
+        hidden = context.get("disabled_region_lines") or {}
+        repair = config.get("remove_trailing_whitespace", True)
         # A define body is the value of a variable, so its lines are left as
         # they are (GNU make manual 6.8, lines 4795-4799).
-        body_lines = define_body_lines(
-            lines,
-            context.get("disabled_region_lines") or {},
-            strip_dangling=config.get("remove_trailing_whitespace", True),
-        )
+        body_lines = define_body_lines(lines, hidden, strip_dangling=repair)
+        # make passes the text of a recipe's continuation lines to the shell,
+        # also where it looks like an assignment (GNU make manual 5.1, lines
+        # 2897-2900; 5.1.1, lines 2917-2925), so they are left as they are.
+        recipe_text = RecipeTextLines(lines, hidden, repair)
 
         for i, line in enumerate(lines, 1):
             new_line = line  # Default to original line
@@ -44,7 +46,9 @@ class AssignmentSpacingRule(FormatterPlugin):
             ):
                 pass  # Keep original line
             # Check if line contains assignment operator
-            elif re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*(:=|\+=|\?=|=|!=)\s*", line):
+            elif re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*(:=|\+=|\?=|=|!=)\s*", line) and (
+                i - 1 not in recipe_text
+            ):
                 # Check for reversed assignment operators first
                 reversed_warning = self._check_reversed_operators(line, i)
                 if reversed_warning:

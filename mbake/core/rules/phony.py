@@ -1,7 +1,7 @@
 """Unified PHONY declaration rule: detection, insertion, and grouping."""
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Container, Mapping, Sequence
 from typing import Any, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
@@ -15,8 +15,11 @@ from ...utils.rule_context import (
     ENDEF,
     RECIPE,
     LineState,
-    cleanup_readings,
+    NonRuleContinuationLines,
+    RecipeTextLines,
+    dangling_backslash_repairs,
     orphaned_recipe_lines,
+    repaired_readings,
     scan_makefile,
 )
 
@@ -47,9 +50,13 @@ class PhonyRule(FormatterPlugin):
         # {index of a '# bake-format off' line: the lines it hides}
         hidden = context.get("disabled_region_lines") or {}
 
-        # Always detect phony targets (for check mode)
+        # Always detect phony targets (for check mode). A continuation line
+        # of a recipe is shell text, where 'docker run -p 8080:80' names no
+        # target (GNU make manual 5.1.1, lines 2917-2925), and neither does
+        # one of an assignment or a define body (see _lines_without_rules).
+        no_rules = self._lines_without_rules(lines, config, hidden)
         detected_targets = PhonyAnalyzer.detect_phony_targets_excluding_conditionals(
-            lines, disabled_line_indices, block_start_index
+            lines, disabled_line_indices, block_start_index, no_rules
         )
         # The order of the rules that define them, the same on every run (a
         # set has no order that survives a new process)
@@ -103,7 +110,7 @@ class PhonyRule(FormatterPlugin):
                 ordered_targets = ordered_detected
 
                 if phony_at_top:
-                    insert_index = MakefileParser.find_phony_insertion_point(lines)
+                    insert_index = self._insertion_point(lines, config, hidden)
                     line_num = insert_index + 1
                 else:
                     line_num = 1
@@ -231,7 +238,7 @@ class PhonyRule(FormatterPlugin):
         if not group_phony:
             # Insert individual declarations before each target
             return self._insert_individual_phony_declarations(
-                lines, target_names, config, errors, warnings, check_messages
+                lines, target_names, config, errors, warnings, check_messages, hidden
             )
 
         # Insert grouped declaration
@@ -264,9 +271,12 @@ class PhonyRule(FormatterPlugin):
         errors: list[str],
         warnings: list[str],
         check_messages: list[str],
+        hidden: Optional[Mapping[int, Sequence[str]]] = None,
     ) -> FormatResult:
         """Insert individual .PHONY declarations before each target."""
-        target_positions = self._find_target_line_positions(lines, target_names)
+        target_positions = self._find_target_line_positions(
+            lines, target_names, self._lines_without_rules(lines, config, hidden)
+        )
 
         if not target_positions:
             return FormatResult(
@@ -541,6 +551,29 @@ class PhonyRule(FormatterPlugin):
         )
 
     @staticmethod
+    def _insertion_point(
+        lines: list[str], config: dict, hidden: Mapping[int, Sequence[str]]
+    ) -> int:
+        """
+        Return MakefileParser.find_phony_insertion_point of the lines as
+        WhitespaceRule leaves them.
+
+        A backslash continues a line only where nothing follows it (GNU make
+        manual 3.1.1, lines 762-769). WhitespaceRule removes the whitespace
+        after it where dangling_backslash_repairs finds it, when it removes
+        trailing whitespace, so those lines continue; every other such line
+        stays as it is and continues none.
+        """
+        if config.get("remove_trailing_whitespace", True):
+            repairs = dangling_backslash_repairs(lines, hidden)
+            if repairs:
+                lines = [
+                    line.rstrip() if index in repairs else line
+                    for index, line in enumerate(lines)
+                ]
+        return MakefileParser.find_phony_insertion_point(lines)
+
+    @staticmethod
     def _insert_after_header(
         lines: list[str],
         phony_line: str,
@@ -560,7 +593,7 @@ class PhonyRule(FormatterPlugin):
         removing the .PHONY line on a later run leaves a blank line there.
         Blank lines are ignored (lines 2884-2886).
         """
-        insert_index = MakefileParser.find_phony_insertion_point(lines)
+        insert_index = PhonyRule._insertion_point(lines, config, hidden)
         if insert_index >= len(lines):
             return list(lines)
         if PhonyRule._inside_define_body(lines, insert_index, hidden):
@@ -615,11 +648,16 @@ class PhonyRule(FormatterPlugin):
         index = removed[0]
         if index + 1 >= len(lines) or lines[index + 1] != "":
             return None
-        # rstrip: until S7, WhitespaceRule strips the whitespace after a
-        # dangling backslash, so the line continues in the output.
-        if index > 0 and LineUtils.ends_with_continuation(lines[index - 1].rstrip()):
+        # The line above continues only where it ends with a backslash. One
+        # that whitespace follows stays as it is: the '.PHONY:' line after it
+        # stands alone (see dangling_backslash_repairs).
+        if index > 0 and LineUtils.ends_with_continuation(lines[index - 1]):
             without = lines[:index] + lines[index + 1 :]
-            if MakefileParser.find_phony_insertion_point(without) != index:
+            without_hidden = {
+                position if position < index else position - 1: region
+                for position, region in hidden.items()
+            }
+            if PhonyRule._insertion_point(without, config, without_hidden) != index:
                 return None
         in_place = lines[:index] + [phony_line] + lines[index + 1 :]
         rest = lines[:index] + lines[index + 2 :]
@@ -667,7 +705,7 @@ class PhonyRule(FormatterPlugin):
         if not removed:
             return set()
         strip_dangling = config.get("remove_trailing_whitespace", True)
-        readings = cleanup_readings(lines, hidden, strip_dangling)
+        readings = repaired_readings(lines, hidden, strip_dangling)
         if any(
             PhonyRule._owns_commands(read, states, removed) for read, states in readings
         ):
@@ -770,10 +808,50 @@ class PhonyRule(FormatterPlugin):
 
         return ordered_targets
 
+    @staticmethod
+    def _lines_without_rules(
+        lines: list[str],
+        config: dict,
+        hidden: Optional[Mapping[int, Sequence[str]]],
+    ) -> "_AnyOf":
+        """
+        Return continuation lines whose text names no target, as make reads them.
+
+        These are the continuation lines of a recipe, which are shell text
+        (see rule_context.recipe_text_lines; GNU make manual 5.1.1, lines
+        2917-2925), and those of every other logical line that make reads
+        as no rule, such as an assignment, whose value they continue, or a
+        define body, the value of a variable (see
+        rule_context.NonRuleContinuationLines; 6.8, lines 4795-4799):
+        'X = a \\' then '  e3: ; @echo e' sets X and defines no target e3.
+        ContinuationRule leaves the lines of a body as written, so a body
+        line such as '  host:port' keeps its leading spaces, where it used
+        to take the TAB of the line above it. The lines are read as
+        WhitespaceRule leaves them.
+        """
+        strip_dangling = config.get("remove_trailing_whitespace", True)
+        return _AnyOf(
+            RecipeTextLines(lines, hidden, strip_dangling),
+            NonRuleContinuationLines(lines, hidden, strip_dangling),
+        )
+
     def _find_target_line_positions(
-        self, lines: list[str], target_names: list[str]
+        self,
+        lines: list[str],
+        target_names: list[str],
+        recipe_text: Container[int] = (),
     ) -> dict[str, int]:
-        """Find the line index where each target appears."""
+        """
+        Find the line index where each target appears.
+
+        A line of recipe_text is shell text or a continuation line of an
+        assignment or a define body (see _lines_without_rules), which names
+        no target. A
+        target on a line that continues the line above it belongs to the
+        logical line that starts above (GNU make manual 3.1.1, lines
+        762-769): its index is that of the logical line's first line, where
+        a '.PHONY' line can go without splitting the rule.
+        """
         target_positions: dict[str, int] = {}
         target_pattern = re.compile(r"^([^:=]+):(:?)\s*(.*)$")
 
@@ -782,7 +860,7 @@ class PhonyRule(FormatterPlugin):
             if not stripped or stripped.startswith("#") or line.startswith("\t"):
                 continue
             match = target_pattern.match(stripped)
-            if match:
+            if match and i not in recipe_text:
                 target_list = match.group(1).strip()
                 is_double_colon = match.group(2) == ":"
                 target_body = match.group(3).strip()
@@ -801,12 +879,15 @@ class PhonyRule(FormatterPlugin):
                 target_names_on_line = [
                     t.strip() for t in target_list.split() if t.strip()
                 ]
+                start = i
+                while start > 0 and LineUtils.ends_with_continuation(lines[start - 1]):
+                    start -= 1
                 for target_name in target_names_on_line:
                     if (
                         target_name in target_names
                         and target_name not in target_positions
                     ):
-                        target_positions[target_name] = i
+                        target_positions[target_name] = start
 
         return target_positions
 
@@ -832,3 +913,13 @@ class PhonyRule(FormatterPlugin):
             if line.strip().startswith(".PHONY:"):
                 return i + 1  # 1-indexed
         return 1
+
+
+class _AnyOf:
+    """The line indexes that any of some containers holds."""
+
+    def __init__(self, *containers: Container[int]) -> None:
+        self._containers = containers
+
+    def __contains__(self, index: object) -> bool:
+        return any(index in container for container in self._containers)

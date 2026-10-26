@@ -3,9 +3,10 @@
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import LineUtils
 from ...utils.rule_context import (
-    cleanup_readings,
     empty_recipes_to_keep,
+    repaired_readings,
     significant_whitespace_lines,
 )
 
@@ -21,7 +22,11 @@ class WhitespaceRule(FormatterPlugin):
     - define bodies, which are variable values (6.8, lines 4795-4814);
     - the trailing whitespace of a variable value (6.2.2, lines 4273-4288),
       and of an include directive whose file names make 3.81 reads
-      differently without it (see include_whitespace_lines).
+      differently without it (see include_whitespace_lines);
+    - the whitespace after a final backslash, without which the backslash
+      would continue the line (3.1.1, lines 762-769), unless make rejects
+      the next line on its own: then it goes, as it always did, and the line
+      continues (see dangling_backslash_repairs).
 
     A line counts as such wherever make may read it so, in any branch of the
     conditionals above it and with make 3.81 or 4.x (see
@@ -48,11 +53,11 @@ class WhitespaceRule(FormatterPlugin):
 
         # {index of a '# bake-format off' line: the lines it hides}
         hidden = context.get("disabled_region_lines") or {}
-        # The whitespace after a final backslash goes as before, so the lines
-        # are read as they will be after that, the last reading. An empty
-        # recipe line is kept only where make reads it so in the lines as
-        # they are as well.
-        readings = cleanup_readings(lines, hidden, remove_trailing_whitespace)
+        # The whitespace after a final backslash goes where
+        # dangling_backslash_repairs finds it, so the lines are read as they
+        # will be after that, the last reading. An empty recipe line is kept
+        # only where make reads it so in the lines as they are as well.
+        readings = repaired_readings(lines, hidden, remove_trailing_whitespace)
         read_lines, states = readings[-1]
         empty_recipes = empty_recipes_to_keep(readings)
         value_lines = significant_whitespace_lines(read_lines, states)
@@ -69,11 +74,15 @@ class WhitespaceRule(FormatterPlugin):
                 prev_was_empty = False
                 continue
 
-            # Remove trailing whitespace if enabled
+            # Remove trailing whitespace if enabled. A backslash that whitespace
+            # still follows here is not repaired, and keeps it so as not to
+            # continue the line.
             if remove_trailing_whitespace:
                 if index in empty_recipes:
                     line = empty_recipes[index]
-                elif index not in value_lines:
+                elif index not in value_lines and not (
+                    LineUtils.has_dangling_backslash(line)
+                ):
                     line = line.rstrip()
 
             # Normalize consecutive empty lines if enabled

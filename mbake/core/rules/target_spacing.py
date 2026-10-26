@@ -1,11 +1,16 @@
 """Target colon spacing rule for Makefiles."""
 
 import re
-from typing import Any
+from typing import Any, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils
 from ...utils.pattern_utils import PatternUtils
+from ...utils.rule_context import (
+    RecipeTextLines,
+    dangling_backslash_repairs,
+    define_body_lines,
+)
 
 
 class TargetSpacingRule(FormatterPlugin):
@@ -26,12 +31,33 @@ class TargetSpacingRule(FormatterPlugin):
         space_before_colon = config.get("space_before_colon", False)
         space_after_colon = config.get("space_after_colon", True)
 
+        # The lines whose whitespace after a final backslash goes (see
+        # dangling_backslash_repairs), when they are first needed
+        repairs: Optional[set[int]] = None
+        # make passes the text of a recipe's continuation lines to the shell,
+        # also where it looks like a rule, as in 'docker run -p 8080:80'
+        # (GNU make manual 5.1.1, lines 2917-2925), so they are left as they
+        # are.
+        recipe_text = RecipeTextLines(
+            lines,
+            context.get("disabled_region_lines") or {},
+            config.get("remove_trailing_whitespace", True),
+        )
+        # A define body is the value of a variable, so its lines are left as
+        # they are (GNU make manual 6.8, lines 4795-4799).
+        body_lines = define_body_lines(
+            lines,
+            context.get("disabled_region_lines") or {},
+            strip_dangling=config.get("remove_trailing_whitespace", True),
+        )
+
         for line_index, line in enumerate(lines):
-            # Skip recipe lines, comments, and empty lines
+            # Skip recipe lines, comments, empty lines and define bodies
             if (
                 line.startswith("\t")
                 or line.strip().startswith("#")
                 or not line.strip()
+                or line_index in body_lines
             ):
                 formatted_lines.append(line)
                 continue
@@ -78,13 +104,25 @@ class TargetSpacingRule(FormatterPlugin):
                     # written: the comment holds no directories, and make
                     # keeps the whitespace before it in the value (GNU make
                     # manual 3.1, lines 730-742; 6.2.2, lines 4273-4288).
-                    # Whitespace after the comment goes as before.
+                    # Whitespace after the comment goes as before, but not
+                    # after a final backslash, which it keeps from continuing
+                    # the comment (3.1.1, lines 762-769), unless
+                    # WhitespaceRule makes the line continue anyway (see
+                    # dangling_backslash_repairs).
                     comment = LineUtils.find_comment_start(value_part)
                     value_text = value_part if comment is None else value_part[:comment]
                     dirs_text = value_text.rstrip()
                     tail = value_part[len(dirs_text) :]
                     if comment is not None:
-                        tail = tail.rstrip()
+                        keep_tail = LineUtils.has_dangling_backslash(line)
+                        if keep_tail and config.get("remove_trailing_whitespace", True):
+                            if repairs is None:
+                                repairs = dangling_backslash_repairs(
+                                    lines, context.get("disabled_region_lines") or {}
+                                )
+                            keep_tail = line_index not in repairs
+                        if not keep_tail:
+                            tail = tail.rstrip()
 
                     # Split by colons and spaces, then rejoin based on original style
                     dirs = re.split(r"[: ]+", dirs_text.strip())
@@ -201,6 +239,13 @@ class TargetSpacingRule(FormatterPlugin):
                     formatted_lines.append(line)
             else:
                 formatted_lines.append(line)
+
+        if changed:
+            formatted_lines = [
+                line if new_line != line and index in recipe_text else new_line
+                for index, (line, new_line) in enumerate(zip(lines, formatted_lines))
+            ]
+            changed = formatted_lines != lines
 
         return FormatResult(
             lines=formatted_lines,

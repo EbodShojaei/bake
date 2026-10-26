@@ -10,6 +10,7 @@ from ...constants.makefile_targets import DECLARATIVE_TARGETS
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import ConditionalTracker, LineUtils
 from ...utils.rule_context import (
+    DanglingRepairs,
     is_automake_conditional,
     line_by_line_prefixes,
     recipe_prefixes,
@@ -254,6 +255,13 @@ class _RecipeScan:
             if config.get("indent_nested_conditionals", False)
             else None
         )
+        # The dangling lines that TabsRule reads as repaired (see
+        # TabsRule._is_variable_continuation)
+        self.repaired = (
+            DanglingRepairs(lines, hidden)
+            if config.get("remove_trailing_whitespace", True)
+            else None
+        )
         # The open conditionals, outermost first, and the branch of each that
         # the scan is in
         self.conditionals: list[_Conditional] = []
@@ -377,7 +385,13 @@ class _RecipeScan:
         line = self.lines[index]
         if line.startswith(" "):
             return self.rule._tabs.converts_to_recipe(
-                line, index, self.lines, prefix, reading=self.tabs_reading
+                line,
+                index,
+                self.lines,
+                prefix,
+                reading=self.tabs_reading,
+                phony_lines_move=TabsRule.phony_lines_move(self.config),
+                repaired=self.repaired,
             )
         if not self.fix_tabs:
             return False

@@ -11,7 +11,9 @@ from typing import Any, Optional
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils
 from ...utils.rule_context import (
+    dangling_backslash_repairs,
     define_body_lines,
+    recipe_text_lines,
     scan_makefile,
     significant_whitespace_lines,
 )
@@ -61,6 +63,11 @@ class AssignmentAlignmentRule(FormatterPlugin):
         body_lines = define_body_lines(
             lines, hidden, strip_dangling=remove_trailing_whitespace
         )
+        # make passes the text of a recipe's continuation lines to the shell,
+        # also where it looks like an assignment (GNU make manual 5.1, lines
+        # 2897-2900; 5.1.1, lines 2917-2925): such a line ends a block and is
+        # never aligned, like a line of a define body.
+        body_lines |= recipe_text_lines(lines, hidden, remove_trailing_whitespace)
         # The trailing whitespace of a value is part of it (GNU make manual
         # 6.2.2, lines 4273-4288). WhitespaceRule judges it when it removes
         # trailing whitespace; otherwise only whitespace that make reads is
@@ -76,8 +83,16 @@ class AssignmentAlignmentRule(FormatterPlugin):
                 for index, line in enumerate(lines)
                 if LineUtils.has_dangling_backslash(line)
             )
+        # A backslash continues a line only where an odd number of them ends
+        # it (GNU make manual 3.1.1, lines 762-769). Where whitespace follows
+        # it, it goes only on the lines of dangling_backslash_repairs, which
+        # then continue; every other such line stays as it is and ends a
+        # block, so that no line comes to continue.
+        repairs: set[int] = set()
+        if remove_trailing_whitespace:
+            repairs = dangling_backslash_repairs(lines, hidden)
         blocks = self._find_assignment_blocks(
-            lines, align_across_comments, body_lines, value_lines
+            lines, align_across_comments, body_lines, value_lines, repairs
         )
 
         for block in blocks:
@@ -105,6 +120,7 @@ class AssignmentAlignmentRule(FormatterPlugin):
         align_across_comments: bool,
         body_lines: Collection[int] = (),
         value_lines: Optional[Collection[int]] = None,
+        repairs: Collection[int] = (),
     ) -> list[list[dict]]:
         """Find consecutive blocks of variable assignments.
 
@@ -115,6 +131,9 @@ class AssignmentAlignmentRule(FormatterPlugin):
                 block and are never aligned
             value_lines: The indexes of the lines whose trailing whitespace
                 is kept, or None to keep it on every line
+            repairs: The lines whose whitespace after a final backslash goes
+                (see dangling_backslash_repairs); every other line with such
+                whitespace ends a block and is never aligned
 
         Returns:
             List of blocks, where each block is a list of assignment info dicts
@@ -126,7 +145,9 @@ class AssignmentAlignmentRule(FormatterPlugin):
         for i, line in enumerate(lines):
             stripped = line.strip()
 
-            if i in body_lines:
+            if i in body_lines or (
+                LineUtils.has_dangling_backslash(line) and i not in repairs
+            ):
                 in_continuation = False
                 if current_block:
                     blocks.append(current_block)
@@ -135,7 +156,7 @@ class AssignmentAlignmentRule(FormatterPlugin):
 
             # Track line continuations
             if in_continuation:
-                if not stripped.endswith("\\"):
+                if not self._continues(line, i, repairs):
                     in_continuation = False
                 continue
 
@@ -215,7 +236,7 @@ class AssignmentAlignmentRule(FormatterPlugin):
                 )
 
                 # Check for line continuation
-                if stripped.endswith("\\"):
+                if self._continues(line, i, repairs):
                     in_continuation = True
             else:
                 # Non-assignment line breaks the block
@@ -233,6 +254,14 @@ class AssignmentAlignmentRule(FormatterPlugin):
             for block in blocks
             if sum(1 for item in block if not item.get("is_comment", False)) >= 2
         ]
+
+    @staticmethod
+    def _continues(line: str, index: int, repairs: Collection[int]) -> bool:
+        """Check if a line continues on the next one, after the repairs (GNU
+        make manual 3.1.1, lines 762-769)."""
+        return LineUtils.ends_with_continuation(line) or (
+            index in repairs and LineUtils.has_dangling_backslash(line)
+        )
 
     def _align_block(self, lines: list[str], block: list[dict]) -> bool:
         """Align assignment operators in a block.

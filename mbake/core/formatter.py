@@ -345,24 +345,31 @@ class MakefileFormatter:
                     list(working), config_dict, check_only, **rule_context
                 )
                 total_lines = len(merged_lines)
+                # Only FinalNewlineRule numbers the end of the file as the last
+                # line it was given.
+                end_of_file = isinstance(rule, FinalNewlineRule)
 
                 # Process errors, warnings, and check messages
                 for error in result.errors:
                     file_error = self._remap_message_lines(
-                        error, index_map, total_lines
+                        error, index_map, total_lines, end_of_file
                     )
                     all_errors.append(self._format_error(file_error, 0, config_dict))
 
                 for warning in result.warnings:
                     all_warnings.append(
-                        self._remap_message_lines(warning, index_map, total_lines)
+                        self._remap_message_lines(
+                            warning, index_map, total_lines, end_of_file
+                        )
                     )
 
                 # In check mode, also collect check_messages
                 if check_only:
                     for check_msg in result.check_messages:
                         all_check_messages.append(
-                            self._remap_message_lines(check_msg, index_map, total_lines)
+                            self._remap_message_lines(
+                                check_msg, index_map, total_lines, end_of_file
+                            )
                         )
 
                 working = self._accept_rule_lines(rule.name, working, result.lines)
@@ -455,22 +462,30 @@ class MakefileFormatter:
 
     @staticmethod
     def _remap_message_lines(
-        message: str, index_map: Sequence[int], total_lines: int
+        message: str,
+        index_map: Sequence[int],
+        total_lines: int,
+        end_of_file: bool = True,
     ) -> str:
         """Convert the line numbers in a rule message to lines of the file.
 
         Rules number the lines they were given, and those leave out the
         disabled regions; ``index_map[k]`` is the file index of line ``k + 1``.
-        The last line and any line after it count from the end of the file, so
-        end-of-file messages point at the real end of the file even when it
-        ends inside a disabled region. Only the line numbers of the message
-        shapes in _MESSAGE_LINE_NUMBER_PATTERNS change.
+        Any line after the last one counts from the end of the file, and so
+        does the last line with ``end_of_file``, so that end-of-file messages
+        point at the real end of the file even when it ends inside a disabled
+        region. Without ``end_of_file`` the last line is that line itself,
+        such as a '# bake-format off' line whose region runs to the end of
+        the file. Only the line numbers of the message shapes in
+        _MESSAGE_LINE_NUMBER_PATTERNS change.
         """
 
         def to_file_line(number: int) -> int:
             if number < 1:
                 return number
-            if number < len(index_map):
+            if number < len(index_map) or (
+                number == len(index_map) and not end_of_file
+            ):
                 return index_map[number - 1] + 1
             return number - len(index_map) + total_lines
 
