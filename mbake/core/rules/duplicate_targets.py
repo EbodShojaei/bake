@@ -244,6 +244,16 @@ class _RecipeScan:
         self.formatter_prefixes = line_by_line_prefixes(lines)
         # What RecipeValidationRule works out about the lines, once per call
         self.facts = rule._recipe_validation.line_facts(lines, hidden)
+        # How TabsRule reads the lines with indent_nested_conditionals, where
+        # it leaves the lines that make reads as makefile syntax alone (see
+        # TabsRule.converts_to_recipe)
+        self.tabs_reading = (
+            rule._tabs.make_reading(
+                lines, hidden, config.get("remove_trailing_whitespace", True)
+            )
+            if config.get("indent_nested_conditionals", False)
+            else None
+        )
         # The open conditionals, outermost first, and the branch of each that
         # the scan is in
         self.conditionals: list[_Conditional] = []
@@ -366,7 +376,9 @@ class _RecipeScan:
         prefix = self.formatter_prefixes[index]
         line = self.lines[index]
         if line.startswith(" "):
-            return self.rule._tabs.converts_to_recipe(line, index, self.lines, prefix)
+            return self.rule._tabs.converts_to_recipe(
+                line, index, self.lines, prefix, reading=self.tabs_reading
+            )
         if not self.fix_tabs:
             return False
         return self.rule._recipe_validation.is_missing_recipe_tab(

@@ -2,15 +2,53 @@
 
 import re
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, NamedTuple, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils
-from ...utils.rule_context import define_body_lines
+from ...utils.rule_context import (
+    ASSIGNMENT,
+    CONDITIONAL,
+    DEFINE,
+    DIRECTIVE,
+    ENDEF,
+    FUNCTION_CALL,
+    OTHER,
+    RECIPE,
+    RULE,
+    TARGET_VARIABLE,
+    LineState,
+    define_body_lines,
+    line_by_line_prefixes,
+    scan_makefile,
+    strip_dangling_backslashes,
+)
 
 # Conditional directives that format() moves to column 1 or keeps, instead of
 # treating them as recipe lines.
 _CONDITIONAL_PREFIXES = ("ifeq", "ifneq", "ifdef", "ifndef", "else", "endif")
+
+# The kinds of makefile syntax that make reads a line with leading spaces as,
+# whatever its rule context: assignments and target-specific variables,
+# directives such as 'sinclude', 'undefine' and 'override define', conditional
+# directives, automake 'if' included, and calls of functions whose result is
+# empty, such as '$(info ...)' (see rule_context.scan_makefile).
+_MAKEFILE_SYNTAX_KINDS = frozenset(
+    {ASSIGNMENT, TARGET_VARIABLE, DIRECTIVE, DEFINE, CONDITIONAL, FUNCTION_CALL}
+)
+
+
+class MakeReading(NamedTuple):
+    """How make reads the lines that TabsRule formats (see TabsRule.make_reading).
+
+    Attributes:
+        states: The LineState of each line from TabsRule.read_lines
+        reached: For each line, whether a rule context other than that of a
+            .PHONY rule may reach it
+    """
+
+    states: Sequence[LineState]
+    reached: Sequence[bool]
 
 
 class TabsRule(FormatterPlugin):
@@ -36,9 +74,16 @@ class TabsRule(FormatterPlugin):
         # The lines of define bodies are the value of a variable, kept as
         # written (GNU make manual 6.8, lines 4795-4799); see _lines_to_leave.
         hidden = context.get("disabled_region_lines") or {}
-        leave = self._lines_to_leave(
-            lines, hidden, config.get("remove_trailing_whitespace", True)
-        )
+        strip_dangling = config.get("remove_trailing_whitespace", True)
+        leave = self._lines_to_leave(lines, hidden, strip_dangling)
+
+        # With indent_nested_conditionals, ConditionalRule gives the makefile
+        # syntax inside conditionals leading spaces, so a line with leading
+        # spaces is no sign of a recipe line that lacks its TAB: it is read
+        # as make reads it (see converts_to_recipe).
+        reading: Optional[MakeReading] = None
+        if indent_conditionals:
+            reading = self.make_reading(lines, hidden, strip_dangling)
 
         for line_index, line in enumerate(lines):
             if line_index in leave:
@@ -89,7 +134,9 @@ class TabsRule(FormatterPlugin):
                     else:
                         formatted_lines.append(line)
             # Check if this is a recipe line (command that should be executed)
-            elif self.converts_to_recipe(line, line_index, lines, active_prefix):
+            elif self.converts_to_recipe(
+                line, line_index, lines, active_prefix, reading=reading
+            ):
                 # Convert leading spaces to tab for recipe lines
                 content = line.lstrip()
                 # Apply conditional nesting indentation if enabled
@@ -244,7 +291,13 @@ class TabsRule(FormatterPlugin):
         return set(run)
 
     def converts_to_recipe(
-        self, line: str, line_index: int, lines: list[str], active_prefix: str
+        self,
+        line: str,
+        line_index: int,
+        lines: list[str],
+        active_prefix: str,
+        *,
+        reading: Optional[MakeReading] = None,
     ) -> bool:
         """
         Check if format() turns a line that starts with spaces into a recipe line.
@@ -259,17 +312,22 @@ class TabsRule(FormatterPlugin):
         - function calls and other makefile constructs;
         - lines that start with the active .RECIPEPREFIX character.
 
+        With a reading, which format() makes with indent_nested_conditionals,
+        lines that make reads as makefile syntax keep their spaces as well
+        (see _keeps_leading_spaces).
+
         Args:
             line: The line to check
             line_index: Index of the line in lines
             lines: All lines that format() reads
             active_prefix: The recipe prefix that format() reads at the line
+            reading: make_reading of lines, or None
 
         Returns:
             True if format() converts the line into a recipe line
         """
         stripped = line.strip()
-        return (
+        converts = (
             line.startswith(" ")
             and bool(stripped)  # Not empty
             and not stripped.startswith("#")  # Not a comment
@@ -284,6 +342,201 @@ class TabsRule(FormatterPlugin):
                 line.startswith(active_prefix) or line.startswith(active_prefix + "\t")
             )  # Not direct .RECIPEPREFIX line
         )
+        if not converts or reading is None:
+            return converts
+        return not self._keeps_leading_spaces(reading, line_index)
+
+    @classmethod
+    def make_reading(
+        cls,
+        lines: list[str],
+        hidden: Mapping[int, Sequence[str]],
+        strip_dangling: bool,
+    ) -> Optional[MakeReading]:
+        """
+        Return how make reads the lines, for converts_to_recipe.
+
+        The rule contexts are those that remain where the lines of .PHONY
+        The rule contexts are those that remain where the lines of .PHONY
+        rules are taken out. make runs the recipe of .PHONY only when .PHONY
+        itself is named as a goal, which no build does: a target that starts
+        with a period is never the default goal (GNU make manual 4.1, lines
+        1443-1446). With auto_insert_phony_declarations, PhonyRule may also
+        move those lines. A line with leading spaces whose only rule context
+        is that of .PHONY therefore keeps its spaces, which reads the same in
+        every case; a TAB would make it a recipe line of .PHONY, or leave it
+        without a rule context.
+
+        Args:
+            lines: The lines that the rule formats
+            hidden: The lines that '# bake-format off' regions hide, as in
+                context['disabled_region_lines']
+            strip_dangling: The value of remove_trailing_whitespace
+
+        Returns:
+            The reading, or None where make's recipe prefix is not the one
+            that the rules read (see reads_prefix_as_make)
+        """
+        states = cls.read_lines(lines, hidden, strip_dangling)
+        if not cls.reads_prefix_as_make(lines, states):
+            return None
+        others = cls.read_lines_without_phony(lines, hidden, strip_dangling, states)
+        return MakeReading(states, [state.rule_context for state in others])
+
+    @classmethod
+    def read_lines_without_phony(
+        cls,
+        lines: list[str],
+        hidden: Mapping[int, Sequence[str]],
+        strip_dangling: bool,
+        states: Sequence[LineState],
+        *,
+        past_errors: bool = False,
+    ) -> Sequence[LineState]:
+        """
+        Return read_lines of the lines with the lines of .PHONY rules blank.
+
+        That is how make reads the lines where the rule contexts of .PHONY
+        rules are left out (see make_reading).
+
+        Args:
+            lines: The lines that the rule formats
+            hidden: As for read_lines
+            strip_dangling: As for read_lines
+            states: read_lines of the lines
+            past_errors: As for read_lines
+
+        Returns:
+            The LineState of each line; states itself where no line is a
+            .PHONY rule and past_errors is False
+        """
+        phony = [
+            index for index, state in enumerate(states) if cls._declares_phony(state)
+        ]
+        if not phony and not past_errors:
+            return states
+        without_phony = list(lines)
+        for index in phony:
+            without_phony[index] = ""
+        return cls.read_lines(
+            without_phony, hidden, strip_dangling, past_errors=past_errors
+        )
+
+    @staticmethod
+    def read_lines(
+        lines: list[str],
+        hidden: Mapping[int, Sequence[str]],
+        strip_dangling: bool,
+        *,
+        past_errors: bool = False,
+    ) -> list[LineState]:
+        """
+        Return how make reads the lines, as the run after this one reads them.
+
+        With strip_dangling, the lines are read as WhitespaceRule leaves them
+        when it removes trailing whitespace: a backslash that whitespace
+        followed then continues the line (GNU make manual 3.1.1, lines
+        762-769), and the next run reads the lines that way, so the rules
+        that run before WhitespaceRule make their choices on that reading,
+        as _lines_to_leave does.
+
+        Args:
+            lines: The lines that the rule formats
+            hidden: The lines that '# bake-format off' regions hide, as in
+                context['disabled_region_lines']
+            strip_dangling: The value of remove_trailing_whitespace
+            past_errors: Read on past the lines where make stops with an
+                error, as rule_context.scan_makefile does with it
+
+        Returns:
+            A LineState for each line (see rule_context.scan_makefile)
+        """
+        if strip_dangling:
+            stripped, states = strip_dangling_backslashes(lines, hidden)
+            if not past_errors:
+                return states
+            # WhitespaceRule strips the lines that make's reading puts outside
+            # define bodies; those lines are then read on past errors.
+            return scan_makefile(stripped, hidden, past_errors=True)
+        return scan_makefile(lines, hidden, past_errors=past_errors)
+
+    @staticmethod
+    def reads_prefix_as_make(lines: list[str], states: Sequence[LineState]) -> bool:
+        """
+        Check if the rules read the recipe prefix of every line as make does.
+
+        The rules read .RECIPEPREFIX line by line (see
+        rule_context.line_by_line_prefixes), as they always did: they miss a
+        prefix that is set with '+=', with define or with a reference, or on
+        a line that '# bake-format off' hides (GNU make manual, lines
+        5158-5169). Where make's prefix differs from that reading, or make
+        computes it, a choice made on make's reading of the lines would not
+        match the choices of the other rules, which can move lines in or out
+        of a rule context, so the choices of before are kept there.
+
+        Args:
+            lines: The lines that the rule formats
+            states: read_lines of the lines
+
+        Returns:
+            True if make's prefix is known and is the line-by-line prefix at
+            every line
+        """
+        return all(
+            state.recipe_prefix_known and state.recipe_prefix == prefix
+            for state, prefix in zip(states, line_by_line_prefixes(lines))
+        )
+
+    @staticmethod
+    def _keeps_leading_spaces(reading: MakeReading, index: int) -> bool:
+        """
+        Check if a line with leading spaces must not get a TAB in their place.
+
+        make reads a line that does not start with the recipe prefix as
+        makefile syntax, whatever its leading spaces (GNU make manual 3.8,
+        lines 1209-1229). A TAB in their place makes it a recipe line in a
+        rule context (lines 1217-1219; 5.1, lines 2878-2884), and outside one
+        make stops at it ("recipe commences before first target", lines
+        11292-11297). So the line keeps its spaces when:
+        - make reads it as makefile syntax that works there: an assignment,
+          a target-specific variable, a directive, a define, a conditional
+          directive or a call of functions whose result is empty;
+        - no rule context but that of a .PHONY rule can reach it (see
+          make_reading);
+        - it is only variable references, such as '$(R)' or
+          '$(call setup)', which make expands and reads as makefile syntax:
+          they may expand to nothing or to a rule (3.8, lines 1231-1236).
+        Other text in a rule context, such as 'echo hi' or '$(MAKE) -C
+        sub', makes make stop with "missing separator", so it is a recipe
+        line that lacks its TAB, as before. So are recipe lines, the lines
+        that continue them and the recipe lines of a $(eval) template in a
+        define body.
+
+        Args:
+            reading: make_reading of the lines
+            index: The index of the line
+
+        Returns:
+            True if the line keeps its leading spaces
+        """
+        state = reading.states[index]
+        if state.kind in (RECIPE, ENDEF) or state.may_be_define_body:
+            return False
+        if state.kind in _MAKEFILE_SYNTAX_KINDS or not reading.reached[index]:
+            return True
+        return state.kind == OTHER and LineUtils.is_reference_only(state.text)
+
+    @staticmethod
+    def _declares_phony(state: LineState) -> bool:
+        """Check if a logical line is a rule whose one target is .PHONY."""
+        if state.kind != RULE:
+            return False
+        code = state.text
+        comment = LineUtils.find_comment_start(code)
+        if comment is not None:
+            code = code[:comment]
+        colon = LineUtils.find_unquoted_char(code, ":")
+        return colon is not None and code[:colon].split() == [".PHONY"]
 
     def _is_nested_conditional(
         self, line_index: int, lines: list[str], stripped: str

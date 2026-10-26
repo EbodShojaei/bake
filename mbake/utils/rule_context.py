@@ -38,9 +38,11 @@ Line numbers refer to the GNU make 4.4.1 manual:
 kind, rule_context, depth, in_define and recipe_prefix follow one model of the
 whole file. LineState.readings instead follows make through every branch of
 every conditional, with make 3.81 and 4.x, and says each way make may read a
-line, and LineState.recipe_owners says each rule whose recipe it may be part
-of. That model knows where a rule context is certain, and so where a line
-that starts with the recipe prefix may still be makefile syntax.
+line, LineState.recipe_owners says each rule whose recipe it may be part of,
+and LineState.skipped_as_recipe says if make may skip it as a recipe line in
+a branch that it skips. That model knows where a rule context is certain, and
+so where a line that starts with the recipe prefix may still be makefile
+syntax.
 
 Known limits of the one-model fields, which readings does not have:
 - recipe_prefix follows every .RECIPEPREFIX assignment and define, also one
@@ -123,6 +125,11 @@ _READ, _WAIT, _DONE = 0, 1, 2
 # the rest of the file.
 _MAX_READINGS = 256
 
+# What _Readings._step gives for a line that make skips as a recipe line, in a
+# branch that it skips (see LineState.skipped_as_recipe). It is no kind of
+# line that make reads.
+_SKIPPED_RECIPE = "skipped_recipe"
+
 
 @dataclass(frozen=True)
 class LineState:
@@ -177,6 +184,15 @@ class LineState:
         recipe_prefix_known: False where make computes the value of
             .RECIPEPREFIX, with '!=' or with ':=' of a reference, so that the
             recipe prefix that make reads is not known (see recipe_prefix).
+        skipped_as_recipe: True if, in a branch that make skips, make may
+            skip the line as a recipe line without a look at its text, as
+            it does with a line that starts with the recipe prefix where a
+            rule context is open (GNU make manual 3.8, lines 1217-1219; 6.8,
+            lines 4823-4827; 7.2, lines 5511-5513). A conditional directive,
+            a define or an endef there counts for nothing in that branch,
+            while make reads one that starts with other whitespace, to find
+            the lines that belong together. Like readings, it follows every
+            branch of every conditional, with make 3.81 and 4.x.
     """
 
     kind: str
@@ -191,6 +207,7 @@ class LineState:
     readings: frozenset[str] = frozenset()
     recipe_owners: Optional[frozenset[int]] = frozenset()
     recipe_prefix_known: bool = True
+    skipped_as_recipe: bool = False
 
     @property
     def in_define(self) -> bool:
@@ -214,7 +231,10 @@ class LineState:
 
 
 def scan_makefile(
-    lines: Sequence[str], hidden: Optional[Mapping[int, Sequence[str]]] = None
+    lines: Sequence[str],
+    hidden: Optional[Mapping[int, Sequence[str]]] = None,
+    *,
+    past_errors: bool = False,
 ) -> list[LineState]:
     """
     Return how make reads each line, as one LineState per line.
@@ -228,11 +248,18 @@ def scan_makefile(
             count for the state of the lines after them. Without it, every
             '# bake-format off' and '# bake-format on' line counts as unknown
             content that may hold a rule.
+        past_errors: Where make stops with an error at a line in a branch,
+            go on with that branch as if make skipped the line, for
+            readings, recipe_owners and skipped_as_recipe. A recipe line
+            leaves the state as it was, so this is how make reads the lines
+            below once the rules turn such a line, such as a recipe line
+            that lacks its TAB, into a recipe line. Without it, such a
+            branch ends at the line.
 
     Returns:
         A LineState for each line of lines
     """
-    return _Scanner(lines, hidden).scan()
+    return _Scanner(lines, hidden, past_errors).scan()
 
 
 def recipe_prefixes(
@@ -420,10 +447,11 @@ def empty_recipe_lines(lines: Sequence[str], states: Sequence[LineState]) -> set
     shell. Under .ONESHELL it is different: make hands all recipe lines of a
     target to one shell, newlines included (5.3.1, lines 3094-3097), so there
     such a line is part of the script; this function does not look for
-    .ONESHELL. make never runs the recipe of .PHONY, whose prerequisites are
-    the phony targets (4.9, lines 2234-2240) and which is never the default
-    goal (4.1, lines 1442-1446), so a line that belongs to it wherever make
-    reads it (see whitespace_recipe_lines) is not needed either.
+    .ONESHELL. make runs the recipe of .PHONY, whose prerequisites are the
+    phony targets (4.9, lines 2234-2240), only when .PHONY itself is named
+    as a goal, which no build does: it is never the default goal (4.1, lines
+    1443-1446). So a line that belongs to it wherever make reads it (see
+    whitespace_recipe_lines) is not needed either.
 
     Args:
         lines: The lines that were scanned
@@ -568,8 +596,9 @@ def empty_recipes_to_keep(readings: Sequence[ScannedLines]) -> dict[int, str]:
     the line as a recipe line, that character is the recipe prefix and the
     rest is an empty command; elsewhere the line is blank either way (GNU
     make manual 5.1, lines 2884-2891). Such a line that make reads as a
-    recipe line of .PHONY only is not kept, as make never runs that recipe
-    (4.9, lines 2234-2240).
+    recipe line of .PHONY only is not kept: make runs that recipe only when
+    .PHONY is named as a goal, which no build does (4.1, lines 1443-1446; 4.9,
+    lines 2234-2240).
 
     A line is kept only where every reading keeps it and reads it the same
     way: as the same kind of line, in the same rule contexts, with the same
@@ -850,8 +879,9 @@ def recipe_of_phony_only(states: Sequence[LineState], index: int) -> bool:
     """
     Check if make reads a line as a recipe line of .PHONY only, if at all.
 
-    make never runs the recipe of .PHONY (GNU make manual 4.9, lines
-    2234-2240; 4.1, lines 1442-1446).
+    make runs the recipe of .PHONY only when .PHONY itself is named as a
+    goal, which no build does: it is never the default goal (GNU make manual
+    4.1, lines 1443-1446; 4.9, lines 2234-2240).
 
     Args:
         states: scan_makefile(lines) or scan_makefile(lines, hidden)
@@ -1194,8 +1224,8 @@ class _Reading(NamedTuple):
         return self.recipe_prefix.prefix
 
 
-# (the kind make reads a line as, or None where it skips it; the reading
-# after the line)
+# (the kind make reads a line as, None where it skips it, or _SKIPPED_RECIPE
+# where it skips it as a recipe line; the reading after the line)
 _Step = tuple[Optional[str], _Reading]
 
 
@@ -1203,22 +1233,24 @@ class _Readings:
     """Every way make may read the lines so far.
 
     This follows make's read.c: each branch of every conditional and both make
-    3.81 and make 4.x. Readings in which make stops with an error are dropped.
+    3.81 and make 4.x. Readings in which make stops with an error are dropped,
+    or with past_errors go on as if make skipped the line (see scan_makefile).
     Readings that end in the same state are merged, so their number stays
     small. For each reading it keeps the rules whose rule context may be open
     in it, as the indexes of their lines.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, past_errors: bool = False) -> None:
         self.readings: dict[_Reading, frozenset[int]] = {
             _Reading(make4, False, _PrefixValue(), (), 0, False): frozenset()
             for make4 in (False, True)
         }
         self.saturated = False
+        self.past_errors = past_errors
 
     def read(
         self, line: _Logical, anchor: int
-    ) -> tuple[frozenset[str], Optional[frozenset[int]]]:
+    ) -> tuple[frozenset[str], Optional[frozenset[int]], bool]:
         """
         Read a logical line.
 
@@ -1228,17 +1260,25 @@ class _Readings:
                 that the line starts
 
         Returns:
-            The kinds make may read the line as, and the rules whose recipe
-            it may be a line of (None if that is not known)
+            The kinds make may read the line as, the rules whose recipe it
+            may be a line of (None if that is not known), and whether make
+            may skip it as a recipe line in a branch that it skips
         """
         if self.saturated:
-            return frozenset({RECIPE, DEFINE_BODY, ENDEF, line.kind}), None
+            return frozenset({RECIPE, DEFINE_BODY, ENDEF, line.kind}), None, True
         kinds: set[str] = set()
         owners: set[int] = set()
+        skipped = False
         after: dict[_Reading, frozenset[int]] = {}
         for reading, rules in self.readings.items():
-            for kind, successor in self._step(reading, line):
-                if kind is not None:
+            steps = self._step(reading, line)
+            if not steps and self.past_errors:
+                # make stops at the line: go on as if it skipped it.
+                steps = [(None, reading)]
+            for kind, successor in steps:
+                if kind == _SKIPPED_RECIPE:
+                    skipped = True
+                elif kind is not None:
                     kinds.add(kind)
                 if kind == RECIPE:
                     owners.update(rules)
@@ -1256,7 +1296,7 @@ class _Readings:
             self.readings = after
         if len(self.readings) > _MAX_READINGS:
             self.saturated = True
-        return frozenset(kinds), frozenset(owners)
+        return frozenset(kinds), frozenset(owners), skipped
 
     def open_unknown_content(self, anchor: int) -> None:
         """Let unknown lines follow, which may start or end a rule context.
@@ -1292,7 +1332,7 @@ class _Readings:
                 # A recipe line. In a branch that make skips, the line is
                 # skipped without a look at its text (GNU make manual 7.1,
                 # lines 5315-5333).
-                steps.append((None if ignoring else RECIPE, reading))
+                steps.append((_SKIPPED_RECIPE if ignoring else RECIPE, reading))
             else:
                 steps.extend(_syntax_steps(reading, line, prefixed))
         return steps
@@ -1481,7 +1521,10 @@ class _Scanner:
     """The state of make while it reads the lines from the top."""
 
     def __init__(
-        self, lines: Sequence[str], hidden: Optional[Mapping[int, Sequence[str]]]
+        self,
+        lines: Sequence[str],
+        hidden: Optional[Mapping[int, Sequence[str]]],
+        past_errors: bool = False,
     ) -> None:
         # The lines with the hidden lines in place. visible[k] is the index in
         # lines of merged[k], or None for a hidden line, and anchors[k] is
@@ -1511,7 +1554,7 @@ class _Scanner:
         self.define_depth = 0
         self.conditionals: list[_Conditional] = []
         self.next_ident = 0
-        self.readings = _Readings()
+        self.readings = _Readings(past_errors)
 
     def scan(self) -> list[LineState]:
         """Read all lines and return the state of each visible one."""
@@ -1525,8 +1568,8 @@ class _Scanner:
                 kind = COMMENT
             physical = tuple(self.merged[start:end])
             line = _Logical(self.merged[start], physical, text, code, kind, word)
-            readings, owners = self.readings.read(line, self.anchors[start])
-            state = self._read(start, end, line, readings, owners)
+            readings, owners, skipped = self.readings.read(line, self.anchors[start])
+            state = self._read(start, end, line, readings, owners, skipped)
             for index in range(start, end):
                 if self.visible[index] is None:
                     continue
@@ -1552,6 +1595,7 @@ class _Scanner:
         line: _Logical,
         readings: frozenset[str],
         owners: Optional[frozenset[int]],
+        skipped: bool,
     ) -> LineState:
         """Read the logical line merged[start:end] and return its state."""
         prefixed = self.merged[start].startswith(self.prefix)
@@ -1596,6 +1640,7 @@ class _Scanner:
             readings=readings,
             recipe_owners=owners,
             recipe_prefix_known=recipe_prefix_known,
+            skipped_as_recipe=skipped,
         )
 
     def _read_body_line(self, text: str, prefixed: bool) -> str:
