@@ -8,6 +8,8 @@ from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils, MakefileParser, PhonyAnalyzer
 from ...utils.rule_context import (
     ENDEF,
+    RECIPE,
+    LineState,
     cleanup_readings,
     orphaned_recipe_lines,
     scan_makefile,
@@ -44,6 +46,11 @@ class PhonyRule(FormatterPlugin):
         detected_targets = PhonyAnalyzer.detect_phony_targets_excluding_conditionals(
             lines, disabled_line_indices, block_start_index
         )
+        # The order of the rules that define them, the same on every run (a
+        # set has no order that survives a new process)
+        ordered_detected = self._order_targets_by_declaration(
+            set(detected_targets), lines
+        )
 
         # Check if .PHONY declarations exist
         has_phony = MakefileParser.has_phony_declarations(lines)
@@ -65,7 +72,7 @@ class PhonyRule(FormatterPlugin):
             if check_mode:
                 phony_at_top = config.get("phony_at_top", True)
                 gnu_format = config.get("_global", {}).get("gnu_error_format", True)
-                ordered_targets = list(detected_targets)
+                ordered_targets = ordered_detected
 
                 if phony_at_top:
                     insert_index = MakefileParser.find_phony_insertion_point(lines)
@@ -106,7 +113,7 @@ class PhonyRule(FormatterPlugin):
             # Insert declarations
             return self._insert_phony_declarations(
                 lines,
-                list(detected_targets),
+                ordered_detected,
                 config,
                 errors,
                 warnings,
@@ -119,7 +126,7 @@ class PhonyRule(FormatterPlugin):
         existing_phony_set = set(existing_phony_targets)
 
         # Find missing targets
-        missing_targets = [t for t in detected_targets if t not in existing_phony_set]
+        missing_targets = [t for t in ordered_detected if t not in existing_phony_set]
 
         # In check mode, report missing targets
         if check_mode and missing_targets:
@@ -633,7 +640,42 @@ class PhonyRule(FormatterPlugin):
             return set()
         strip_dangling = config.get("remove_trailing_whitespace", True)
         readings = cleanup_readings(lines, hidden, strip_dangling)
+        if any(
+            PhonyRule._owns_commands(read, states, removed) for read, states in readings
+        ):
+            return None
         return orphaned_recipe_lines(readings, removed)
+
+    @staticmethod
+    def _owns_commands(
+        lines: Sequence[str], states: Sequence[LineState], removed: list[int]
+    ) -> bool:
+        """
+        Check if make may read a command line as part of a removed .PHONY rule.
+
+        A line that starts with the recipe prefix after a '.PHONY:' line, in
+        its rule context, is a recipe line of .PHONY (GNU make manual 5.1,
+        lines 2878-2884). Moving the '.PHONY:' line would leave that line
+        without its rule: make then reads it with the rule before it, as a
+        command of another target, or as makefile syntax, or stops with
+        "recipe commences before first target" (lines 11292-11297). So the
+        '.PHONY:' lines stay as they are. Lines of only whitespace are left
+        to orphaned_recipe_lines, which knows when they may go.
+        """
+        targets = set(removed)
+        for index, state in enumerate(states):
+            if RECIPE not in state.readings or not lines[index].strip(" \t"):
+                continue
+            owners: frozenset[int]
+            if state.recipe_owners is not None:
+                owners = state.recipe_owners
+            elif state.rule_line is not None:
+                owners = frozenset({state.rule_line})
+            else:
+                owners = frozenset()
+            if owners & targets:
+                return True
+        return False
 
     @staticmethod
     def _phony_line_targets(line: str) -> list[str]:
