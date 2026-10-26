@@ -471,7 +471,7 @@ class TestAutoPhonyInsertion:
         assert "test" in phony_line
 
     def test_duplicate_global_directives(self):
-        """Test that global directives cannot be duplicated."""
+        """Test that global directives may be repeated (GNU make manual 4.11)."""
         config = Config(
             formatter=FormatterConfig(
                 auto_insert_phony_declarations=False,
@@ -482,7 +482,7 @@ class TestAutoPhonyInsertion:
         )
         formatter = MakefileFormatter(config)
 
-        # Test with duplicate .POSIX (should generate error)
+        # Test with duplicate .POSIX (make accepts it, so no error)
         test_content = """# Test duplicate global directive
 .POSIX:
 .POSIX:
@@ -495,10 +495,10 @@ all:
             lines, check_only=True
         )
 
-        # Should have error about duplicate global directive
-        assert any(
+        # Should have no error about duplicate global directive
+        assert not any(
             "cannot be declared multiple times" in error for error in errors
-        ), f"Expected duplicate directive error, got: {errors}"
+        ), f"Unexpected duplicate directive error, got: {errors}"
 
     def test_phony_target_detection_with_suffix_rules(self):
         """Test that phony detection correctly handles suffix rules and file targets."""
@@ -679,8 +679,8 @@ all:
         test_content = """# Test invalid suffix rule
 .SUFFIXES: .c .o
 
-# This should generate an error - .a is not declared
-.a.o:
+# This should generate an error - .x is not a declared or default suffix
+.x.o:
 	cp $< $@
 """
         lines = test_content.strip().split("\n")

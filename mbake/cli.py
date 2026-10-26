@@ -597,7 +597,11 @@ def format(
 
             if result.errors:
                 for error in result.errors:
-                    print(f"Error: {error}", file=sys.stderr)
+                    # A message that gives its line and severity, such as
+                    # "2: Error: ...", gets no second "Error:"
+                    if not re.match(r"^(\d+|Makefile:\d+):\s*(Warning|Error):", error):
+                        error = f"Error: {error}"
+                    print(error, file=sys.stderr, flush=True)
                 raise typer.Exit(2)
 
             if check and content != result.content:

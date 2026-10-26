@@ -1,122 +1,138 @@
-"""Special target validation and formatting rule for Makefiles."""
+"""Special target validation and formatting rule for Makefiles.
+
+Line numbers refer to the GNU make 4.4.1 manual.
+"""
 
 import re
-from typing import Any
+from typing import Any, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import LineUtils
+from .suffix_validation import is_suffix_rule_target, read_makefile, suffix_list
+
+# The special targets of GNU make 4.4.1, those of section 4.9 (lines
+# 2229-2429) with .NOTINTERMEDIATE of make 4.4 (lines 2279-2287), and .WAIT,
+# which a makefile may also define as a target (5.4.1, lines 3351-3352 and
+# 3376-3378). Like any target, each may appear in several rules: make merges
+# the prerequisites of all of them (4.11, lines 2545-2548).
+_SPECIAL_TARGETS = frozenset(
+    {
+        ".PHONY",
+        ".SUFFIXES",
+        ".DEFAULT",
+        ".PRECIOUS",
+        ".INTERMEDIATE",
+        ".NOTINTERMEDIATE",
+        ".SECONDARY",
+        ".SECONDEXPANSION",
+        ".DELETE_ON_ERROR",
+        ".IGNORE",
+        ".LOW_RESOLUTION_TIME",
+        ".SILENT",
+        ".EXPORT_ALL_VARIABLES",
+        ".NOTPARALLEL",
+        ".ONESHELL",
+        ".POSIX",
+        ".WAIT",
+    }
+)
+
+# The special targets that get a warning without prerequisites: .PHONY only
+# makes its prerequisites phony (lines 2236-2240). Without prerequisites,
+# .IGNORE and .SILENT apply to every target (lines 2339-2344, 2383-2388).
+_NEEDS_PREREQUISITES = frozenset({".PHONY"})
+
+# A rule line that starts with a target of a dot and capitals, followed by
+# its ':'
+_SPECIAL_TARGET_RULE = re.compile(r"(\.[A-Z_]+):")
 
 
 class SpecialTargetValidationRule(FormatterPlugin):
     """Validates special target usage and syntax."""
 
     def __init__(self) -> None:
-        super().__init__("special_target_validation", priority=10)
+        # Before RecipeValidationRule (priority 8), which leaves out the
+        # lines it reports in check mode: this rule reads the lines as make
+        # reads them, by their own numbers, in both modes
+        super().__init__("special_target_validation", priority=7)
 
     def format(
         self, lines: list[str], config: dict, check_mode: bool = False, **context: Any
     ) -> FormatResult:
-        """Validate special target declarations."""
-        formatted_lines = []
-        changed = False
-        errors: list[str] = []
+        """Validate special target declarations.
+
+        Only rules count: '.DEFAULT_GOAL:=all' assigns a variable (GNU make
+        manual 6.5, lines 4577-4579), as do the assignments of the other
+        special variables (6.14), whatever the spacing. A target that starts
+        with a dot is never the default goal (lines 1440-1447), so make reads
+        an unknown one, such as '.KEEP_STATE', as an ordinary target that
+        runs only when asked for: that gets a warning.
+        """
         warnings: list[str] = []
 
-        special_targets = self._get_special_targets()
-        target_usage = self._analyze_special_target_usage(lines)
-
-        for _i, line in enumerate(lines):
-            stripped = line.strip()
-
-            if stripped.startswith(".") and ":" in stripped:
-                new_line, line_errors, line_warnings = self._validate_special_target(
-                    line, special_targets, target_usage
+        if any(line.startswith(".") for line in lines):
+            hidden = context.get("disabled_region_lines") or {}
+            reading = read_makefile(lines, hidden)
+            # The suffix list, computed when a name is not a special target:
+            # a known suffix is a suffix rule (lines 2431-2438)
+            suffixes: Optional[frozenset[str]] = None
+            suffixes_read = False
+            for rule in reading.rules:
+                if rule.line_index is None:
+                    continue
+                match = _SPECIAL_TARGET_RULE.match(rule.text)
+                if match is None:
+                    continue
+                name = match.group(1)
+                if name in _SPECIAL_TARGETS:
+                    if name in _NEEDS_PREREQUISITES and not self._has_prerequisites(
+                        rule.text, match.end()
+                    ):
+                        warnings.append(
+                            LineUtils.format_error_message(
+                                f"Special target '{name}' typically requires "
+                                "prerequisites",
+                                rule.line_index + 1,
+                                config,
+                                "Warning",
+                            )
+                        )
+                    continue
+                if not suffixes_read:
+                    suffixes = suffix_list(reading)
+                    suffixes_read = True
+                if suffixes is None or is_suffix_rule_target(name, suffixes):
+                    continue
+                warnings.append(
+                    LineUtils.format_error_message(
+                        f"Unknown special target '{name}'",
+                        rule.line_index + 1,
+                        config,
+                        "Warning",
+                    )
                 )
-                if new_line != line:
-                    changed = True
-                errors.extend(line_errors)
-                warnings.extend(line_warnings)
-                formatted_lines.append(new_line)
-            else:
-                formatted_lines.append(line)
 
         return FormatResult(
-            lines=formatted_lines,
-            changed=changed,
-            errors=errors,
+            lines=list(lines),
+            changed=False,
+            errors=[],
             warnings=warnings,
             check_messages=[],
         )
 
-    def _get_special_targets(self) -> dict[str, dict[str, Any]]:
-        """Get information about special targets."""
-        return {
-            ".PHONY": {"duplicatable": True, "requires_prereqs": True},
-            ".SUFFIXES": {"duplicatable": True, "requires_prereqs": False},
-            ".DEFAULT": {"duplicatable": False, "requires_prereqs": False},
-            ".PRECIOUS": {"duplicatable": True, "requires_prereqs": False},
-            ".INTERMEDIATE": {"duplicatable": True, "requires_prereqs": False},
-            ".SECONDARY": {"duplicatable": True, "requires_prereqs": False},
-            ".DELETE_ON_ERROR": {"duplicatable": False, "requires_prereqs": False},
-            ".NOEXPORT": {"duplicatable": False, "requires_prereqs": False},
-            ".IGNORE": {"duplicatable": True, "requires_prereqs": True},
-            ".SILENT": {"duplicatable": True, "requires_prereqs": True},
-            ".POSIX": {"duplicatable": False, "requires_prereqs": False},
-            ".NOTPARALLEL": {"duplicatable": False, "requires_prereqs": False},
-            ".ONESHELL": {"duplicatable": False, "requires_prereqs": False},
-            ".EXPORT_ALL_VARIABLES": {"duplicatable": False, "requires_prereqs": False},
-            ".LOW_RESOLUTION_TIME": {"duplicatable": False, "requires_prereqs": False},
-            ".SECOND_EXPANSION": {"duplicatable": False, "requires_prereqs": False},
-            ".SECONDEXPANSION": {"duplicatable": False, "requires_prereqs": False},
-            ".VARIABLES": {"duplicatable": False, "requires_prereqs": False},
-            ".MAKE": {"duplicatable": False, "requires_prereqs": False},
-            ".WAIT": {"duplicatable": False, "requires_prereqs": False},
-            ".INCLUDE_DIRS": {"duplicatable": False, "requires_prereqs": False},
-            ".LIBPATTERNS": {"duplicatable": False, "requires_prereqs": False},
-        }
+    @staticmethod
+    def _has_prerequisites(text: str, end: int) -> bool:
+        """Check if a rule line has prerequisites after the ':' that ends at end.
 
-    def _analyze_special_target_usage(self, lines: list[str]) -> dict[str, int]:
-        """Analyze how many times each special target is used."""
-        usage: dict[str, int] = {}
-
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith(".") and ":" in stripped:
-                target_name = stripped.split(":")[0]
-                usage[target_name] = usage.get(target_name, 0) + 1
-
-        return usage
-
-    def _validate_special_target(
-        self, line: str, special_targets: dict, target_usage: dict
-    ) -> tuple[str, list[str], list[str]]:
-        """Validate a special target declaration."""
-        errors: list[str] = []
-        warnings: list[str] = []
-
-        # Extract target name
-        match = re.match(r"^(\.[A-Z_]+):", line)
-        if not match:
-            return line, errors, warnings
-
-        target_name = match.group(1)
-
-        if target_name not in special_targets:
-            errors.append(f"Unknown special target '{target_name}'")
-            return line, errors, warnings
-
-        target_info = special_targets[target_name]
-
-        # Check if target is used multiple times when it shouldn't be
-        if not target_info["duplicatable"] and target_usage.get(target_name, 0) > 1:
-            errors.append(
-                f"Special target '{target_name}' cannot be declared multiple times"
-            )
-
-        # Check if prerequisites are required
-        content = line[line.find(":") + 1 :].strip()
-        if target_info["requires_prereqs"] and not content:
-            warnings.append(
-                f"Special target '{target_name}' typically requires prerequisites"
-            )
-
-        return line, errors, warnings
+        They end at the comment (GNU make manual 3.1, lines 730-737) and at a
+        ';' that starts the recipe (4.2, lines 1488 and 1499-1503); a second
+        ':' makes a double-colon rule (4.13).
+        """
+        comment = LineUtils.find_comment_start(text)
+        rest = (text if comment is None else text[:comment])[end:]
+        if rest.startswith(":"):
+            rest = rest[1:]
+        semicolon = LineUtils.find_unquoted_char(rest, ";")
+        if semicolon is not None:
+            rest = rest[:semicolon]
+        return bool(rest.strip())

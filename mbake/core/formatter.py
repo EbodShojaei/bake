@@ -504,8 +504,11 @@ class MakefileFormatter:
 
     def _format_error(self, message: str, line_num: int, config: dict) -> str:
         """Format an error message with consistent GNU or traditional format."""
-        # Check if message is already formatted (has line number at start)
-        if re.match(r"^(\d+|Makefile:\d+):\s*(Warning|Error):", message):
+        # Check if message is already formatted (has line number at start):
+        # 'N: Error: ...', or 'Line N: ...' from LineUtils.format_error_message
+        if re.match(
+            r"^(\d+|Makefile:\d+):\s*(Warning|Error):", message
+        ) or _LINE_PREFIX.match(message):
             # Message is already formatted, return as-is
             return message
 
