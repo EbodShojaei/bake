@@ -10,6 +10,12 @@ from typing import Any, Union
 from ..config import Config
 from ..plugins.base import FormatterPlugin
 from ..utils import FormatDisableHandler, FormatRegion
+from ..utils.line_utils import (
+    normalize_newlines,
+    protect_line_breaks,
+    restore_line_breaks,
+    split_makefile_lines,
+)
 from .rules import (
     AssignmentAlignmentRule,
     AssignmentSpacingRule,
@@ -127,12 +133,16 @@ class MakefileFormatter:
             return False, [f"File not found: {file_path}"], []
 
         try:
-            # Read file
-            with open(file_path, encoding="utf-8") as f:
-                original_content = f.read()
+            # Read the file without newline translation: make ends a line
+            # only at a newline (GNU make manual 3.1.1, lines 757-758)
+            with open(file_path, encoding="utf-8", newline="") as f:
+                raw_content = f.read()
 
-            # Split into lines, preserving line endings
-            lines = original_content.splitlines()
+            lines = split_makefile_lines(raw_content)
+            # Compare with the line endings normalized, as the universal
+            # newline read did, so that a file whose only difference is its
+            # line endings (such as CRLF) is left alone
+            original_content = normalize_newlines(raw_content)
 
             # Apply formatting
             formatted_lines, errors, warnings = self.format_lines(
@@ -200,7 +210,32 @@ class MakefileFormatter:
         check_only: bool = False,
         original_content: Union[str, None] = None,
     ) -> tuple[list[str], list[str], list[str]]:
-        """Format makefile lines and return formatted lines and errors."""
+        """Format makefile lines and return formatted lines and errors.
+
+        CR, VT, FF, FS, GS, RS, NEL, LS and PS inside a line are part of it
+        for make (GNU make manual 3.1.1, lines 757-758). The rules see
+        stand-ins for them (see protect_line_breaks), so they keep them where
+        they are, and the lines and messages returned have them back.
+        """
+        protected = protect_line_breaks(lines)
+        if protected is None:
+            return self._format_lines(lines, check_only, original_content)
+        formatted_lines, errors, warnings = self._format_lines(
+            protected, check_only, original_content
+        )
+        return (
+            [restore_line_breaks(line) for line in formatted_lines],
+            [restore_line_breaks(error) for error in errors],
+            [restore_line_breaks(warning) for warning in warnings],
+        )
+
+    def _format_lines(
+        self,
+        lines: Sequence[str],
+        check_only: bool,
+        original_content: Union[str, None],
+    ) -> tuple[list[str], list[str], list[str]]:
+        """Apply the rules to lines, as format_lines describes."""
         # Convert to list for easier manipulation
         original_lines = list(lines)
 
@@ -523,8 +558,8 @@ class MakefileFormatter:
             return [f"File not found: {file_path}"]
 
         try:
-            with open(file_path, encoding="utf-8") as f:
-                lines = f.read().splitlines()
+            with open(file_path, encoding="utf-8", newline="") as f:
+                lines = split_makefile_lines(f.read())
 
             return self.validate_lines(lines)
 
@@ -542,7 +577,10 @@ class MakefileFormatter:
         """
         all_errors = []
         config_dict = self.config.to_dict()["formatter"]
-        lines_list = list(lines)
+        # The rules see stand-ins for line-break characters inside lines, as
+        # in format_lines
+        protected = protect_line_breaks(lines)
+        lines_list = list(lines) if protected is None else protected
 
         for rule in self.rules:
             try:
@@ -551,7 +589,9 @@ class MakefileFormatter:
             except Exception as e:
                 all_errors.append(f"Error in rule {rule.name}: {e}")
 
-        return all_errors
+        if protected is None:
+            return all_errors
+        return [restore_line_breaks(error) for error in all_errors]
 
     def format(self, content: str) -> FormatterResult:
         """Format content string and return result.
@@ -562,7 +602,7 @@ class MakefileFormatter:
         Returns:
             FormatterResult with formatted content
         """
-        lines = content.splitlines()
+        lines = split_makefile_lines(content)
         formatted_lines, errors, warnings = self.format_lines(lines, check_only=False)
 
         # Join lines back to content
