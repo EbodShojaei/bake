@@ -1075,24 +1075,24 @@ class TestErrorsOfBefore:
 
     def test_line_that_continuation_rule_indents(self):
         """'  b' ends with two backslashes, so make does not continue it (GNU
-        762-769; see TestAgainstGnuMake.test_rule_that_the_check_did_not_read),
-        but ContinuationRule continues it and indents '.x.o:', which the
-        rule then did not check. So '.x.o' gets no error."""
+        762-769; see TestAgainstGnuMake.test_rule_that_the_check_did_not_read).
+        ContinuationRule reads it the same way now, so '.x.o:' stays a rule of
+        its own and '.x' is undeclared, in both modes."""
         text = "X = a \\\n  b\\\\\n.x.o:\n\tcp $< $@\n"
         for check_only in (False, True):
-            assert _format_messages(text, True, check_only)[0] == []
+            assert _format_messages(text, True, check_only)[0] == [
+                "3: Error: Suffix rule '.x.o' uses undeclared suffix '.x'"
+            ]
 
     def test_line_left_out_in_check_mode(self):
-        """In check mode, RecipeValidationRule leaves out 'junk', so
-        ContinuationRule took '.x.o:' for the end of the recipe line and
-        indented it, and the rule did not check it: no error in check mode.
-        In format mode 'junk' gets a TAB, '.x.o:' stays where it is, and
+        """RecipeValidationRule keeps the repaired 'junk' line in check mode
+        as in format mode, so '.x.o:' stays where it is in both modes and
         '.x' is undeclared."""
         text = "all:\n\t@echo a \\\n  b \\\njunk\n.x.o:\n\tcp $< $@\n"
-        assert _format_messages(text, True, check_only=False)[0] == [
-            "5: Error: Suffix rule '.x.o' uses undeclared suffix '.x'"
-        ]
-        assert _format_messages(text, True, check_only=True)[0] == []
+        for check_only in (False, True):
+            assert _format_messages(text, True, check_only)[0] == [
+                "5: Error: Suffix rule '.x.o' uses undeclared suffix '.x'"
+            ]
 
 
 class TestFormatterMessages:
@@ -1505,8 +1505,8 @@ class TestAgainstGnuMake:
     @pytest.mark.parametrize(
         ("text", "check_only", "error"),
         [
-            ("X = a \\\n  b\\\\\n.x.o:\n\t@echo SUFFIX-RULE\n", False, False),
-            ("X = a \\\n  b\\\\\n.x.o:\n\t@echo SUFFIX-RULE\n", True, False),
+            ("X = a \\\n  b\\\\\n.x.o:\n\t@echo SUFFIX-RULE\n", False, True),
+            ("X = a \\\n  b\\\\\n.x.o:\n\t@echo SUFFIX-RULE\n", True, True),
             (
                 "all:\n\t@echo a \\\n  b \\\njunk\n.x.o:\n\t@echo SUFFIX-RULE\n",
                 False,
@@ -1515,7 +1515,7 @@ class TestAgainstGnuMake:
             (
                 "all:\n\t@echo a \\\n  b \\\njunk\n.x.o:\n\t@echo SUFFIX-RULE\n",
                 True,
-                False,
+                True,
             ),
         ],
         ids=[
@@ -1530,11 +1530,10 @@ class TestAgainstGnuMake:
     ):
         """make reads '.x.o:' as a rule of its own, and with '.x' undeclared
         it is no suffix rule (GNU 8485-8489): make builds the file '.x.o'
-        with the recipe, and 'qux.o' gets no suffix rule. Before this change
-        the rule did not check the line where ContinuationRule had indented
-        it: after a line that ends with two backslashes, and in check mode
-        after a line that RecipeValidationRule leaves out. It gives no error
-        there now either (see TestErrorsOfBefore)."""
+        with the recipe, and 'qux.o' gets no suffix rule. ContinuationRule
+        and RecipeValidationRule now read these lines as make does (a run of
+        two backslashes does not continue; a repaired line stays in check
+        mode), so '.x.o:' is checked as a rule of its own in both modes."""
         built = _make(gnu_make, tmp_path, text, "-n", ".x.o")
         assert built.stdout.endswith("echo SUFFIX-RULE\n")
         proc = _make(gnu_make, tmp_path, text, "-n", "qux.o", touch=["qux.x"])
