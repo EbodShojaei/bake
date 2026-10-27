@@ -58,6 +58,12 @@ class TargetSpacingRule(FormatterPlugin):
                 or line.strip().startswith("#")
                 or not line.strip()
                 or line_index in body_lines
+                # A directive or a line of nothing but references and
+                # function calls is no rule: the colon in 'vpath %.c src:lib',
+                # 'include a:b', 'ifeq ($(X),a:b)' or '$(info a:b)' is text
+                # that make reads as written. MANUAL_CITATIONS
+                or LineUtils.directive_word(line) is not None
+                or LineUtils.is_reference_only(line.strip())
             ):
                 formatted_lines.append(line)
                 continue

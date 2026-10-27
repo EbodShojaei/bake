@@ -54,6 +54,12 @@ class PatternSpacingRule(FormatterPlugin):
                 or stripped.startswith("#")
                 or line.startswith("\t")
                 or index in body_lines
+                # A directive or a line of nothing but references and
+                # function calls is no rule: the colon in 'vpath %.c src:lib'
+                # or 'ifneq (,$(filter %.o:%.c,$(X)))' is text that make reads
+                # as written (GNU make manual 4.5.2, lines 1823-1830; 7.2, lines 5386-5400).
+                or LineUtils.directive_word(line) is not None
+                or LineUtils.is_reference_only(stripped)
             ):
                 formatted_lines.append(line)
                 continue
