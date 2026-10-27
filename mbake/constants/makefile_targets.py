@@ -16,7 +16,8 @@ RULE_BEHAVIOR_TARGETS = {
     ".SILENT",
 }
 
-# Global directives (should NOT be duplicated)
+# Global directives. Like any target, they may appear in several rules (GNU
+# make manual 4.11, lines 2545-2548).
 GLOBAL_DIRECTIVES = {
     ".EXPORT_ALL_VARIABLES",
     ".NOTPARALLEL",
@@ -41,7 +42,9 @@ ALL_SPECIAL_MAKE_TARGETS = (
     DECLARATIVE_TARGETS | RULE_BEHAVIOR_TARGETS | GLOBAL_DIRECTIVES | UTILITY_TARGETS
 )
 
-# Default suffixes for GNU Make
+# The default suffix list of GNU make (GNU make manual 10.2, lines 7545-7549).
+# GNU make 4.4.1 has '.yl' where the manual and make 3.81 have '.lm' (see
+# 'make -p'), so both are here.
 DEFAULT_SUFFIXES = {
     ".out",
     ".a",
@@ -60,6 +63,7 @@ DEFAULT_SUFFIXES = {
     ".l",
     ".ym",
     ".lm",
+    ".yl",
     ".s",
     ".S",
     ".mod",

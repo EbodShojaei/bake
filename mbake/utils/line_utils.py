@@ -1469,7 +1469,9 @@ class LineUtils:
         return line
 
     @staticmethod
-    def format_error_message(message: str, line_num: int, config: dict) -> str:
+    def format_error_message(
+        message: str, line_num: int, config: dict, severity: str = "Error"
+    ) -> str:
         """
         Format an error message according to GNU error format setting.
 
@@ -1477,6 +1479,7 @@ class LineUtils:
             message: The error message content
             line_num: Line number where error occurred
             config: Configuration dictionary
+            severity: 'Error', or 'Warning' for a warning, in the GNU format
 
         Returns:
             Formatted error message string
@@ -1484,7 +1487,7 @@ class LineUtils:
         gnu_error_format = config.get("_global", {}).get("gnu_error_format", False)
 
         if gnu_error_format:
-            return f"{line_num}: Error: {message}"
+            return f"{line_num}: {severity}: {message}"
         else:
             return f"Line {line_num}: {message}"
 
