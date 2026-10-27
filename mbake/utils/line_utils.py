@@ -1,7 +1,7 @@
 """Utility functions for line processing in Makefile formatting."""
 
 import re
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Container, Mapping, Sequence
 from typing import Any, Callable, NamedTuple, Optional, Union
 
 from ..constants.makefile_targets import ALL_SPECIAL_MAKE_TARGETS
@@ -2066,6 +2066,91 @@ class LineUtils:
         return stripped != line and LineUtils.ends_with_continuation(stripped)
 
     @staticmethod
+    def names_target(
+        lines: Sequence[str],
+        target: str,
+        hidden: Optional[Mapping[int, Sequence[str]]] = None,
+    ) -> bool:
+        """
+        Check if target is a target of a rule anywhere in the lines.
+
+        See first_target_line for the lines that count.
+
+        Args:
+            lines: The physical lines of the makefile
+            target: The target name
+            hidden: The lines that '# bake-format off' hides, as for
+                rule_context.scan_makefile
+
+        Returns:
+            True if target is a target in the lines
+        """
+        return LineUtils.first_target_line(lines, target, hidden) is not None
+
+    @staticmethod
+    def first_target_line(
+        lines: Sequence[str],
+        target: str,
+        hidden: Optional[Mapping[int, Sequence[str]]] = None,
+    ) -> Optional[int]:
+        """
+        Find the first line that may name target as the target of a rule.
+
+        A special target such as .ONESHELL or .POSIX takes effect when it is
+        mentioned as a target (GNU make manual 4.9, lines 2410-2423). The
+        lines count as make reads them (see rule_context.logical_lines_read):
+        a logical line that make may read as a rule names target when target
+        is one of the words before its first ':' (4.2, lines 1480-1493), or
+        is in a reference there, which may expand to it. A recipe line, a
+        variable assignment, a target-specific variable, a comment and a
+        function call such as '$(info .POSIX: ...)' name no target (5.1,
+        lines 2897-2900; 6.11, lines 4938-4951). The text of '$(eval ...)'
+        is read as makefile syntax (8.10, lines 6381-6386), and so is a
+        define body that it may be given: such text counts where target is
+        followed by ':' or '::' that starts no assignment operator, outside a
+        variable assignment or a target-specific variable.
+
+        Args:
+            lines: The physical lines of the makefile
+            target: The target name
+            hidden: The lines that '# bake-format off' hides, as for
+                rule_context.scan_makefile
+
+        Returns:
+            The index in lines of the first line that may name target, or of
+            the '# bake-format off' line that hides it; None if no line does
+        """
+        regions = [line for region in (hidden or {}).values() for line in region]
+        if not any(target in line for line in (*lines, *regions)):
+            return None
+        # rule_context imports this module, so it is imported here.
+        from . import rule_context
+
+        evaluates = any("eval" in line for line in (*lines, *regions))
+        pattern = re.compile(r"(?:^|[\s(,])" + re.escape(target) + r"[ \t]*::?(?![:=])")
+        for index, text, kinds in rule_context.logical_lines_read(lines, hidden):
+            if target not in text:
+                continue
+            code = text
+            comment = LineUtils.find_comment_start(code)
+            if comment is not None:
+                code = code[:comment]
+            colon = LineUtils.find_unquoted_char(code, ":")
+            if rule_context.RULE in kinds and colon is not None:
+                targets = code[:colon].rstrip(_WHITESPACE).removesuffix("&")
+                if target in targets.split() or ("$" in targets and target in targets):
+                    return index
+            if "eval" in text or (rule_context.DEFINE_BODY in kinds and evaluates):
+                stripped = code.strip(_WHITESPACE)
+                if (
+                    pattern.search(stripped)
+                    and LineUtils.parse_variable_assignment(stripped) is None
+                    and not LineUtils.is_target_specific_variable(stripped)
+                ):
+                    return index
+        return None
+
+    @staticmethod
     def join_logical_line(lines: Sequence[str], start: int) -> tuple[str, int]:
         """
         Join the physical lines of the logical line that starts at lines[start].
@@ -2113,6 +2198,326 @@ class LineUtils:
             text = text.rstrip(_BLANKS) + " "
             if index >= len(lines):
                 return text, index
+
+
+# The blanks at which a shell splits words (its default IFS, without the
+# newline, which a logical recipe line only holds after a backslash)
+_SHELL_BLANKS = (" ", "\t")
+
+# The shell operators that end a word, so that blanks next to them are not
+# needed ('exit 1;fi' runs as 'exit 1; fi'), and the characters that can be
+# part of one operator with them, such as '&&', ';;', '>&' or '>|'
+_SHELL_OPERATORS = ";&|"
+_SHELL_OPERATOR_PARTS = ";&|<>"
+
+# What make removes from the start of a command before it runs the shell: the
+# recipe prefix comes off first, then blanks and the '@', '-' and '+'
+# characters (GNU make manual 5.2, lines 3037-3038; 5.5, lines 3507-3509;
+# 5.3.1, lines 3107-3108)
+_COMMAND_FLAGS = " \t@-+"
+
+# The programs that read a recipe line as a POSIX shell does: a backslash/
+# newline continues the line outside quotes and inside double quotes, it stays
+# inside single quotes (GNU make manual 5.1.1, lines 2946-2969), and blanks
+# only separate words
+_POSIX_SHELLS = frozenset({"sh", "bash", "dash", "ash", "ksh", "zsh"})
+
+# A define of SHELL, with any modifiers and operator (GNU make manual 6.8,
+# lines 4795-4799 and 4816-4821)
+_DEFINE_SHELL = re.compile(
+    r"(?:(?:export|unexport|override|private)[ \t]+)*define[ \t]+SHELL(?![^ \t:+?!=])"
+)
+
+# An assignment or a define of SHELL anywhere in a text, such as the text of
+# '$(eval ...)' (GNU make manual 6.5, lines 4577-4579; 6.8, lines 4795-4799)
+_ASSIGNS_SHELL = re.compile(
+    r"(?<![\w.$-])SHELL[ \t]*(?:[+?!]|:{1,3})?=|define[ \t]+SHELL(?![^ \t:+?!=])"
+)
+
+
+def _names_posix_shell(operator: str, value: str) -> bool:
+    """Check if an assignment leaves SHELL a program of _POSIX_SHELLS.
+
+    make runs the first word of SHELL's value as the shell program, and
+    gives it the words after it, such as '-o pipefail', as arguments (GNU
+    make manual 5.3.2, lines 3170-3174), so only the first word counts: with
+    or without a directory and with or without '.exe'. A first word with a
+    '$' is expanded by make, and the output of a '!=' command is not known
+    (6.5, lines 4624-4630). '+=' adds words after the program, which stays
+    the one that the other assignments set, or '/bin/sh' (6.6, lines
+    4652-4660; 5.3.2, lines 3170-3171).
+    """
+    if operator == "+=":
+        return True
+    words = value.split()
+    if operator == "!=" or not words or "$" in words[0]:
+        return False
+    name = words[0].replace("\\", "/").rsplit("/", 1)[-1]
+    if name.lower().endswith(".exe"):
+        name = name[: -len(".exe")]
+    return name in _POSIX_SHELLS
+
+
+def _sets_other_shell(code: str) -> bool:
+    """Check if a logical line, cut at its comment, may set SHELL to a program
+    other than a POSIX shell: a plain, target- or pattern-specific assignment
+    with any operator and modifiers, or a define of SHELL (GNU make manual
+    6.11, lines 4938-4951)."""
+    if "SHELL" not in code:
+        return False
+    text = code.strip(_WHITESPACE)
+    if _DEFINE_SHELL.match(text):
+        return True
+    assignment = LineUtils.parse_variable_assignment(text)
+    if assignment is None and LineUtils.is_target_specific_variable(text):
+        colon = LineUtils.find_unquoted_char(text, ":")
+        if colon is not None:
+            rest = text[colon + 1 :]
+            if rest.startswith(":"):
+                rest = rest[1:]
+            assignment = LineUtils.parse_variable_assignment(rest)
+    if assignment is None or assignment.name != "SHELL":
+        return False
+    return not _names_posix_shell(assignment.operator, assignment.value)
+
+
+def _recipe_shell_pieces(
+    block: Sequence[str], prefix: str, command_start: bool = True
+) -> list[str]:
+    """Return the text that make passes to the shell from each line of a
+    logical recipe line: without the recipe prefix that starts a line (GNU
+    make manual 5.1.1, lines 2917-2925), and on the first line, with
+    command_start, also without the blanks and the '@', '-' and '+' before
+    the command (_COMMAND_FLAGS). With .ONESHELL make checks those only on
+    the first line of a recipe (5.3.1, lines 3107-3110), so command_start is
+    False where that is not known. The backslashes that continue the lines
+    stay."""
+    pieces = []
+    for index, line in enumerate(block):
+        if prefix and line.startswith(prefix):
+            line = line[len(prefix) :]
+        if index == 0 and command_start:
+            line = line.lstrip(_COMMAND_FLAGS)
+        pieces.append(line)
+    return pieces
+
+
+# Where a line break of recipe text stands for the shell (see
+# _line_break_states): outside quotes, inside quotes or a here-document, or
+# at the end of a shell comment
+_PLAIN = "plain"
+_QUOTED = "quoted"
+_COMMENT = "comment"
+
+# The characters after which a '#' starts a shell comment: the start of the
+# text, a blank, the newline that ends a comment, and the operator characters.
+# Inside a word, as in 'a#b' or '$$#', a '#' is text.
+_COMMENT_AFTER = frozenset({"", " ", "\t", "\n", ";", "&", "|", "(", ")", "<", ">"})
+
+
+def _opens_ansi_c_quote(text: str, index: int) -> bool:
+    """
+    Check if the "'" at text[index] starts a $'...' string for the shell.
+
+    make passes each '$$' of a recipe to the shell as one '$' (GNU make
+    manual 5.1.2, lines 3005-3006), so the shell gets "$'" where two '$' come
+    before the quote, or six. Four give the shell '$$' and a plain quote. An
+    odd number ends in a make reference, "$'", which counts as a plain quote,
+    as before. bash, ksh and zsh read $'...' as quoted text in which a
+    backslash escapes the next character, so "\\'" does not end it.
+    """
+    run = 0
+    while index - run > 0 and text[index - run - 1] == "$":
+        run += 1
+    return run % 4 == 2
+
+
+def _line_break_states(pieces: Sequence[str]) -> list[str]:
+    """
+    Return where each line break of the recipe text stands for the shell.
+
+    Each line break follows the backslash that continues a line (see
+    _recipe_shell_pieces). It is _QUOTED inside single or double quotes,
+    inside $'...' (see _opens_ansi_c_quote), or after '<<', which starts a
+    here-document: there the blanks around it are text, not word separators
+    (GNU make manual 5.1.1, lines 2946-2969). It is _COMMENT where the
+    backslash is part of a shell comment: make passes comments in a recipe
+    to the shell (3.1, lines 744-746), and a '#' that starts a word starts a
+    comment that ends at the newline, so the backslash before it is comment
+    text that continues nothing, and quotes in the comment are text too
+    (sh, bash, dash, ksh and zsh all run 'echo b' after 'echo a # c \\' and
+    a newline). Elsewhere it is _PLAIN.
+    """
+    text = "\n".join(pieces)
+    states: list[str] = []
+    quote = ""
+    comment = False
+    heredoc = False
+    # The character before the current one as the shell reads it, outside
+    # comments, so that a '#' at the start of a word is found
+    previous = ""
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if comment:
+            if char == "\n":
+                states.append(_QUOTED if heredoc else _COMMENT)
+                comment = False
+                previous = char
+            index += 1
+            continue
+        if quote == "'":
+            if char == "'":
+                quote = ""
+            elif char == "\n":
+                states.append(_QUOTED)
+            previous = char
+            index += 1
+            continue
+        if char == "\\":
+            if text.startswith("\n", index + 1):
+                states.append(_QUOTED if quote or heredoc else _PLAIN)
+            else:
+                # The backslash quotes the next character.
+                previous = text[index + 1 : index + 2]
+            index += 2
+            continue
+        if char == "\n":
+            states.append(_QUOTED if quote or heredoc else _PLAIN)
+        elif quote:
+            if char == quote[-1]:
+                quote = ""
+        elif char == "'":
+            quote = "$'" if _opens_ansi_c_quote(text, index) else "'"
+        elif char == '"':
+            quote = char
+        elif char == "#" and previous in _COMMENT_AFTER:
+            comment = True
+        elif text.startswith("<<", index):
+            heredoc = True
+        previous = char
+        index += 1
+    return states
+
+
+def _quoted_line_breaks(pieces: Sequence[str]) -> list[bool]:
+    """Return, for each line break of the recipe text, whether it is inside
+    quotes or a here-document (see _line_break_states)."""
+    return [state == _QUOTED for state in _line_break_states(pieces)]
+
+
+def _leading_blanks(line: str) -> str:
+    """Return the blanks that start a line."""
+    return line[: len(line) - len(line.lstrip(" \t"))]
+
+
+def _blank_is_optional(before: tuple[str, str], after: tuple[str, str]) -> bool:
+    """
+    Check if blanks between two characters outside quotes change nothing.
+
+    A POSIX shell ends a word at an operator, so a blank next to ';', '&' or
+    '|' is not needed to end the word on its other side: 'exit 1;fi' runs as
+    'exit 1; fi', and 'a|b' as 'a | b'. The same holds next to the newline
+    that ends a shell comment, which ends the command. That does not hold
+    where the other side is part of an operator too, which the blank may
+    split, as in '&&', ';;', '>&' or '>|'. An escaped or quoted ';', '&' or
+    '|' is part of a word, as in '\\;'.
+
+    Args:
+        before: The character before the blanks, as a (kind, character)
+            pair of _shell_text
+        after: The character after them, as such a pair
+
+    Returns:
+        True if the shell reads the same with and without the blanks
+    """
+    if before == ("op", "\n") or after == ("op", "\n"):
+        return True
+    if before[0] == "op" and before[1] in _SHELL_OPERATORS:
+        return after[0] != "op"
+    if after[0] == "op" and after[1] in _SHELL_OPERATORS:
+        return before[0] != "op"
+    return False
+
+
+def _shell_text(pieces: Sequence[str]) -> tuple[tuple[str, str], ...]:
+    """
+    Return what a POSIX shell reads in the text of a recipe line.
+
+    pieces is the text that make passes on from each line (see
+    _recipe_shell_pieces). The shell removes each backslash/newline outside
+    single quotes, and a backslash quotes the next character outside single
+    quotes (GNU make manual 5.1.1, lines 2946-2969). Outside quotes a run of
+    blanks only separates words, so it counts as one blank, and blanks that
+    only stand next to an operator count for nothing (see
+    _blank_is_optional). Quoted text, $'...' text (see _opens_ansi_c_quote)
+    and all text from '<<', which starts a here-document, count as written.
+    A shell comment counts for nothing: it runs from a '#' that starts a
+    word to the newline, which ends the command (see _line_break_states).
+
+    Returns:
+        The text as (kind, character) pairs: kind 'blank' for a run of blanks
+        that separates two words, 'op' for an operator character (';&|<>')
+        outside quotes that no backslash escapes and for the newline after a
+        comment, and 'text' for every other character
+    """
+    text = "\n".join(pieces)
+    units: list[tuple[str, str]] = []
+    quote = ""
+    comment = False
+    previous = ""
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if comment:
+            if char == "\n":
+                units.append(("op", char))
+                comment = False
+                previous = char
+            index += 1
+            continue
+        if quote == "'":
+            units.append(("text", char))
+            if char == "'":
+                quote = ""
+        elif char == "\\":
+            if quote == "$'" or not text.startswith("\n", index + 1):
+                units.append(("text", char))
+                units.extend(
+                    ("text", escaped) for escaped in text[index + 1 : index + 2]
+                )
+                previous = text[index + 1 : index + 2]
+            # Outside single quotes and $'...', a backslash/newline is a line
+            # continuation, which the shell removes.
+            index += 2
+            continue
+        elif quote:
+            units.append(("text", char))
+            if char == quote[-1]:
+                quote = ""
+        elif char in "'\"":
+            quote = "$'" if char == "'" and _opens_ansi_c_quote(text, index) else char
+            units.append(("text", char))
+        elif char == "#" and previous in _COMMENT_AFTER:
+            comment = True
+        elif text.startswith("<<", index):
+            units.extend(("text", rest) for rest in text[index:])
+            break
+        elif char in _SHELL_BLANKS:
+            if units and units[-1][0] != "blank":
+                units.append(("blank", " "))
+        else:
+            units.append(("op" if char in _SHELL_OPERATOR_PARTS else "text", char))
+        previous = char
+        index += 1
+    while units and units[-1][0] == "blank":
+        units.pop()
+    return tuple(
+        unit
+        for position, unit in enumerate(units)
+        if unit[0] != "blank"
+        or not _blank_is_optional(units[position - 1], units[position + 1])
+    )
 
 
 class ShellUtils:
@@ -2167,6 +2572,279 @@ class ShellUtils:
     def contains_shell_operators(line: str) -> bool:
         """Check if content contains shell operators that suggest deliberate structure."""
         return any(op in line for op in ShellUtils.OPERATORS)
+
+    @staticmethod
+    def uses_oneshell(
+        lines: Sequence[str], hidden: Optional[Mapping[int, Sequence[str]]] = None
+    ) -> bool:
+        """
+        Check if a makefile names .ONESHELL as a target.
+
+        make then gives all recipe lines of a target to one shell, newlines
+        included, wherever the target appears in the makefile (GNU make
+        manual 4.9, lines 2410-2415; 5.3.1, lines 3094-3097), so the
+        whitespace of any recipe line may be part of a script. See
+        LineUtils.first_target_line for the lines that count.
+
+        Args:
+            lines: The physical lines of the makefile
+            hidden: The lines that '# bake-format off' hides, as for
+                rule_context.scan_makefile
+
+        Returns:
+            True if .ONESHELL is a target in the lines
+        """
+        return LineUtils.names_target(lines, ".ONESHELL", hidden)
+
+    @staticmethod
+    def recipes_are_shell_opaque(
+        lines: Sequence[str], hidden: Optional[Mapping[int, Sequence[str]]] = None
+    ) -> bool:
+        """
+        Check if the formatter cannot know which whitespace of a recipe matters.
+
+        That is so when .ONESHELL is a target (see uses_oneshell), and when
+        SHELL is set anywhere in the makefile to anything but sh, bash, dash,
+        ash, ksh or zsh, with or without a directory and with or without
+        '.exe', for example to a value with a '$', which make expands, or to
+        the output of a command: another program reads backslash/newlines
+        and blanks in its own way (GNU make manual 5.1.1, lines 2965-2969;
+        5.3.2, lines 3170-3174). An assignment to SHELL counts wherever make
+        may read the line as makefile syntax (see
+        rule_context.logical_lines_read), with any operator and modifiers,
+        target- and pattern-specific ones and a define of SHELL included
+        (6.11, lines 4938-4951). A recipe line such as 'SHELL=/bin/sh ./run'
+        sets no make variable (5.1, lines 2897-2900). The text of
+        '$(eval ...)', and a define body that it may be given, count where
+        they assign SHELL at all. .SHELLFLAGS alone does not count.
+
+        Args:
+            lines: The physical lines of the makefile
+            hidden: The lines that '# bake-format off' hides, as for
+                rule_context.scan_makefile
+
+        Returns:
+            True if every recipe of the makefile is to be left as written
+        """
+        if ShellUtils.uses_oneshell(lines, hidden):
+            return True
+        regions = [line for region in (hidden or {}).values() for line in region]
+        if not any("SHELL" in line for line in (*lines, *regions)):
+            return False
+        # rule_context imports this module, so it is imported here.
+        from . import rule_context
+
+        evaluates = any("eval" in line for line in (*lines, *regions))
+        for _index, text, kinds in rule_context.logical_lines_read(lines, hidden):
+            if "SHELL" not in text:
+                continue
+            if kinds - {rule_context.RECIPE, rule_context.DEFINE_BODY}:
+                comment = LineUtils.find_comment_start(text)
+                if _sets_other_shell(text if comment is None else text[:comment]):
+                    return True
+            if (
+                "eval" in text or (rule_context.DEFINE_BODY in kinds and evaluates)
+            ) and _ASSIGNS_SHELL.search(text):
+                return True
+        return False
+
+    @staticmethod
+    def recipe_block_is_whitespace_sensitive(
+        block: Sequence[str], prefix: str = "\t"
+    ) -> bool:
+        """
+        Check if new blanks in a recipe line could change what the shell runs.
+
+        block holds the physical lines of one logical recipe line (GNU make
+        manual 5.1.1, lines 2910-2915). make passes its backslash/newlines to
+        the shell with the whitespace around them, and removes only the one
+        recipe prefix character that starts the line after each one; it never
+        adds whitespace (lines 2917-2925). The block is sensitive when:
+        - a backslash with no blank before it is followed by a line whose
+          text, without its recipe prefix, starts with no blank: the shell
+          joins the two words, so '@echo no\\' and 'space' print 'nospace'
+          (lines 2927-2944). That is not so where one side is ';', '&' or '|',
+          which ends a word anyway, as in 'exit 1;\\' and 'fi', unless the
+          other side can be part of the same operator (see
+          _blank_is_optional);
+        - a backslash/newline is inside single or double quotes, inside
+          $'...', or after '<<', which starts a here-document: there the
+          blanks are text (lines 2946-2969).
+        Elsewhere blanks only separate words, so new ones change nothing. That
+        holds for a continuation line without the recipe prefix too, whose
+        whitespace all goes to the shell: its leading blanks separate words
+        where no word is joined to the line above it ('@echo no\\' and
+        'space' are joined above), and a rewrite that makes a backslash join
+        two words fails recipe_rewrite_preserves_shell_text. A backslash in
+        a shell comment joins nothing: the comment ends at the newline (see
+        _line_break_states).
+
+        The quotes and comments are tracked from the start of the command,
+        as a POSIX shell tracks them, with bash's $'...' (see
+        _opens_ansi_c_quote). What a variable reference expands to is not
+        known: a quote character that make puts in by expansion is not seen.
+
+        Args:
+            block: The physical lines of the recipe line; for a recipe after
+                the ';' of a rule line, the text after the ';' comes first
+            prefix: The recipe prefix (GNU make manual, lines 5158-5169)
+
+        Returns:
+            True if the block is sensitive; False for a block without
+            continuation lines
+        """
+        if len(block) < 2:
+            return False
+        pieces = _recipe_shell_pieces(block, prefix)
+        states = _line_break_states(pieces)
+        for index in range(len(pieces) - 1):
+            piece = pieces[index]
+            if not LineUtils.ends_with_continuation(piece) or (
+                index < len(states) and states[index] == _COMMENT
+            ):
+                continue
+            body = piece[:-1]
+            before = body[-1:]
+            after = pieces[index + 1][:1]
+            if before in _SHELL_BLANKS or not after or after in _SHELL_BLANKS:
+                continue
+            escaped = bool(before) and _backslashes_before(body, len(body) - 1) % 2 == 1
+            before_kind = (
+                "op"
+                if before and before in _SHELL_OPERATOR_PARTS and not escaped
+                else "text"
+            )
+            after_kind = "op" if after in _SHELL_OPERATOR_PARTS else "text"
+            if not _blank_is_optional((before_kind, before), (after_kind, after)):
+                return True
+        return _QUOTED in states
+
+    @staticmethod
+    def last_line_starts_in_quotes(block: Sequence[str], prefix: str = "\t") -> bool:
+        """
+        Check if the last line of a recipe line starts inside quoted text.
+
+        That is so where the backslash/newline before it is inside single or
+        double quotes, inside $'...', or after '<<', which starts a
+        here-document (see _line_break_states): the blanks at the start of
+        the line are then text that the shell gets (GNU make manual 5.1.1,
+        lines 2946-2969).
+
+        Args:
+            block: The physical lines of the recipe line, up to the line to
+                check; for a recipe after the ';' of a rule line, the text
+                after the ';' comes first
+            prefix: The recipe prefix (GNU make manual, lines 5158-5169)
+
+        Returns:
+            True if the last line starts inside quotes or a here-document
+        """
+        if len(block) < 2:
+            return False
+        breaks = _quoted_line_breaks(_recipe_shell_pieces(block, prefix))
+        return bool(breaks) and breaks[-1]
+
+    @staticmethod
+    def recipe_rewrite_preserves_shell_text(
+        old: Sequence[str], new: Sequence[str], prefix: str = "\t"
+    ) -> bool:
+        """
+        Check if a rewrite of a recipe line gives the shell the same words.
+
+        Both versions are read as make passes them to the shell: without the
+        one recipe prefix character after each backslash/newline, which is
+        all that make removes (GNU make manual 5.1.1, lines 2917-2925), and
+        without the blanks and the '@', '-' and '+' that start the command.
+        A rewrite holds if that text is the same, or if a POSIX shell reads
+        the same words and operators in it (see _shell_text), and the number
+        of lines is the same.
+
+        Args:
+            old: The physical lines of the recipe line before the rewrite
+            new: The lines after it
+            prefix: The recipe prefix (GNU make manual, lines 5158-5169)
+
+        Returns:
+            True if the shell gets the same words
+        """
+        if len(old) != len(new):
+            return False
+        old_pieces = _recipe_shell_pieces(old, prefix)
+        new_pieces = _recipe_shell_pieces(new, prefix)
+        return old_pieces == new_pieces or _shell_text(old_pieces) == _shell_text(
+            new_pieces
+        )
+
+    @staticmethod
+    def keep_shell_text(
+        old: Sequence[str],
+        new: Sequence[str],
+        prefix: str = "\t",
+        opaque: bool = False,
+        fallbacks: Sequence[Sequence[str]] = (),
+    ) -> list[str]:
+        """
+        Return a rewrite of a recipe line without the line changes that change a command.
+
+        The lines are taken from the top, each with the lines above it as
+        they are by then. A line keeps its rewrite where the shell still gets
+        the same words and operators from the whole recipe line, quoted text,
+        here-documents and words that a backslash joins included (see
+        recipe_rewrite_preserves_shell_text); otherwise it stays as it was in
+        old. A change that leaves the line's text as make passes it to the
+        shell always holds: make removes one recipe prefix character after a
+        backslash/newline, so giving the prefix to a line without it, or
+        taking it from a line, changes nothing that the shell gets (GNU make
+        manual 5.1.1, lines 2917-2925), whatever the shell and the quotes.
+        The one exception is the start of a line that begins inside quotes or
+        a here-document (see last_line_starts_in_quotes): make 3.81 removes a
+        TAB there before it runs the shell, but prints it, as part of the
+        quoted text, in the command that it echoes, so the blanks that start
+        such a line stay as they are.
+
+        Args:
+            old: The physical lines of the recipe line
+            new: The lines of the rewrite, as many as in old
+            prefix: The recipe prefix (GNU make manual, lines 5158-5169)
+            opaque: The makefile is one where the shell is not known (see
+                recipes_are_shell_opaque): only the changes that leave the
+                text as it is hold, and the blanks at the start of the first
+                line count too, which make passes on with .ONESHELL (5.3.1,
+                lines 3107-3110)
+            fallbacks: Other rewrites, each as many lines as old, whose line
+                is tried, in order, where the line of new does not hold
+
+        Returns:
+            The lines, each from new, from a fallback or from old
+        """
+        result = list(old)
+        old_pieces = _recipe_shell_pieces(old, prefix, not opaque)
+        old_text: Optional[tuple[tuple[str, str], ...]] = None
+        # Whether each line starts inside quotes or a here-document
+        quoted = [False, *_quoted_line_breaks(old_pieces)]
+        for index in range(len(old)):
+            for rewrite in (new, *fallbacks):
+                line = rewrite[index]
+                if line == old[index]:
+                    break
+                if quoted[index] and _leading_blanks(line) != _leading_blanks(
+                    old[index]
+                ):
+                    continue
+                candidate = [*result[:index], line, *result[index + 1 :]]
+                pieces = _recipe_shell_pieces(candidate, prefix, not opaque)
+                if pieces[index] == old_pieces[index]:
+                    # The shell gets this line's text as before.
+                    result = candidate
+                    break
+                if opaque:
+                    continue
+                if old_text is None:
+                    old_text = _shell_text(old_pieces)
+                if _shell_text(pieces) == old_text:
+                    result = candidate
+                    break
+        return result
 
 
 class MakefileParser:
@@ -2300,7 +2978,23 @@ class MakefileParser:
         - Treats contiguous comments as file header
         - Inserts .PHONY after first blank line following header comments
         - Preserves section comments that come after variables/blank lines
-        - Properly handles multiline variable assignments
+        - Never inserts between a line that continues on the next one, such
+          as a header comment (GNU make manual 3.1, lines 730-733), and a
+          line with text that it continues over: the '.PHONY:' line and the
+          blank line after it would end the logical line there, and make
+          would read that text on its own. A line continues only where an odd
+          number of backslashes ends it, so a backslash that whitespace
+          follows continues none (3.1.1, lines 762-769). Before a blank line
+          that ends such a line, the declaration becomes part of it, which
+          changes nothing that make reads
+        - Properly handles multiline variable assignments: a line at column 1
+          that no backslash above continues, such as a rule, also one that
+          continues itself, starts a new statement, so the line never lands
+          between a rule and its recipe. An indented line after a line that
+          ends with a backslash stays with that line, as before: '.PHONY:'
+          right above it would give it a rule context (5.1, lines 2878-2884),
+          in which TabsRule gives a space-led line a TAB on the next run, and
+          make reads a TAB-led one as a recipe line
 
         Args:
             lines: List of lines from the Makefile
@@ -2314,6 +3008,10 @@ class MakefileParser:
 
         for i, line in enumerate(lines):
             stripped = line.strip()
+
+            if stripped and i > 0 and LineUtils.ends_with_continuation(lines[i - 1]):
+                # Text that the logical line above it continues over
+                continue
 
             if not stripped:  # Empty line
                 if in_header_comments and last_comment_index >= 0:
@@ -2341,12 +3039,24 @@ class MakefileParser:
                 in_variable_block = True
                 continue
 
-            elif in_variable_block and stripped.endswith("\\"):
-                # We're in a variable continuation
+            elif (
+                in_variable_block
+                and line[:1] in (" ", "\t")
+                and LineUtils.ends_with_continuation(line)
+            ):
+                # An indented line that continues stays with the block, as
+                # before; a line at column 1 starts a new statement, such as a
+                # continued rule, whose recipe a '.PHONY:' line above it
+                # would take over (GNU make manual 5.1, lines 2878-2884)
                 continue
 
-            elif in_variable_block and i > 0 and lines[i - 1].strip().endswith("\\"):
-                # This line is part of a variable continuation
+            elif (
+                in_variable_block
+                and i > 0
+                and line[:1] in (" ", "\t")
+                and lines[i - 1].rstrip().endswith("\\")
+            ):
+                # An indented line after a backslash that continues nothing
                 continue
 
             else:
@@ -2756,8 +3466,17 @@ class PhonyAnalyzer:
         lines: list[str],
         disabled_line_indices: Optional[set[int]] = None,
         block_start_index: int = 0,
+        recipe_text: Container[int] = (),
     ) -> set[str]:
-        """Detect phony targets excluding those inside conditional blocks and format-disabled regions."""
+        """Detect phony targets excluding those inside conditional blocks and format-disabled regions.
+
+        recipe_text holds the indexes of continuation lines whose text make
+        passes to the shell (see rule_context.recipe_text_lines), where a
+        word before a ':', as in 'docker run -p 8080:80', is no target (GNU
+        make manual 5.1.1, lines 2917-2925); it may hold the continuation
+        lines of define bodies too, which are part of a variable's value
+        (6.8, lines 4795-4799).
+        """
         target_pattern = re.compile(r"^([^:=]+):(:?)\s*(.*)$")
         conditional_tracker = ConditionalTracker()
         phony_targets = set()
@@ -2770,6 +3489,14 @@ class PhonyAnalyzer:
 
             # Skip empty lines, comments, and lines that start with tab (recipes)
             if not stripped or stripped.startswith("#") or line.startswith("\t"):
+                continue
+            # A conditional directive or a rule in shell text is neither
+            if (
+                ":" in stripped
+                or stripped.startswith(
+                    ("ifeq", "ifneq", "ifdef", "ifndef", "else", "endif")
+                )
+            ) and i in recipe_text:
                 continue
 
             # Skip lines in format-disabled regions

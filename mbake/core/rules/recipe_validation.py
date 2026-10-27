@@ -5,8 +5,8 @@ from collections.abc import Mapping
 from typing import Any, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils.line_utils import LineUtils
-from ...utils.rule_context import scan_makefile
+from ...utils.line_utils import LineUtils, ShellUtils
+from ...utils.rule_context import line_by_line_prefixes, scan_makefile
 
 # Conditional directives keep a rule context: the lines they select can be
 # recipe lines of the rule above them (GNU make manual 7.1, lines 5315-5333).
@@ -97,15 +97,26 @@ class _LineFacts:
     """
 
     def __init__(
-        self, lines: list[str], hidden: Optional[Mapping[int, list[str]]] = None
+        self,
+        lines: list[str],
+        hidden: Optional[Mapping[int, list[str]]] = None,
+        fixes_tabs: bool = True,
     ) -> None:
         """
         Args:
             lines: The lines that the rule formats
             hidden: {index of a '# bake-format off' line: the lines that it
                 hides from the rule}
+            fixes_tabs: Whether format() adds the TABs, as with
+                fix_missing_recipe_tabs on; a line that gets one is then read
+                as the recipe line that it becomes
         """
         self.lines = lines
+        self.fixes_tabs = fixes_tabs
+        # For each line from the top, whether format() adds a TAB to it (see
+        # RecipeValidationRule._adds_tab)
+        self.adds_tab: list[bool] = []
+        self._prefixes: Optional[list[str]] = None
         self.hidden = {
             index: region for index, region in (hidden or {}).items() if region
         }
@@ -138,8 +149,22 @@ class _LineFacts:
     def without_hidden(self) -> "_LineFacts":
         """Return the facts about the same lines with no hidden lines read."""
         if self._without_hidden is None:
-            self._without_hidden = self if not self.hidden else _LineFacts(self.lines)
+            self._without_hidden = (
+                self
+                if not self.hidden
+                else _LineFacts(self.lines, fixes_tabs=self.fixes_tabs)
+            )
         return self._without_hidden
+
+    def formatter_prefix(self, index: int) -> str:
+        """Return the recipe prefix at a line as format() reads it.
+
+        That is LineUtils.get_active_recipe_prefix(lines, index) (see
+        rule_context.line_by_line_prefixes).
+        """
+        if self._prefixes is None:
+            self._prefixes = line_by_line_prefixes(self.lines)
+        return self._prefixes[index]
 
     def make_prefix(self, index: int) -> tuple[str, bool]:
         """
@@ -239,7 +264,7 @@ class RecipeValidationRule(FormatterPlugin):
         fix_missing_tabs = config.get("fix_missing_recipe_tabs", True)
         # {index of a '# bake-format off' line: the lines it hides}
         hidden = context.get("disabled_region_lines") or {}
-        facts = _LineFacts(lines, hidden)
+        facts = _LineFacts(lines, hidden, fix_missing_tabs)
 
         for i, line in enumerate(lines):
             line_num = i + 1
@@ -248,7 +273,10 @@ class RecipeValidationRule(FormatterPlugin):
             active_prefix = LineUtils.get_active_recipe_prefix(lines, i)
 
             # Check if this should be a recipe line but is missing a tab
-            if self._is_missing_recipe_tab(line, i, lines, active_prefix, facts):
+            missing = self._is_missing_recipe_tab(line, i, lines, active_prefix, facts)
+            if len(facts.adds_tab) == i:
+                facts.adds_tab.append(missing)
+            if missing:
                 error_msg = "Missing required tab separator in recipe line"
 
                 if check_mode:
@@ -257,6 +285,12 @@ class RecipeValidationRule(FormatterPlugin):
                         check_messages.append(f"{line_num}: Error: {error_msg}")
                     else:
                         check_messages.append(f"Error: {error_msg} (line {line_num})")
+                    if fix_missing_tabs:
+                        # The line as format mode leaves it, so that the
+                        # rules after this one read the same lines, and
+                        # number them the same, in both modes. Without the
+                        # fix the line is left out, as before.
+                        formatted_lines.append("\t" + line.lstrip(" \t"))
                 else:
                     if fix_missing_tabs:
                         # Fix by replacing leading spaces with a tab
@@ -367,28 +401,8 @@ class RecipeValidationRule(FormatterPlugin):
         if line.startswith(("\t", " ")):
             return False
 
-        # Skip variable assignments and directives
-        if (
-            "=" in stripped
-            or stripped.startswith(
-                (
-                    "include",
-                    "-include",
-                    "export",
-                    "unexport",
-                    "define",
-                    "ifeq",
-                    "ifneq",
-                    "ifdef",
-                    "ifndef",
-                    "if ",
-                    "else",
-                    "endif",
-                    "endef",
-                )
-            )
-            or stripped in self._get_special_make_targets()
-        ):
+        # Skip variable assignments, directives and target lines
+        if self.never_adds_tab(stripped):
             return False
 
         # Skip other makefile syntax, which make reads as such even right
@@ -398,12 +412,6 @@ class RecipeValidationRule(FormatterPlugin):
 
         # Skip content inside define blocks
         if self._is_inside_define_block(facts, line_index, active_prefix):
-            return False
-
-        # Skip target lines themselves (they shouldn't start with tabs)
-        if ":" in stripped and not (
-            "=" in stripped and stripped.find("=") < stripped.find(":")
-        ):
             return False
 
         # Check if this should be a recipe line based on context
@@ -427,9 +435,113 @@ class RecipeValidationRule(FormatterPlugin):
             make_prefix, prefix_known = facts.make_prefix(line_index)
             if not prefix_known or (make_prefix and line.startswith(make_prefix)):
                 return False
-        return True
+        return not self._continuation_keeps_its_start(facts, line_index)
 
-    def _get_special_make_targets(self) -> set[str]:
+    def _continuation_keeps_its_start(self, facts: _LineFacts, line_index: int) -> bool:
+        """
+        Check if a line that continues a recipe line is left without a TAB.
+
+        make reads a continuation line as part of the line it continues, so
+        the line needs no recipe prefix of its own; make removes one recipe
+        prefix character from its start and passes the rest of it to the
+        shell, after the backslash/newline (GNU make manual 5.1.1, lines
+        2917-2925). A TAB added there is left out where it would not be that
+        prefix, or where its text matters:
+        - where make's recipe prefix is not a TAB, or is not known (lines
+          5158-5169): make passes the TAB to the shell, and after a backslash
+          with no blank before it the TAB splits the word that the backslash
+          joins;
+        - where the line starts inside single or double quotes, or in a
+          here-document (see ShellUtils.last_line_starts_in_quotes): make
+          3.81 removes the TAB before it runs the shell, but prints it, as
+          part of the quoted text, in the command that it echoes and that
+          'make -n' shows.
+        A line that continues makefile syntax, such as the prerequisites of
+        a rule, gets the TAB as before: make turns the whitespace around a
+        backslash/newline there into one space (3.1.1, lines 776-781).
+
+        Args:
+            facts: The facts about the lines
+            line_index: The index of a line that would get a TAB otherwise
+
+        Returns:
+            True if the line continues a recipe line and keeps its start
+        """
+        start = facts.starts[line_index]
+        if start == line_index:
+            return False
+        lines = facts.lines
+        make_prefix, prefix_known = facts.make_prefix(line_index)
+        first = lines[start]
+        if (
+            first.startswith("\t")
+            or (make_prefix and first.startswith(make_prefix))
+            or self._gets_tab(facts, start)
+        ):
+            block = lines[start : line_index + 1]
+        else:
+            # The recipe after the ';' of a rule line, which may be on any of
+            # its physical lines (GNU make manual 4.2, lines 1499-1503)
+            if facts.kind(start) != "rule":
+                return False
+            joined = "\n".join(lines[start : line_index + 1])
+            position = LineUtils.find_unquoted_char(joined, ";#")
+            if (
+                position is None
+                or joined[position] != ";"
+                or position > joined.rfind("\n")
+            ):
+                return False
+            head = joined.count("\n", 0, position)
+            column = position - (joined.rfind("\n", 0, position) + 1)
+            block = [
+                lines[start + head][column + 1 :],
+                *lines[start + head + 1 : line_index + 1],
+            ]
+        if not prefix_known or make_prefix != "\t":
+            return True
+        return ShellUtils.last_line_starts_in_quotes(block)
+
+    @classmethod
+    def never_adds_tab(cls, stripped: str) -> bool:
+        """
+        Check if format() leaves a line without a TAB, wherever it stands.
+
+        These are blank lines, comments, variable assignments, directives,
+        special targets and target lines ('=' or ':' in them); the other
+        checks of format() depend on the lines around the line.
+
+        Args:
+            stripped: The line without the whitespace around it
+        """
+        return (
+            not stripped
+            or stripped.startswith("#")
+            or "=" in stripped
+            or stripped.startswith(
+                (
+                    "include",
+                    "-include",
+                    "export",
+                    "unexport",
+                    "define",
+                    "ifeq",
+                    "ifneq",
+                    "ifdef",
+                    "ifndef",
+                    "if ",
+                    "else",
+                    "endif",
+                    "endef",
+                )
+            )
+            or stripped in cls._get_special_make_targets()
+            # Target lines themselves (they shouldn't start with tabs)
+            or ":" in stripped
+        )
+
+    @staticmethod
+    def _get_special_make_targets() -> set[str]:
         """Get all special Makefile targets."""
         return {
             ".PHONY",
@@ -725,7 +837,26 @@ class RecipeValidationRule(FormatterPlugin):
         return None
 
     def _should_be_recipe_line(self, facts: _LineFacts, line_index: int) -> bool:
-        """Check if a line should be a recipe line based on context."""
+        """
+        Check if a line should be a recipe line based on context.
+
+        A line that continues a rule whose first line starts with spaces
+        belongs to that rule, as one that continues a rule at column 1 does:
+        TabsRule leaves such a rule as written where make reads it as one
+        (see TabsRule._starts_continued_definition; GNU make manual 3.8,
+        lines 1209-1219), so the lines above the rule decide nothing, and a
+        '.PHONY' line that PhonyRule puts above it changes nothing either:
+        the line is recipe text after the ';' of the rule (4.2, lines
+        1499-1503), or part of its prerequisites, where a TAB changes
+        nothing either (3.1.1, lines 776-781).
+        """
+        start = facts.starts[line_index]
+        if (
+            start != line_index
+            and facts.lines[start].startswith(" ")
+            and facts.kind(start) == "rule"
+        ):
+            return True
         all_lines = facts.lines
         # Look backward to find what this line belongs to. The answer only
         # depends on where the search is, so it is kept for each line passed.
@@ -761,16 +892,17 @@ class RecipeValidationRule(FormatterPlugin):
                     continue
                 # A line that starts with a tab is a recipe line in a rule
                 # context, and then this line should also be a recipe line
-            elif not self._is_target_line(facts, i):
+            elif not self._is_target_line(facts, i) and not self._gets_tab(facts, i):
                 # If we find a non-target, non-recipe line, this is not a recipe
                 break
 
             # The recipe or target line may only continue a makefile line or
             # a comment, which make reads as one logical line from its first
             # physical line (GNU make manual 3.8, lines 1209-1218). Then that
-            # logical line decides.
+            # logical line decides. A line that format() gives a TAB counts
+            # as the recipe line that it becomes, as on the next run.
             start = facts.starts[i]
-            if all_lines[start].startswith("\t"):
+            if all_lines[start].startswith("\t") or self._gets_tab(facts, start):
                 # A line that starts with a TAB is a recipe line only in a
                 # rule context. Elsewhere make reads it as makefile syntax
                 # (lines 1217-1219), and after it make rejects a TAB line
@@ -790,6 +922,35 @@ class RecipeValidationRule(FormatterPlugin):
         for position in passed:
             facts.recipe_contexts[position] = result
         return result
+
+    def _gets_tab(self, facts: _LineFacts, index: int) -> bool:
+        """Check if format() gives the line at index a TAB, with
+        fix_missing_recipe_tabs on (see _adds_tab)."""
+        return facts.fixes_tabs and self._adds_tab(facts, index)
+
+    def _adds_tab(self, facts: _LineFacts, index: int) -> bool:
+        """
+        Check if _is_missing_recipe_tab holds for the line at index.
+
+        format() adds the TAB to such a line before it reads the lines below
+        it, so a line below reads it as the recipe line that it becomes, as
+        the next run reads it; otherwise each run would turn one more line of
+        a run of such lines into a recipe line. The answers are worked out
+        from the top, as format() works them out, and kept, so that no answer
+        waits for the one of the line above.
+        """
+        while len(facts.adds_tab) <= index:
+            position = len(facts.adds_tab)
+            facts.adds_tab.append(
+                self._is_missing_recipe_tab(
+                    facts.lines[position],
+                    position,
+                    facts.lines,
+                    facts.formatter_prefix(position),
+                    facts,
+                )
+            )
+        return facts.adds_tab[index]
 
     def _continued_line_verdict(self, facts: _LineFacts, start: int) -> Optional[bool]:
         """

@@ -8,7 +8,11 @@ from ...plugins.base import FormatResult, FormatterPlugin
 from ...utils.line_utils import LineUtils
 from ...utils.rule_context import (
     RECIPE,
+    DanglingRepairs,
     LineState,
+    dangling_backslash_repairs,
+    make_kinds,
+    recipe_text_lines,
     significant_whitespace_lines,
 )
 from .tabs import MakeReading, TabsRule
@@ -107,10 +111,11 @@ class ConditionalRule(FormatterPlugin):
         - a continuation line of a line that make may read as a recipe line:
           make passes it to the shell with its leading whitespace (5.1.1,
           lines 2918-2925), so new indentation would change the command.
-        Only spaces are ever added. With remove_trailing_whitespace off, the
-        whitespace after a final backslash stays, also on directive lines,
-        without which the backslash would continue the line (3.1.1, lines
-        762-769).
+        Only spaces are ever added. The whitespace after a final backslash
+        stays, also on directive lines, without which the backslash would
+        continue the line (3.1.1, lines 762-769), except where
+        dangling_backslash_repairs finds that make rejects the next line on
+        its own and remove_trailing_whitespace is on.
         """
         formatted_lines = []
         changed = False
@@ -141,12 +146,24 @@ class ConditionalRule(FormatterPlugin):
         # move a re-indented line into a rule context.
         remove_trailing_whitespace = config.get("remove_trailing_whitespace", True)
         value_lines: Optional[set[int]] = None
+        # The lines whose whitespace after a final backslash goes (see
+        # dangling_backslash_repairs), when they are first needed
+        repairs: Optional[set[int]] = None
 
         # How make reads the lines, as TabsRule reads them
         hidden = context.get("disabled_region_lines") or {}
         states = TabsRule.read_lines(lines, hidden, remove_trailing_whitespace)
+        recipe_text = recipe_text_lines(lines, hidden, remove_trailing_whitespace)
         keep_recipe_lines = TabsRule.reads_prefix_as_make(lines, states)
         tabs = TabsRule()
+        phony_lines_move = TabsRule.phony_lines_move(config)
+        # The dangling lines that TabsRule reads as repaired (see
+        # TabsRule._is_variable_continuation)
+        repaired = (
+            DanglingRepairs(lines, hidden, remove_trailing_whitespace)
+            if remove_trailing_whitespace
+            else None
+        )
         tabs_reading: Optional[MakeReading] = None
         if keep_recipe_lines:
             # The reading that TabsRule makes its choices on (see
@@ -171,6 +188,8 @@ class ConditionalRule(FormatterPlugin):
                     lines,
                     states[index].recipe_prefix,
                     reading=tabs_reading,
+                    phony_lines_move=phony_lines_move,
+                    repaired=repaired,
                 )
             }
 
@@ -206,6 +225,8 @@ class ConditionalRule(FormatterPlugin):
             # line is passed to the shell with its leading whitespace (GNU
             # make manual 5.1.1, lines 2918-2925): it stays as written, as
             # long as the line it continues stays a recipe line, as written.
+            # So does a line of the recipe after the ';' of a rule line (4.2,
+            # lines 1499-1503), whatever the rule line's indentation.
             start = state.logical_start
             if (
                 state.continuation
@@ -213,7 +234,7 @@ class ConditionalRule(FormatterPlugin):
                 and 0 <= start < line_index
                 and formatted_lines[start] == lines[start]
                 and lines[start].startswith(state.recipe_prefix)
-            ):
+            ) or (line_index in recipe_text and RECIPE not in make_kinds(state)):
                 formatted_lines.append(line)
                 continue
 
@@ -229,14 +250,18 @@ class ConditionalRule(FormatterPlugin):
 
             # Check if this is a conditional directive
             if self._is_conditional_directive(stripped):
+                keep_trailing = LineUtils.has_dangling_backslash(line)
+                if keep_trailing and remove_trailing_whitespace:
+                    if repairs is None:
+                        repairs = dangling_backslash_repairs(lines, hidden)
+                    keep_trailing = line_index not in repairs
                 formatted_line = self._format_conditional_directive(
                     line,
                     stripped,
                     conditional_stack,
                     line_num,
                     tab_width,
-                    keep_trailing=not remove_trailing_whitespace
-                    and LineUtils.has_dangling_backslash(line),
+                    keep_trailing=keep_trailing,
                 )
                 if (
                     formatted_line != original_line
@@ -269,6 +294,8 @@ class ConditionalRule(FormatterPlugin):
                             lines,
                             state.recipe_prefix,
                             reading=tabs_reading,
+                            phony_lines_move=phony_lines_move,
+                            repaired=repaired,
                         )
                     )
                 ):
@@ -278,11 +305,12 @@ class ConditionalRule(FormatterPlugin):
                             lines, states, as_syntax=True
                         )
                     if remove_trailing_whitespace:
-                        # WhitespaceRule removes the trailing whitespace later,
-                        # also after a final backslash, which makes the line
-                        # continue (GNU make manual 3.1.1, lines 762-769);
-                        # there it knows which lines that changes (see
-                        # empty_recipes_to_keep).
+                        # WhitespaceRule removes the trailing whitespace later.
+                        # After a final backslash it removes it only where
+                        # dangling_backslash_repairs finds it, which makes the
+                        # line continue (GNU make manual 3.1.1, lines
+                        # 762-769); there it knows which lines that changes
+                        # (see empty_recipes_to_keep).
                         keep_trailing = True
                     else:
                         # Only whitespace that make reads is kept: that of a

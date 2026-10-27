@@ -39,9 +39,10 @@ kind, rule_context, depth, in_define and recipe_prefix follow one model of the
 whole file. LineState.readings instead follows make through every branch of
 every conditional, with make 3.81 and 4.x, and says each way make may read a
 line, LineState.recipe_owners says each rule whose recipe it may be part of,
-and LineState.skipped_as_recipe says if make may skip it as a recipe line in
-a branch that it skips. That model knows where a rule context is certain, and
-so where a line that starts with the recipe prefix may still be makefile
+LineState.skipped_as_recipe says if make may skip it as a recipe line in a
+branch that it skips, and LineState.rule_context_read says if a rule context
+may be open at it. That model knows where a rule context is certain, and so
+where a line that starts with the recipe prefix may still be makefile
 syntax.
 
 Known limits of the one-model fields, which readings does not have:
@@ -193,6 +194,13 @@ class LineState:
             while make reads one that starts with other whitespace, to find
             the lines that belong together. Like readings, it follows every
             branch of every conditional, with make 3.81 and 4.x.
+        rule_context_read: True if a rule context may be open at the line in
+            a reading of make (see readings), in any branch of the
+            conditionals above it and with make 3.81 or 4.x. Unlike
+            rule_context, text that make stops at, such as a line that is no
+            makefile syntax and has no reference ("missing separator", GNU
+            make manual, lines 11275-11281), opens none: make reads no
+            further there.
     """
 
     kind: str
@@ -208,6 +216,7 @@ class LineState:
     recipe_owners: Optional[frozenset[int]] = frozenset()
     recipe_prefix_known: bool = True
     skipped_as_recipe: bool = False
+    rule_context_read: bool = False
 
     @property
     def in_define(self) -> bool:
@@ -371,7 +380,7 @@ def define_body_lines(
     Args:
         lines: The physical lines of the makefile
         hidden: As for scan_makefile
-        strip_dangling: Read the lines as strip_dangling_backslashes leaves
+        strip_dangling: Read the lines as repair_dangling_backslashes leaves
             them, as WhitespaceRule does when it removes trailing whitespace,
             so that a rule that runs before it makes the same choice on its
             output
@@ -385,10 +394,253 @@ def define_body_lines(
     ):
         return set()
     if strip_dangling:
-        states = strip_dangling_backslashes(lines, hidden)[1]
+        states = repair_dangling_backslashes(lines, hidden)[1]
     else:
         states = scan_makefile(lines, hidden)
     return {index for index, state in enumerate(states) if state.may_be_define_body}
+
+
+class NonRuleContinuationLines:
+    """
+    The continuation lines of logical lines that make reads as no rule.
+
+    Such a line is part of the logical line above it (GNU make manual 3.1.1,
+    lines 762-769): of an assignment, whose value it continues, of a
+    directive, of a define body, which is the value of a variable (6.8,
+    lines 4795-4799), or of a recipe line, which is shell text (5.1.1, lines
+    2917-2925), so whatever text it holds, it names no target. The lines
+    are read as WhitespaceRule leaves them with repair (see
+    repair_dangling_backslashes), and only a question about a line that a
+    line ending with a backslash precedes reads the makefile.
+    """
+
+    def __init__(
+        self,
+        lines: Sequence[str],
+        hidden: Optional[Mapping[int, Sequence[str]]] = None,
+        repair: bool = False,
+    ) -> None:
+        self._lines = lines
+        self._hidden = hidden
+        self._repair = repair
+        self._found: Optional[set[int]] = None
+
+    def __contains__(self, index: object) -> bool:
+        if not isinstance(index, int) or not 0 < index < len(self._lines):
+            return False
+        above = self._lines[index - 1]
+        if not (
+            LineUtils.ends_with_continuation(above)
+            or (self._repair and LineUtils.has_dangling_backslash(above))
+        ):
+            return False
+        if self._found is None:
+            if self._repair:
+                states = repair_dangling_backslashes(self._lines, self._hidden)[1]
+            else:
+                states = scan_makefile(self._lines, self._hidden)
+            self._found = {
+                position
+                for position, state in enumerate(states)
+                if state.continuation and RULE not in make_kinds(state)
+            }
+        return index in self._found
+
+
+def dangling_backslash_repairs(
+    lines: Sequence[str],
+    hidden: Optional[Mapping[int, Sequence[str]]] = None,
+) -> set[int]:
+    """
+    Find the lines whose whitespace after a final backslash is to be removed.
+
+    make continues a line only where an odd number of backslashes is its
+    last text, so a backslash followed by whitespace does not continue it
+    (GNU make manual 3.1, lines 730-733; 3.1.1, lines 762-769). Removing that
+    whitespace makes the line continue, and the next line becomes part of
+    it. That repair, which the formatter always made, is made only where
+    make rejects the input anyway: where the next line cannot stand alone.
+    That is a line of text that is no makefile syntax and no reference,
+    which no rule context of make reaches (see LineState.rule_context_read),
+    so that make stops at it ("missing separator", lines 11275-11281, or
+    "recipe commences before first target" after the recipe prefix, lines
+    11292-11297; 3.8, lines 1209-1227), such as '    -lfoo' or '    b)'
+    after 'X = a \\ '.
+    Such a line opens no rule context either, so a run of lines that all
+    end with a backslash and whitespace is repaired at once. Every other
+    line with such a backslash is kept as written:
+    - a line of a define body, which is the value of a variable (6.8, lines
+      4795-4799);
+    - a conditional directive, a define or an endef, whose next line make
+      may skip with the branch around it (7.2, lines 5399-5421);
+    - the last line, and a line after which '# bake-format off' hides lines;
+    - a line before a blank line, a comment (a region marker included), a
+      directive, an assignment, a rule, a function call, a line with a
+      reference, which may expand to a rule (3.8, lines 1231-1236), a
+      recipe line, or text that a rule context of make may reach, which
+      TabsRule or RecipeValidationRule may turn into a recipe line where
+      the recipe prefix is a TAB (lines 5158-5169);
+    - a line before text that make 3.81 reads on, while make 4.x stops at
+      it: an 'override' line without an assignment, which make 3.81
+      reports as an invalid override directive, and a line with '=' after
+      a name that holds blanks, such as '-lfoo -DX=1', which make 3.81
+      reads as an assignment;
+    - a line before a line that make reads as a rule line without targets,
+      such as '    \\;', where no recipe line may follow it (see
+      stands_alone_without_targets).
+    The rules that remove trailing whitespace remove it from these lines
+    only, so that no rule makes a line continue that make does not
+    continue, and all of them read the lines alike. A repair can change how
+    make reads the lines below it, so the lines are read again after the
+    repairs until no more lines are found.
+
+    Args:
+        lines: The physical lines of the makefile
+        hidden: As for scan_makefile; without it, a '# bake-format off' or
+            '# bake-format on' line may be followed by hidden lines
+
+    Returns:
+        The indexes of the lines to repair
+    """
+    if not any(LineUtils.has_dangling_backslash(line) for line in lines):
+        return set()
+    return _repair_dangling_backslashes(lines, hidden)[0]
+
+
+def _repair_dangling_backslashes(
+    lines: Sequence[str],
+    hidden: Optional[Mapping[int, Sequence[str]]],
+    states: Optional[Sequence[LineState]] = None,
+) -> tuple[set[int], list[str], list[LineState]]:
+    """
+    Repair the lines of dangling_backslash_repairs.
+
+    Returns:
+        The indexes of the repaired lines, the lines with the whitespace
+        after their final backslash removed, and scan_makefile of them
+    """
+    current = list(lines)
+    if states is None:
+        states = scan_makefile(current, hidden)
+    states = list(states)
+    candidates = [
+        index
+        for index, line in enumerate(current)
+        if LineUtils.has_dangling_backslash(line)
+    ]
+    repairs: set[int] = set()
+    while candidates:
+        found = [
+            index
+            for index in candidates
+            if _next_line_cannot_stand_alone(current, states, hidden, index)
+        ]
+        if not found:
+            break
+        for index in found:
+            current[index] = current[index].rstrip()
+            repairs.add(index)
+        candidates = [index for index in candidates if index not in repairs]
+        states = scan_makefile(current, hidden)
+    return repairs, current, states
+
+
+def _next_line_cannot_stand_alone(
+    lines: Sequence[str],
+    states: Sequence[LineState],
+    hidden: Optional[Mapping[int, Sequence[str]]],
+    index: int,
+) -> bool:
+    """Check if lines[index], which ends with a dangling backslash, is to be
+    repaired (see dangling_backslash_repairs)."""
+    state = states[index]
+    if state.may_be_define_body or (state.readings | {state.kind}) & {
+        CONDITIONAL,
+        DEFINE,
+        ENDEF,
+    }:
+        return False
+    following = index + 1
+    if following >= len(lines):
+        return False
+    if hidden is None:
+        if _REGION_MARKERS.is_format_disabled_line(lines[index]):
+            return False
+    elif hidden.get(index):
+        return False
+    after = states[following]
+    # Text that a rule context reaches becomes a recipe line with the TAB
+    # that TabsRule or RecipeValidationRule gives it, where make's recipe
+    # prefix is that TAB (GNU make manual, lines 5158-5169).
+    tab_prefix = after.recipe_prefix == "\t" and after.recipe_prefix_known
+    if (
+        after.readings
+        or (after.rule_context_read and tab_prefix)
+        or after.continuation
+        or after.may_be_define_body
+    ):
+        return False
+    # make's readings decide, and the text itself: the one model of
+    # scan_makefile may take the line for a recipe line after text that make
+    # stops at, and other rules may change that text.
+    code = _code(LineUtils.join_logical_line(lines, following)[0])
+    return (
+        _classify(code)[0] == OTHER
+        and not _make_381_reads_on(code)
+        and not stands_alone_without_targets(lines, following)
+    )
+
+
+def _make_381_reads_on(code: str) -> bool:
+    """
+    Check if make 3.81 goes on past a line that _classify reads as OTHER.
+
+    It does at an 'override' line without an assignment, which it reports
+    as an invalid override directive, and at a line with '=' after a name
+    that holds blanks, which it reads as an assignment of that name; make
+    4.x stops at both ("missing separator", GNU make manual, lines
+    11275-11281). A line with '=' and no name stops both ("empty variable
+    name").
+    """
+    if code.split()[:1] == ["override"]:
+        return True
+    equals = LineUtils.find_unquoted_char(code, "=")
+    if equals is None:
+        return False
+    return bool(code[:equals].rstrip("+?:!" + _WHITESPACE))
+
+
+def repair_dangling_backslashes(
+    lines: Sequence[str],
+    hidden: Optional[Mapping[int, Sequence[str]]] = None,
+    states: Optional[Sequence[LineState]] = None,
+) -> tuple[list[str], list[LineState]]:
+    """
+    Remove the whitespace after a final backslash where it is repaired.
+
+    These are the lines of dangling_backslash_repairs: there make rejects
+    the line after the backslash on its own, and the whitespace goes, which
+    makes the line continue (GNU make manual 3.1.1, lines 762-769), as the
+    rules that remove trailing whitespace remove it. Every other backslash
+    followed by whitespace stays as written. This is how the rules read the
+    lines as WhitespaceRule will leave them.
+
+    Args:
+        lines: The physical lines of the makefile
+        hidden: As for scan_makefile
+        states: scan_makefile(lines, hidden), if already known
+
+    Returns:
+        The lines with that whitespace removed, and scan_makefile of them
+    """
+    if not any(LineUtils.has_dangling_backslash(line) for line in lines):
+        if states is None:
+            states = scan_makefile(lines, hidden)
+        return list(lines), list(states)
+    _repairs, current, current_states = _repair_dangling_backslashes(
+        lines, hidden, states
+    )
+    return current, current_states
 
 
 def strip_dangling_backslashes(
@@ -397,13 +649,15 @@ def strip_dangling_backslashes(
     states: Optional[Sequence[LineState]] = None,
 ) -> tuple[list[str], list[LineState]]:
     """
-    Remove the whitespace after a final backslash outside define bodies.
+    Remove the whitespace after every final backslash outside define bodies.
 
     A backslash followed by whitespace does not continue a line (GNU make
-    manual 3.1.1, lines 762-769). WhitespaceRule still removes that
-    whitespace outside define bodies, as it always has, which makes the line
-    continue. A line that this joins to a define line can end the body that
-    the scan found, so the scan is repeated until no more lines change.
+    manual 3.1.1, lines 762-769); removing that whitespace makes the line
+    continue. This is how WhitespaceRule read the lines before it removed
+    that whitespace only where dangling_backslash_repairs finds it; the
+    rules now read the lines with repair_dangling_backslashes. A line that
+    this joins to a define line can end the body that the scan found, so
+    the scan is repeated until no more lines change.
 
     Args:
         lines: The physical lines of the makefile
@@ -563,10 +817,12 @@ def cleanup_readings(
 
     That is scan_makefile of the lines and, with strip_dangling, where
     strip_dangling_backslashes changes them, scan_makefile of the lines it
-    leaves as well, last. WhitespaceRule removes the whitespace after a final
-    backslash when it removes trailing whitespace, so the run after it reads
-    the last reading; a backslash followed by whitespace does not continue a
-    line (GNU make manual 3.1.1, lines 762-769), so the readings can differ.
+    leaves as well, last: the readings that WhitespaceRule decided on before
+    it removed the whitespace after a final backslash only where
+    dangling_backslash_repairs finds it. The rules now decide on
+    repaired_readings. A backslash followed by whitespace does not continue
+    a line (GNU make manual 3.1.1, lines 762-769), so the readings can
+    differ.
 
     Args:
         lines: The physical lines of the makefile
@@ -582,6 +838,40 @@ def cleanup_readings(
         stripped, stripped_states = strip_dangling_backslashes(lines, hidden, states)
         if stripped != readings[0][0]:
             readings.append((stripped, stripped_states))
+    return readings
+
+
+def repaired_readings(
+    lines: Sequence[str],
+    hidden: Optional[Mapping[int, Sequence[str]]] = None,
+    repair: bool = False,
+) -> list[ScannedLines]:
+    """
+    Return the readings of the lines that whitespace cleanup decides on.
+
+    That is scan_makefile of the lines and, with repair, where
+    repair_dangling_backslashes changes them, scan_makefile of the lines it
+    leaves as well, last. WhitespaceRule removes the whitespace after a final
+    backslash where dangling_backslash_repairs finds it, when it removes
+    trailing whitespace, so the run after it reads the last reading; a
+    backslash followed by whitespace does not continue a line (GNU make
+    manual 3.1.1, lines 762-769), so the readings can differ.
+
+    Args:
+        lines: The physical lines of the makefile
+        hidden: As for scan_makefile
+        repair: Add the reading of repair_dangling_backslashes, as
+            WhitespaceRule makes it when remove_trailing_whitespace is on
+
+    Returns:
+        The readings, as (lines, states) pairs, the given lines first
+    """
+    states = scan_makefile(lines, hidden)
+    readings = [(list(lines), states)]
+    if repair:
+        repaired, repaired_states = repair_dangling_backslashes(lines, hidden, states)
+        if repaired != readings[0][0]:
+            readings.append((repaired, repaired_states))
     return readings
 
 
@@ -602,18 +892,19 @@ def empty_recipes_to_keep(readings: Sequence[ScannedLines]) -> dict[int, str]:
 
     A line is kept only where every reading keeps it and reads it the same
     way: as the same kind of line, in the same rule contexts, with the same
-    recipe prefix (see _same_reading). Where strip_dangling_backslashes
-    changes how make reads a line, keeping it could give a rule an empty
-    recipe that the makefile did not have (lines 762-769, 4040-4055), so the
-    line goes, as it always did. No line below the first line that
-    strip_dangling_backslashes changes is kept either: the line that the
-    backslash then continues may set a variable that a conditional below
-    tests, so make may take another branch there (7.1, lines 5354-5358),
-    which the readings, made from the text alone, do not show. The run after
-    this one reads the last reading only, and keeps the same lines.
+    recipe prefix (see _same_reading). Where removing the whitespace after a
+    final backslash (see repair_dangling_backslashes) changes how make reads
+    a line, keeping it could give a rule an empty recipe that the makefile
+    did not have (lines 762-769, 4040-4055), so the line goes, as it always
+    did. No line below the first line that the removal changes is kept
+    either: the line that the backslash then continues may set a variable
+    that a conditional below tests, so make may take another branch there
+    (7.1, lines 5354-5358), which the readings, made from the text alone,
+    do not show. The run after this one reads the last reading only, and
+    keeps the same lines.
 
     Args:
-        readings: cleanup_readings of the lines
+        readings: repaired_readings (or cleanup_readings) of the lines
 
     Returns:
         {index: the line to keep}, as the last reading keeps it
@@ -669,7 +960,7 @@ def orphaned_recipe_lines(
     '.PHONY:' lines then stay as well, which is stable for the same reason.
 
     Args:
-        readings: cleanup_readings of the lines
+        readings: repaired_readings (or cleanup_readings) of the lines
         removed: The indexes of the '.PHONY:' lines to remove
 
     Returns:
@@ -749,8 +1040,8 @@ def value_whitespace_lines(
     - the value is empty, or the last line is only whitespace, which make
       condenses into the space of the backslash/newline before it (3.1.1,
       lines 776-781);
-    - the line ends with a backslash and whitespace, which keeps the cleanup
-      it had so far.
+    - the line ends with a backslash and whitespace: whether that
+      whitespace goes is decided by dangling_backslash_repairs.
 
     Args:
         lines: The lines that were scanned
@@ -875,6 +1166,64 @@ def significant_whitespace_lines(
     )
 
 
+def make_kinds(state: LineState) -> frozenset[str]:
+    """
+    Return the kinds of line that make may read a line as.
+
+    These are its readings (see LineState.readings). Where make stops at the
+    line in every reading, such as at a rule line that starts with the
+    recipe prefix outside a rule context ("recipe commences before first
+    target", GNU make manual, lines 11292-11297), the kind of the one model
+    stands for them: that is how make reads the line once the error above it
+    or in it is gone, and how the next run of the rules may read it.
+
+    Args:
+        state: The LineState of the line (see scan_makefile)
+
+    Returns:
+        The kinds, never empty
+    """
+    return state.readings or frozenset({state.kind})
+
+
+def logical_lines_read(
+    lines: Sequence[str],
+    hidden: Optional[Mapping[int, Sequence[str]]] = None,
+) -> list[tuple[int, str, frozenset[str]]]:
+    """
+    Return each logical line with the kinds of line that make may read it as.
+
+    The lines that '# bake-format off' hides are read in place, as make reads
+    them. Each logical line comes with make_kinds of it, in every branch of
+    the conditionals and with make 3.81 and 4.x; past a line at which make
+    stops, the lines are read as if make went on (see scan_makefile's
+    past_errors), as they are once the rules fix that line.
+
+    Args:
+        lines: The physical lines of the makefile
+        hidden: As for scan_makefile; without it, no lines are hidden
+
+    Returns:
+        For each logical line, in order: the index in lines of its first
+        line, or of the '# bake-format off' line that hides it; the logical
+        line (see LineState.text); and its kinds
+    """
+    merged: list[str] = []
+    anchors: list[int] = []
+    for index, line in enumerate(lines):
+        merged.append(line)
+        anchors.append(index)
+        for hidden_line in (hidden or {}).get(index, ()):
+            merged.append(hidden_line)
+            anchors.append(index)
+    states = scan_makefile(merged, {}, past_errors=True)
+    return [
+        (anchors[index], state.text, make_kinds(state))
+        for index, state in enumerate(states)
+        if not state.continuation
+    ]
+
+
 def recipe_of_phony_only(states: Sequence[LineState], index: int) -> bool:
     """
     Check if make reads a line as a recipe line of .PHONY only, if at all.
@@ -898,6 +1247,171 @@ def recipe_of_phony_only(states: Sequence[LineState], index: int) -> bool:
     )
 
 
+def inline_recipe_start(
+    lines: Sequence[str], state: LineState
+) -> tuple[bool, Optional[tuple[int, int]]]:
+    """
+    Find the recipe after the ';' of a rule line.
+
+    make reads the text after the first ';' of a rule line, before any
+    comment, as the first recipe line (GNU make manual 4.2, lines 1488 and
+    1499-1503), and passes the lines that it continues over to the shell as
+    recipe text, backslash/newlines included (5.1.1, lines 2946-2956). The
+    ';' may be on any physical line of the logical line: the text before it
+    is targets and prerequisites, makefile syntax.
+
+    Args:
+        lines: The physical lines of the logical line, from its first line
+        state: The LineState of one of its lines (see scan_makefile)
+
+    Returns:
+        Whether make may read the logical line as a rule with such a recipe
+        (see make_kinds), and where the recipe starts: the index in lines of
+        the physical line with the ';', and the index in that line after the
+        ';'. None where the ';' is not found in the physical lines.
+    """
+    if RULE not in make_kinds(state):
+        return False, None
+    if LineUtils.find_unquoted_char(_code(state.text), ";") is None:
+        return False, None
+    joined = "\n".join(lines)
+    position = LineUtils.find_unquoted_char(joined, ";#")
+    if position is None or joined[position] != ";":
+        return True, None
+    line = joined.count("\n", 0, position)
+    column = position - (joined.rfind("\n", 0, position) + 1)
+    return True, (line, column + 1)
+
+
+def recipe_text_lines(
+    lines: Sequence[str],
+    hidden: Optional[Mapping[int, Sequence[str]]] = None,
+    repair: bool = False,
+) -> set[int]:
+    """
+    Find the continuation lines whose text make passes to the shell.
+
+    These are the lines that continue a logical line that make may read as
+    a recipe line (see make_kinds), and the lines that continue a rule line
+    below the physical line with the ';' that starts its recipe (see
+    inline_recipe_start). make passes them to the shell with all of their
+    text, whatever it looks like: an assignment, a rule or a directive there
+    is shell text (GNU make manual 5.1, lines 2897-2905; 5.1.1, lines
+    2917-2925), so no rule rewrites it as makefile syntax.
+
+    Args:
+        lines: The physical lines of the makefile
+        hidden: As for scan_makefile
+        repair: Read the lines as WhitespaceRule leaves them when it removes
+            trailing whitespace (see repair_dangling_backslashes)
+
+    Returns:
+        The indexes of those lines
+    """
+    if not any(
+        LineUtils.ends_with_continuation(line)
+        or (repair and LineUtils.has_dangling_backslash(line))
+        for line in lines
+    ):
+        return set()
+    if repair:
+        states = repair_dangling_backslashes(lines, hidden)[1]
+    else:
+        states = scan_makefile(lines, hidden)
+    found: set[int] = set()
+    index = 0
+    while index < len(lines):
+        start = index
+        index += 1
+        while index < len(lines) and states[index].continuation:
+            index += 1
+        state = states[start]
+        if state.continuation:
+            # The line continues lines that '# bake-format off' hides.
+            if RECIPE in make_kinds(state):
+                found.update(range(start, index))
+            continue
+        if index - start < 2:
+            continue
+        if RECIPE in make_kinds(state):
+            found.update(range(start + 1, index))
+            continue
+        inline, position = inline_recipe_start(lines[start:index], state)
+        if inline:
+            first = 1 if position is None else position[0] + 1
+            found.update(range(start + first, index))
+    return found
+
+
+class RecipeTextLines:
+    """
+    recipe_text_lines of some lines, worked out when a question needs it.
+
+    A line can only be one of them where the line above it ends with a
+    backslash that continues it, or with one that whitespace follows, which
+    may be repaired, or where lines that '# bake-format off' hides come right
+    before it; only a question about such a line reads the lines.
+    """
+
+    def __init__(
+        self,
+        lines: Sequence[str],
+        hidden: Optional[Mapping[int, Sequence[str]]] = None,
+        repair: bool = False,
+    ) -> None:
+        self._lines = lines
+        self._hidden = hidden
+        self._repair = repair
+        self._found: Optional[set[int]] = None
+
+    def __contains__(self, index: object) -> bool:
+        if not isinstance(index, int) or not 0 < index < len(self._lines):
+            return False
+        above = self._lines[index - 1]
+        if not (
+            LineUtils.ends_with_continuation(above)
+            or (self._repair and LineUtils.has_dangling_backslash(above))
+            or (self._hidden and self._hidden.get(index - 1))
+        ):
+            return False
+        if self._found is None:
+            self._found = recipe_text_lines(self._lines, self._hidden, self._repair)
+        return index in self._found
+
+
+class DanglingRepairs:
+    """
+    dangling_backslash_repairs of some lines, worked out when a question needs it.
+
+    Only a line whose final backslash whitespace follows can be one of them,
+    and only where remove_trailing_whitespace is on (repair); no other
+    question reads the lines.
+    """
+
+    def __init__(
+        self,
+        lines: Sequence[str],
+        hidden: Optional[Mapping[int, Sequence[str]]] = None,
+        repair: bool = True,
+    ) -> None:
+        self._lines = lines
+        self._hidden = hidden
+        self._repair = repair
+        self._found: Optional[set[int]] = None
+
+    def __contains__(self, index: object) -> bool:
+        if (
+            not self._repair
+            or not isinstance(index, int)
+            or not 0 <= index < len(self._lines)
+            or not LineUtils.has_dangling_backslash(self._lines[index])
+        ):
+            return False
+        if self._found is None:
+            self._found = dangling_backslash_repairs(self._lines, self._hidden)
+        return index in self._found
+
+
 def target_variable_assignment(text: str) -> Optional[VariableAssignment]:
     """
     Return the assignment of a target- or pattern-specific variable line.
@@ -918,6 +1432,131 @@ def target_variable_assignment(text: str) -> Optional[VariableAssignment]:
     if rest.startswith(":"):
         rest = rest[1:]
     return LineUtils.parse_variable_assignment(rest)
+
+
+def accepted_definition(text: str) -> Optional[str]:
+    """
+    Check if make reads a logical line as a rule or an assignment that it accepts.
+
+    make reads a line that does not start with the recipe prefix as makefile
+    syntax: it removes the comment, and then looks for an assignment
+    operator or for the ':' of a rule (GNU make manual 3.8, lines
+    1212-1227), which comes before the ';' of an inline recipe (4.2, lines
+    1480-1503). A ':' or '=' in the comment or after that ';' decides
+    nothing (3.1, lines 730-742), nor does one inside a variable reference.
+    Only lines that make 3.81 and make 4.x both read the same way and accept
+    count, so that a line at which either make stops is never taken for one:
+    - an assignment with '=', ':=', '+=' or '?=' (6.5, lines 4577-4579),
+      also a target- or pattern-specific one (6.11, lines 4938-4951), with
+      no modifier but 'export' or 'override', to a variable whose name is
+      no directive word and holds no reference, which may expand to nothing;
+    - a rule with at least one target, whose targets hold no '=' and are all
+      patterns or all plain names, which are not grouped targets ('&:' is
+      make 4.x syntax, lines 2499-2502), and which is no static pattern rule
+      unless its target pattern is one word with a '%' and the targets have
+      none (4.12.1, lines 2598-2605). The prerequisites hold no '=' either:
+      make 4.x reads an assignment operator after the ':' or '::' as that
+      of a target-specific variable, and stops where its name is empty.
+    A '#' inside a reference starts a comment for make 3.81 only, so a line
+    with one counts as neither. Directives and function calls do not count.
+    Nor does a line whose ':' make finds inside the shell's quotes, such as
+    "perl -e 'use File::Spec;' \\" and "-e '...'": make reads no quotes,
+    but such a line was always taken for a recipe line, as
+    TabsRule._is_target_definition takes it, and the fixtures keep it so.
+
+    Args:
+        text: The logical line, joined as LineUtils.join_logical_line joins
+            it
+
+    Returns:
+        RULE, ASSIGNMENT or TARGET_VARIABLE where make reads the line as
+        such a rule or assignment, otherwise None
+    """
+    unescaped = re.search(r"(?<!\\)(?:\\\\)*#", text)
+    comment = LineUtils.find_comment_start(text)
+    if unescaped is not None and unescaped.end() - 1 != comment:
+        return None
+    code = _code(text)
+    kind = _classify(code)[0]
+    if kind == ASSIGNMENT:
+        assignment = LineUtils.parse_variable_assignment(code)
+        return kind if _accepted_assignment(assignment) else None
+    colon = LineUtils.find_unquoted_char(code, ":")
+    if colon is None or _inside_shell_quotes(code, colon):
+        return None
+    if kind == TARGET_VARIABLE:
+        accepted = _accepted_assignment(target_variable_assignment(code))
+        return kind if accepted and _accepted_targets(code[:colon], False) else None
+    if kind != RULE:
+        return None
+    semicolon = LineUtils.find_unquoted_char(code, ";")
+    head = code if semicolon is None else code[:semicolon]
+    if semicolon is None and LineUtils.has_semicolon_on_second_scan(head[:colon]):
+        return None
+    rest = head[colon + 1 :]
+    if rest.startswith(":"):
+        rest = rest[1:]
+    if LineUtils.find_unquoted_char(rest, "=") is not None:
+        return None
+    second = LineUtils.find_unquoted_char(rest, ":")
+    if second is None:
+        return kind if _accepted_targets(head[:colon], False) else None
+    pattern = rest[:second].split()
+    accepted = (
+        len(pattern) == 1
+        and "%" in pattern[0]
+        and LineUtils.find_unquoted_char(rest, ":", second + 1) is None
+        and _accepted_targets(head[:colon], True)
+    )
+    return kind if accepted else None
+
+
+def _accepted_assignment(assignment: Optional[VariableAssignment]) -> bool:
+    """Check an assignment for accepted_definition."""
+    return (
+        assignment is not None
+        and assignment.operator in ("=", ":=", "+=", "?=")
+        and set(assignment.modifiers) <= {"export", "override"}
+        and "$" not in assignment.name
+        and assignment.name not in LineUtils.NON_RULE_DIRECTIVE_WORDS
+        and assignment.name not in ("export", "unexport", "override", "private")
+    )
+
+
+def _inside_shell_quotes(text: str, end: int) -> bool:
+    """Check if text[end] is inside single or double quotes, as a shell would
+    read text[:end], for accepted_definition."""
+    quote = ""
+    index = 0
+    while index < end:
+        char = text[index]
+        if char == "\\" and quote != "'":
+            index += 2
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in "'\"":
+            quote = char
+        index += 1
+    return bool(quote)
+
+
+def _accepted_targets(targets: str, static: bool) -> bool:
+    """Check the targets of a rule for accepted_definition: at least one,
+    no '=', no grouped targets, and all patterns or none; none for a static
+    pattern rule."""
+    words = targets.split()
+    if (
+        not words
+        or targets.rstrip(_WHITESPACE).endswith("&")
+        or LineUtils.find_unquoted_char(targets, "=") is not None
+    ):
+        return False
+    patterns = ["%" in word for word in words]
+    if static:
+        return not any(patterns)
+    return all(patterns) or not any(patterns)
 
 
 class _PrefixValue(NamedTuple):
@@ -1176,6 +1815,141 @@ def _classify(code: str) -> tuple[str, Optional[str]]:
     return OTHER, None
 
 
+def stands_alone_as_syntax(text: str) -> bool:
+    """
+    Check if make may read a logical line on its own as makefile syntax.
+
+    That is any makefile syntax but text (see _classify), a line of only
+    references, which may expand to anything (GNU make manual 3.8, lines
+    1231-1236), and a line that make 3.81 reads on (see _make_381_reads_on).
+    These are the lines after a backslash that whitespace follows that
+    dangling_backslash_repairs keeps for their own sake.
+
+    Args:
+        text: The logical line, joined as LineUtils.join_logical_line joins
+            it, that is no recipe line and no line of a define body
+
+    Returns:
+        True if make may read the line as makefile syntax
+    """
+    code = _code(text)
+    if LineUtils.is_reference_only(code):
+        return True
+    return _classify(code)[0] not in (OTHER, BLANK) or _make_381_reads_on(code)
+
+
+def targetless_rule_line(text: str) -> bool:
+    """
+    Check if make reads a logical line as a rule line without targets.
+
+    That is a line whose first word starts with an escaped ';', such as the
+    '\\;' of 'find ... -exec rm {} \\;' on a line of its own. make 3.81 and
+    4.4.1 both accept it and define nothing with it, and it ends the rule
+    context, as an assignment does: a recipe line right after it is
+    rejected ("recipe commences before first target", GNU make manual,
+    lines 11292-11297). A line that starts with a ';' that is not escaped
+    is rejected itself ("missing rule before recipe"). The manual does not
+    describe the escaped form; both makes read it so.
+
+    Args:
+        text: The logical line, joined as LineUtils.join_logical_line joins
+            it, that does not start with the recipe prefix
+
+    Returns:
+        True if make reads the line as a rule line without targets
+    """
+    return re.match(r"[ \t]*\\;", _code(text)) is not None
+
+
+def stands_alone_without_targets(lines: Sequence[str], index: int) -> bool:
+    """
+    Check if lines[index] starts a rule line without targets that keeps its spaces.
+
+    That is a line that does not start with a TAB and that make reads as a
+    rule line without targets (see targetless_rule_line), where no recipe
+    line may follow it (see recipe_line_follows): make would reject a
+    recipe line there, while with a TAB in front both are recipe lines of a
+    rule above them.
+
+    Args:
+        lines: The physical lines of the makefile
+        index: The index of the first line of the logical line
+
+    Returns:
+        True if make accepts the line where it is, with its leading spaces
+    """
+    if lines[index].startswith("\t"):
+        return False
+    joined, after = LineUtils.join_logical_line(lines, index)
+    return targetless_rule_line(joined) and not recipe_line_follows(lines, after)
+
+
+def recipe_line_follows(lines: Sequence[str], after: int) -> bool:
+    """
+    Check if a recipe line may follow a logical line in make's reading.
+
+    That is where the next logical line, past blank lines, comments and the
+    lines after which make 3.81 keeps the rule context ('override' lines and
+    'include', '-include' and 'sinclude' directives, which end it for make
+    4.x), starts with the recipe prefix, or starts with whitespace and is
+    text, which TabsRule takes for a recipe line that lacks its TAB
+    (makefile syntax with leading whitespace, such as '  W = 1', is no
+    recipe line: GNU make manual 3.8, lines 1212-1227), or is a conditional
+    directive: which lines make reads after a conditional directive depends
+    on its condition (7.2, lines 5399-5421), and a recipe line may be among
+    them, as v1.5.0 took it.
+
+    Args:
+        lines: The physical lines of the makefile
+        after: The index of the line after the logical line in question
+
+    Returns:
+        True if a recipe line may follow
+    """
+    index = after
+    while index < len(lines):
+        line = lines[index]
+        joined, following = LineUtils.join_logical_line(lines, index)
+        code = _code(joined).strip(_WHITESPACE)
+        if not code:
+            index = following
+            continue
+        prefix = LineUtils.get_active_recipe_prefix(list(lines), index)
+        if line.startswith(prefix):
+            return True
+        if code.split()[0] in ("override", "include", "-include", "sinclude"):
+            index = following
+            continue
+        kind = _classify(code)[0]
+        return kind == CONDITIONAL or (kind == OTHER and line.startswith((" ", "\t")))
+    return False
+
+
+def ends_rule_context(text: str) -> bool:
+    """
+    Check if make reads a logical line as an assignment, which ends a rule context.
+
+    A rule context lasts until the next rule or variable definition (GNU make
+    manual 5.1, lines 2881-2884), and a target-specific variable definition
+    ends it too: make rejects a recipe line right after either ("recipe
+    commences before first target", lines 11292-11297). make 3.81 keeps the
+    rule context after a line whose first word is 'override', as
+    scan_makefile reads it, so such a line does not count.
+
+    Args:
+        text: The logical line, joined as LineUtils.join_logical_line joins
+            it, that does not start with the recipe prefix
+
+    Returns:
+        True if make 3.81 and 4.x both read the line as an assignment or as a
+        target-specific variable assignment, which ends the rule context
+    """
+    code = _code(text)
+    if code.split()[:1] == ["override"]:
+        return False
+    return _classify(code)[0] in (ASSIGNMENT, TARGET_VARIABLE)
+
+
 @dataclass(frozen=True)
 class _Logical:
     """A logical line, with what every reading of it needs."""
@@ -1297,6 +2071,10 @@ class _Readings:
         if len(self.readings) > _MAX_READINGS:
             self.saturated = True
         return frozenset(kinds), frozenset(owners), skipped
+
+    def rule_context_open(self) -> bool:
+        """Check if a rule context may be open in a reading, before the next line."""
+        return self.saturated or any(reading.rule for reading in self.readings)
 
     def open_unknown_content(self, anchor: int) -> None:
         """Let unknown lines follow, which may start or end a rule context.
@@ -1568,8 +2346,11 @@ class _Scanner:
                 kind = COMMENT
             physical = tuple(self.merged[start:end])
             line = _Logical(self.merged[start], physical, text, code, kind, word)
+            rule_context_read = self.readings.rule_context_open()
             readings, owners, skipped = self.readings.read(line, self.anchors[start])
-            state = self._read(start, end, line, readings, owners, skipped)
+            state = self._read(
+                start, end, line, readings, owners, skipped, rule_context_read
+            )
             for index in range(start, end):
                 if self.visible[index] is None:
                     continue
@@ -1596,6 +2377,7 @@ class _Scanner:
         readings: frozenset[str],
         owners: Optional[frozenset[int]],
         skipped: bool,
+        rule_context_read: bool = False,
     ) -> LineState:
         """Read the logical line merged[start:end] and return its state."""
         prefixed = self.merged[start].startswith(self.prefix)
@@ -1641,6 +2423,7 @@ class _Scanner:
             recipe_owners=owners,
             recipe_prefix_known=recipe_prefix_known,
             skipped_as_recipe=skipped,
+            rule_context_read=rule_context_read,
         )
 
     def _read_body_line(self, text: str, prefixed: bool) -> str:
