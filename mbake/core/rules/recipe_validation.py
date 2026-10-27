@@ -429,6 +429,24 @@ class RecipeValidationRule(FormatterPlugin):
         # ("missing separator"), so such a line, or one whose prefix cannot
         # be known, is left as it is. Where visible lines give the rule
         # context, nothing changes.
+        if facts.hidden and any(
+            ".RECIPEPREFIX" in hidden_line
+            for region in facts.hidden.values()
+            for hidden_line in region
+        ):
+            # A '# bake-format off' region hides the line that sets the
+            # prefix. A line that already starts with the prefix make reads
+            # there is a recipe line, and a TAB before it would make make
+            # reject the file ("missing separator"; GNU make manual 16.2,
+            # lines 5158-5169). A prefix set with '+=' or 'define' outside a
+            # region is still read line by line, as before.
+            make_prefix, prefix_known = facts.make_prefix(line_index)
+            if (
+                prefix_known
+                and make_prefix not in ("", "\t")
+                and line.startswith(make_prefix)
+            ):
+                return False
         if facts.hidden and not self._should_be_recipe_line(
             facts.without_hidden(), line_index
         ):
