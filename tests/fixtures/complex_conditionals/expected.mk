@@ -18,9 +18,9 @@ ifeq ($(MAKECMDGOALS), chaos)
     endif
   else
 	@echo "    Running on a non-Mac system."
-    ifndef NOT_A_MAC_SYSTEM
+	   ifndef NOT_A_MAC_SYSTEM
 	  @echo "      This should not be printed on a non-Mac system."
-    endif
+	   endif
   endif
 	@echo "  This echo is outside the second ifeq but inside the first."
 endif
@@ -28,13 +28,13 @@ endif
 # Another target to test tricky indentation with shell commands.
 deep_chaos:
 	@echo "--- DEEP CHAOS INITIATED ---"
-ifeq ($(shell hostname), my_test_machine)
+	ifeq ($(shell hostname), my_test_machine)
 	@echo "    Running on the test machine."
 	@echo "    Executing a complex shell command."
 	bash -c 'if [ "a" = "a" ]; then
 	echo "    This is from a nested shell command.";
 	fi'
-else
+	else
 	@echo "    Running on a different machine."
 	@echo "    Executing a different complex shell command."
 	bash -c 'if [ "b" = "b" ]; then

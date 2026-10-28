@@ -1,6 +1,6 @@
 # Test whitespace normalization
-CC = gcc
-CFLAGS = -Wall -Wextra
+CC = gcc    
+CFLAGS = -Wall -Wextra  	
 
 all: $(TARGET)
 	echo "Building..."

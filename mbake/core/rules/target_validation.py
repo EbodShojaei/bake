@@ -52,7 +52,7 @@ class TargetValidationRule(FormatterPlugin):
 
             # Check for invalid target syntax
             if self._is_invalid_target(line, active_prefix):
-                line_num = i + 1
+                line_num = i
                 gnu_format = config.get("_global", {}).get("gnu_error_format", True)
                 if gnu_format:
                     warnings.append(

@@ -69,6 +69,21 @@ include = [
     "completions/**/*",
 ]
 
+# Without an explicit list, hatchling packs every file in the working tree
+# that .gitignore does not exclude, including untracked scratch files.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/mbake",
+    "/tests",
+    "/completions",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+    "/INSTALLATION.md",
+    "/.bake.toml.example",
+]
+
 # Build configuration for command name selection
 
 [tool.black]
@@ -110,7 +125,7 @@ line-length = 88
 target-version = "py39"
 
 [tool.ruff.lint.isort]
-known-first-party = ["bake"]
+known-first-party = ["mbake"]
 
 [tool.mypy]
 python_version = "3.9"
@@ -147,7 +162,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["bake"]
+source = ["mbake"]
 branch = true
 
 [tool.coverage.report]

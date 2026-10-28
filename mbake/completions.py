@@ -56,7 +56,7 @@ _{command_name}_completion() {{
             return 0
             ;;
         format)
-            COMPREPLY=( $(compgen -W "--check -c --diff -d --verbose -v --debug --config --backup -b --validate --stdin --help" -- "${{cur}}") )
+            COMPREPLY=( $(compgen -W "--check -c --diff -d --verbose -v --debug --config --backup -b --validate --timeout --stdin --help" -- "${{cur}}") )
             return 0
             ;;
         update)
@@ -107,6 +107,7 @@ _{command_name}() {{
         '--diff[Show diff of changes that would be made]'
         '--backup[Create backup files before formatting]'
         '--validate[Validate syntax after formatting]'
+        '--timeout[Timeout in seconds for the --validate syntax check]'
         '--verbose[Enable verbose output]'
         '--config[Path to configuration file]'
         '--stdin[Read from stdin and write to stdout]'
@@ -170,6 +171,7 @@ complete -c {command_name} -n "__fish_seen_subcommand_from format" -l check -d "
 complete -c {command_name} -n "__fish_seen_subcommand_from format" -l diff -d "Show diff of changes that would be made"
 complete -c {command_name} -n "__fish_seen_subcommand_from format" -l backup -d "Create backup files before formatting"
 complete -c {command_name} -n "__fish_seen_subcommand_from format" -l validate -d "Validate syntax after formatting"
+complete -c {command_name} -n "__fish_seen_subcommand_from format" -l timeout -r -d "Timeout in seconds for the --validate syntax check"
 complete -c {command_name} -n "__fish_seen_subcommand_from format" -l verbose -d "Enable verbose output"
 complete -c {command_name} -n "__fish_seen_subcommand_from format" -l config -d "Path to configuration file"
 complete -c {command_name} -n "__fish_seen_subcommand_from format" -l stdin -d "Read from stdin and write to stdout"

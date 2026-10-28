@@ -1,10 +1,27 @@
 """Unified PHONY declaration rule: detection, insertion, and grouping."""
 
 import re
-from typing import Any
+from collections.abc import Container, Mapping, Sequence
+from typing import Any, Optional
 
 from ...plugins.base import FormatResult, FormatterPlugin
-from ...utils.line_utils import MakefileParser, PhonyAnalyzer
+from ...utils.line_utils import (
+    LineUtils,
+    MakefileParser,
+    PhonyAnalyzer,
+    restore_line_breaks,
+)
+from ...utils.rule_context import (
+    ENDEF,
+    RECIPE,
+    LineState,
+    NonRuleContinuationLines,
+    RecipeTextLines,
+    dangling_backslash_repairs,
+    orphaned_recipe_lines,
+    repaired_readings,
+    scan_makefile,
+)
 
 
 class PhonyRule(FormatterPlugin):
@@ -30,16 +47,50 @@ class PhonyRule(FormatterPlugin):
         # Get format-disabled line information from context
         disabled_line_indices = context.get("disabled_line_indices", set())
         block_start_index = context.get("block_start_index", 0)
+        # {index of a '# bake-format off' line: the lines it hides}
+        hidden = context.get("disabled_region_lines") or {}
 
-        # Always detect phony targets (for check mode)
+        # Always detect phony targets (for check mode). A continuation line
+        # of a recipe is shell text, where 'docker run -p 8080:80' names no
+        # target (GNU make manual 5.1.1, lines 2917-2925), and neither does
+        # one of an assignment or a define body (see _lines_without_rules).
+        no_rules = self._lines_without_rules(lines, config, hidden)
         detected_targets = PhonyAnalyzer.detect_phony_targets_excluding_conditionals(
-            lines, disabled_line_indices, block_start_index
+            lines, disabled_line_indices, block_start_index, no_rules
+        )
+        # The order of the rules that define them, the same on every run (a
+        # set has no order that survives a new process)
+        ordered_detected = self._order_targets_by_declaration(
+            set(detected_targets), lines
         )
 
         # Check if .PHONY declarations exist
         has_phony = MakefileParser.has_phony_declarations(lines)
         auto_insert_enabled = config.get("auto_insert_phony_declarations", False)
         group_phony = config.get("group_phony_declarations", True)
+
+        # Leave the .PHONY lines as written when one holds CR, VT, FF, FS,
+        # GS, RS, NEL, LS or PS inside it, for which the rules see a
+        # stand-in (see protect_line_breaks; restoring changes only such a
+        # line). make can read the character as part of a target name
+        # ('.PHONY: b<FF> a' declares 'b<FF>'), and grouping or splitting
+        # the line can move it to the end of a line, where make drops it
+        # and the next run ends the line there.
+        if (
+            has_phony
+            and not check_mode
+            and any(
+                line.strip().startswith(".PHONY:") and restore_line_breaks(line) != line
+                for line in lines
+            )
+        ):
+            return FormatResult(
+                lines=lines,
+                changed=False,
+                errors=errors,
+                warnings=warnings,
+                check_messages=check_messages,
+            )
 
         if not has_phony:
             # No .PHONY exists - insert if enabled
@@ -56,10 +107,10 @@ class PhonyRule(FormatterPlugin):
             if check_mode:
                 phony_at_top = config.get("phony_at_top", True)
                 gnu_format = config.get("_global", {}).get("gnu_error_format", True)
-                ordered_targets = list(detected_targets)
+                ordered_targets = ordered_detected
 
                 if phony_at_top:
-                    insert_index = MakefileParser.find_phony_insertion_point(lines)
+                    insert_index = self._insertion_point(lines, config, hidden)
                     line_num = insert_index + 1
                 else:
                     line_num = 1
@@ -97,11 +148,12 @@ class PhonyRule(FormatterPlugin):
             # Insert declarations
             return self._insert_phony_declarations(
                 lines,
-                list(detected_targets),
+                ordered_detected,
                 config,
                 errors,
                 warnings,
                 check_messages,
+                hidden,
             )
 
         # .PHONY exists - enhance and organize
@@ -109,7 +161,7 @@ class PhonyRule(FormatterPlugin):
         existing_phony_set = set(existing_phony_targets)
 
         # Find missing targets
-        missing_targets = [t for t in detected_targets if t not in existing_phony_set]
+        missing_targets = [t for t in ordered_detected if t not in existing_phony_set]
 
         # In check mode, report missing targets
         if check_mode and missing_targets:
@@ -153,6 +205,7 @@ class PhonyRule(FormatterPlugin):
                 errors,
                 warnings,
                 check_messages,
+                hidden,
             )
         else:
             # Ungroup mode: ensure all .PHONY declarations are individual
@@ -165,6 +218,7 @@ class PhonyRule(FormatterPlugin):
                 errors,
                 warnings,
                 check_messages,
+                hidden,
             )
 
     def _insert_phony_declarations(
@@ -175,6 +229,7 @@ class PhonyRule(FormatterPlugin):
         errors: list[str],
         warnings: list[str],
         check_messages: list[str],
+        hidden: Mapping[int, Sequence[str]],
     ) -> FormatResult:
         """Insert .PHONY declarations for detected targets."""
         group_phony = config.get("group_phony_declarations", True)
@@ -183,20 +238,16 @@ class PhonyRule(FormatterPlugin):
         if not group_phony:
             # Insert individual declarations before each target
             return self._insert_individual_phony_declarations(
-                lines, target_names, config, errors, warnings, check_messages
+                lines, target_names, config, errors, warnings, check_messages, hidden
             )
 
         # Insert grouped declaration
         new_phony_line = f".PHONY: {' '.join(target_names)}"
 
         if phony_at_top:
-            insert_index = MakefileParser.find_phony_insertion_point(lines)
-            formatted_lines = []
-            for i, line in enumerate(lines):
-                if i == insert_index:
-                    formatted_lines.append(new_phony_line)
-                    formatted_lines.append("")  # Add blank line after
-                formatted_lines.append(line)
+            formatted_lines = self._insert_after_header(
+                lines, new_phony_line, config, hidden
+            )
         else:
             formatted_lines = [new_phony_line, ""] + lines
 
@@ -220,9 +271,12 @@ class PhonyRule(FormatterPlugin):
         errors: list[str],
         warnings: list[str],
         check_messages: list[str],
+        hidden: Optional[Mapping[int, Sequence[str]]] = None,
     ) -> FormatResult:
         """Insert individual .PHONY declarations before each target."""
-        target_positions = self._find_target_line_positions(lines, target_names)
+        target_positions = self._find_target_line_positions(
+            lines, target_names, self._lines_without_rules(lines, config, hidden)
+        )
 
         if not target_positions:
             return FormatResult(
@@ -271,6 +325,7 @@ class PhonyRule(FormatterPlugin):
         errors: list[str],
         warnings: list[str],
         check_messages: list[str],
+        hidden: Mapping[int, Sequence[str]],
     ) -> FormatResult:
         """Group all .PHONY declarations into a single declaration."""
         # Order targets by declaration order
@@ -295,23 +350,57 @@ class PhonyRule(FormatterPlugin):
         phony_at_top = config.get("phony_at_top", True)
 
         # Remove all existing .PHONY declarations first
-        lines_without_phony = []
-        for line in lines:
-            if not line.strip().startswith(".PHONY:"):
-                lines_without_phony.append(line)
-
-        # Insert grouped declaration at the appropriate location
-        if phony_at_top:
-            # Use smart placement (same logic as when inserting new .PHONY)
-            insert_index = MakefileParser.find_phony_insertion_point(
-                lines_without_phony
+        removed = [
+            i for i, line in enumerate(lines) if line.strip().startswith(".PHONY:")
+        ]
+        blanked = self._orphaned_recipe_lines(lines, removed, config, hidden)
+        if blanked is None:
+            # Another rule may need a line that a .PHONY line may own as its
+            # empty recipe, so the .PHONY lines stay as they are.
+            return FormatResult(
+                lines=lines,
+                changed=False,
+                errors=errors,
+                warnings=warnings,
+                check_messages=check_messages,
             )
-            formatted_lines = []
-            for i, line in enumerate(lines_without_phony):
-                if i == insert_index:
-                    formatted_lines.append(phony_line)
-                    formatted_lines.append("")  # Add blank line after
-                formatted_lines.append(line)
+        lines_without_phony: list[str] = []
+        # {index in lines: index in lines_without_phony}
+        new_indexes: dict[int, int] = {}
+        for i, line in enumerate(lines):
+            if not line.strip().startswith(".PHONY:"):
+                new_indexes[i] = len(lines_without_phony)
+                lines_without_phony.append("" if i in blanked else line)
+
+        # Insert grouped declaration at the appropriate location. A declaration
+        # that owns whitespace-only recipe lines (blanked) moves as before.
+        in_place = (
+            None
+            if blanked
+            else self._declaration_in_place(lines, removed, phony_line, config, hidden)
+        )
+        if in_place is not None:
+            # The declaration is already where inserting it would put it.
+            formatted_lines = in_place
+        elif phony_at_top:
+            # Use smart placement (same logic as when inserting new .PHONY)
+            formatted_lines = self._insert_after_header(
+                lines_without_phony,
+                phony_line,
+                config,
+                {
+                    new_indexes[index]: region
+                    for index, region in hidden.items()
+                    if index in new_indexes
+                },
+            )
+            if phony_line not in formatted_lines:
+                # No place before a rule or variable: the rules of these
+                # targets are hidden by '# bake-format off' or not in this
+                # file. The declaration still tells make that the targets
+                # are phony (GNU make manual 4.6, lines 2053-2056), so it
+                # goes at the end instead of being lost.
+                formatted_lines = formatted_lines + [phony_line]
         else:
             # Place at absolute top
             formatted_lines = [phony_line, ""] + lines_without_phony
@@ -339,6 +428,7 @@ class PhonyRule(FormatterPlugin):
         errors: list[str],
         warnings: list[str],
         check_messages: list[str],
+        hidden: Mapping[int, Sequence[str]],
     ) -> FormatResult:
         """Split grouped .PHONY declarations into individual declarations."""
         # Find all .PHONY line indices
@@ -408,6 +498,17 @@ class PhonyRule(FormatterPlugin):
         # Build new lines with individual declarations
         formatted_lines = []
         skip_indices = set(phony_line_indices)
+        blanked = self._orphaned_recipe_lines(lines, phony_line_indices, config, hidden)
+        if blanked is None:
+            # Another rule may need a line that a .PHONY line may own as its
+            # empty recipe, so the .PHONY lines stay as they are.
+            return FormatResult(
+                lines=lines,
+                changed=False,
+                errors=errors,
+                warnings=warnings,
+                check_messages=check_messages,
+            )
         insertions: dict[int, str] = {}
 
         for target_name, target_line_index in target_positions.items():
@@ -415,10 +516,21 @@ class PhonyRule(FormatterPlugin):
 
         for i, line in enumerate(lines):
             if i in skip_indices:
+                # The targets of this declaration that have no rule in the
+                # visible lines (hidden by '# bake-format off', or not in
+                # this file) get no individual declaration, so theirs stays
+                # here: make needs it to treat them as phony (GNU make
+                # manual 4.6, lines 2053-2056).
+                declared = self._phony_line_targets(line)
+                kept = [t for t in declared if t not in target_positions]
+                if kept == declared:
+                    formatted_lines.append(line)
+                elif kept:
+                    formatted_lines.append(f".PHONY: {' '.join(kept)}")
                 continue
             if i in insertions:
                 formatted_lines.append(insertions[i])
-            formatted_lines.append(line)
+            formatted_lines.append("" if i in blanked else line)
 
         # Only warn if we actually split grouped declarations (not if already individual)
         if has_grouped_declarations:
@@ -437,6 +549,207 @@ class PhonyRule(FormatterPlugin):
             warnings=warnings,
             check_messages=check_messages,
         )
+
+    @staticmethod
+    def _insertion_point(
+        lines: list[str], config: dict, hidden: Mapping[int, Sequence[str]]
+    ) -> int:
+        """
+        Return MakefileParser.find_phony_insertion_point of the lines as
+        WhitespaceRule leaves them.
+
+        A backslash continues a line only where nothing follows it (GNU make
+        manual 3.1.1, lines 762-769). WhitespaceRule removes the whitespace
+        after it where dangling_backslash_repairs finds it, when it removes
+        trailing whitespace, so those lines continue; every other such line
+        stays as it is and continues none.
+        """
+        if config.get("remove_trailing_whitespace", True):
+            repairs = dangling_backslash_repairs(lines, hidden)
+            if repairs:
+                lines = [
+                    line.rstrip() if index in repairs else line
+                    for index, line in enumerate(lines)
+                ]
+        return MakefileParser.find_phony_insertion_point(lines)
+
+    @staticmethod
+    def _insert_after_header(
+        lines: list[str],
+        phony_line: str,
+        config: dict,
+        hidden: Mapping[int, Sequence[str]],
+    ) -> list[str]:
+        """
+        Insert the .PHONY line after the header of the file.
+
+        The line goes where MakefileParser.find_phony_insertion_point finds,
+        followed by a blank line. Inside a define body no blank line is added:
+        there it would be part of the variable's value (GNU make manual 6.8,
+        lines 4795-4799), and it would stay behind when a later run moves the
+        .PHONY line. After a line of only whitespace, which can be an empty
+        recipe that WhitespaceRule keeps (5.1, lines 2890-2891), a blank line
+        goes before the .PHONY line as well, where blank lines are normalized:
+        removing the .PHONY line on a later run leaves a blank line there.
+        Blank lines are ignored (lines 2884-2886).
+        """
+        insert_index = PhonyRule._insertion_point(lines, config, hidden)
+        if insert_index >= len(lines):
+            return list(lines)
+        if PhonyRule._inside_define_body(lines, insert_index, hidden):
+            block = [phony_line]
+        elif (
+            insert_index > 0
+            and lines[insert_index - 1].isspace()
+            and config.get("normalize_empty_lines", True)
+        ):
+            block = ["", phony_line, ""]
+        else:
+            block = [phony_line, ""]
+        return lines[:insert_index] + block + lines[insert_index:]
+
+    @staticmethod
+    def _declaration_in_place(
+        lines: list[str],
+        removed: list[int],
+        phony_line: str,
+        config: dict,
+        hidden: Mapping[int, Sequence[str]],
+    ) -> Optional[list[str]]:
+        """
+        Return lines with the .PHONY line rewritten where it is, or None.
+
+        Grouping removes every .PHONY line and inserts the grouped line,
+        followed by a blank line, at the top of the file or after its header
+        (see _insert_after_header). On the next run the blank line that the
+        previous run put after the declaration stayed behind, and the line
+        went in again before or after it (find_phony_insertion_point passes
+        over a blank line unless it ends the header comments). So below the
+        header the second run added a blank line before the declaration,
+        even as the first line of a file that began with it, and with
+        normalize_empty_lines off every run added one more blank line. When
+        removing the only .PHONY line and the empty line after it, then
+        inserting the grouped line, gives back the same lines, the
+        declaration is already where it goes: only its text is replaced, and
+        the next run changes nothing.
+
+        Inserting it again would only add a blank line before or after it.
+        make ignores blank lines (GNU make manual 3.1, lines 733-734; 5.1,
+        lines 2884-2886) except in define bodies, where they are part of the
+        value (6.8, lines 4795-4799 and 4806-4809), and the insertion adds
+        none there. After a line that ends with a backslash, the blank line
+        decides whether make reads the .PHONY line as part of that line (3.1,
+        lines 730-733; 3.1.1, lines 762-769), so the declaration is inserted
+        again there, as before, unless the insertion puts it right back after
+        that line: then it would only gain a blank line below it.
+        """
+        if len(removed) != 1:
+            return None
+        index = removed[0]
+        if index + 1 >= len(lines) or lines[index + 1] != "":
+            return None
+        # The line above continues only where it ends with a backslash. One
+        # that whitespace follows stays as it is: the '.PHONY:' line after it
+        # stands alone (see dangling_backslash_repairs).
+        if index > 0 and LineUtils.ends_with_continuation(lines[index - 1]):
+            without = lines[:index] + lines[index + 1 :]
+            without_hidden = {
+                position if position < index else position - 1: region
+                for position, region in hidden.items()
+            }
+            if PhonyRule._insertion_point(without, config, without_hidden) != index:
+                return None
+        in_place = lines[:index] + [phony_line] + lines[index + 1 :]
+        rest = lines[:index] + lines[index + 2 :]
+        if not config.get("phony_at_top", True):
+            return in_place if [phony_line, ""] + rest == in_place else None
+        # Neither removed line is a '# bake-format off' line; the ones after
+        # them move up by two.
+        rest_hidden = {
+            position if position < index else position - 2: region
+            for position, region in hidden.items()
+        }
+        inserted = PhonyRule._insert_after_header(rest, phony_line, config, rest_hidden)
+        return in_place if inserted == in_place else None
+
+    @staticmethod
+    def _inside_define_body(
+        lines: list[str], index: int, hidden: Mapping[int, Sequence[str]]
+    ) -> bool:
+        """Check if make may read a line put before lines[index] in a define body."""
+        if not any("define" in line for line in lines) and not any(
+            "define" in line for region in hidden.values() for line in region
+        ):
+            return False
+        state = scan_makefile(lines, hidden)[index]
+        return (
+            state.may_be_define_body or state.kind == ENDEF or ENDEF in state.readings
+        )
+
+    @staticmethod
+    def _orphaned_recipe_lines(
+        lines: list[str],
+        removed: list[int],
+        config: dict,
+        hidden: Mapping[int, Sequence[str]],
+    ) -> Optional[set[int]]:
+        """
+        Find the whitespace-only recipe lines that the removed .PHONY lines leave.
+
+        They become blank lines (see orphaned_recipe_lines). None means that
+        one of them may be the empty recipe of another rule, so that the
+        .PHONY lines stay as they are (GNU make manual 5.1, lines 2881-2891;
+        5.9, lines 4040-4055). The lines are read as WhitespaceRule reads
+        them, so that the next run decides the same way.
+        """
+        if not removed:
+            return set()
+        strip_dangling = config.get("remove_trailing_whitespace", True)
+        readings = repaired_readings(lines, hidden, strip_dangling)
+        if any(
+            PhonyRule._owns_commands(read, states, removed) for read, states in readings
+        ):
+            return None
+        return orphaned_recipe_lines(readings, removed)
+
+    @staticmethod
+    def _owns_commands(
+        lines: Sequence[str], states: Sequence[LineState], removed: list[int]
+    ) -> bool:
+        """
+        Check if make may read a command line as part of a removed .PHONY rule.
+
+        A line that starts with the recipe prefix after a '.PHONY:' line, in
+        its rule context, is a recipe line of .PHONY (GNU make manual 5.1,
+        lines 2878-2884). Moving the '.PHONY:' line would leave that line
+        without its rule: make then reads it with the rule before it, as a
+        command of another target, or as makefile syntax, or stops with
+        "recipe commences before first target" (lines 11292-11297). So the
+        '.PHONY:' lines stay as they are. Lines of only whitespace are left
+        to orphaned_recipe_lines, which knows when they may go.
+        """
+        targets = set(removed)
+        for index, state in enumerate(states):
+            if RECIPE not in state.readings or not lines[index].strip(" \t"):
+                continue
+            owners: frozenset[int]
+            if state.recipe_owners is not None:
+                owners = state.recipe_owners
+            elif state.rule_line is not None:
+                owners = frozenset({state.rule_line})
+            else:
+                owners = frozenset()
+            if owners & targets:
+                return True
+        return False
+
+    @staticmethod
+    def _phony_line_targets(line: str) -> list[str]:
+        """Return the targets named on one '.PHONY:' line, in order."""
+        content = line.strip()[7:].strip()
+        if content.endswith("\\"):
+            content = content[:-1].strip()
+        return [t.strip() for t in content.split() if t.strip()]
 
     def _extract_phony_targets(self, lines: list[str]) -> list[str]:
         """Extract targets from existing .PHONY declarations."""
@@ -481,17 +794,64 @@ class PhonyRule(FormatterPlugin):
                     ordered_targets.append(target_name)
                     seen_targets.add(target_name)
 
-        # Add any remaining targets
-        for target in phony_targets:
+        # Add the remaining targets: first those that existing .PHONY lines
+        # declare, in their declared order, then any others. A set gives no
+        # stable order, and a declaration whose targets have no visible rule
+        # must come back unchanged.
+        for target in self._extract_phony_targets(lines):
+            if target in phony_targets and target not in seen_targets:
+                ordered_targets.append(target)
+                seen_targets.add(target)
+        for target in sorted(phony_targets):
             if target not in seen_targets:
                 ordered_targets.append(target)
 
         return ordered_targets
 
+    @staticmethod
+    def _lines_without_rules(
+        lines: list[str],
+        config: dict,
+        hidden: Optional[Mapping[int, Sequence[str]]],
+    ) -> "_AnyOf":
+        """
+        Return continuation lines whose text names no target, as make reads them.
+
+        These are the continuation lines of a recipe, which are shell text
+        (see rule_context.recipe_text_lines; GNU make manual 5.1.1, lines
+        2917-2925), and those of every other logical line that make reads
+        as no rule, such as an assignment, whose value they continue, or a
+        define body, the value of a variable (see
+        rule_context.NonRuleContinuationLines; 6.8, lines 4795-4799):
+        'X = a \\' then '  e3: ; @echo e' sets X and defines no target e3.
+        ContinuationRule leaves the lines of a body as written, so a body
+        line such as '  host:port' keeps its leading spaces, where it used
+        to take the TAB of the line above it. The lines are read as
+        WhitespaceRule leaves them.
+        """
+        strip_dangling = config.get("remove_trailing_whitespace", True)
+        return _AnyOf(
+            RecipeTextLines(lines, hidden, strip_dangling),
+            NonRuleContinuationLines(lines, hidden, strip_dangling),
+        )
+
     def _find_target_line_positions(
-        self, lines: list[str], target_names: list[str]
+        self,
+        lines: list[str],
+        target_names: list[str],
+        recipe_text: Container[int] = (),
     ) -> dict[str, int]:
-        """Find the line index where each target appears."""
+        """
+        Find the line index where each target appears.
+
+        A line of recipe_text is shell text or a continuation line of an
+        assignment or a define body (see _lines_without_rules), which names
+        no target. A
+        target on a line that continues the line above it belongs to the
+        logical line that starts above (GNU make manual 3.1.1, lines
+        762-769): its index is that of the logical line's first line, where
+        a '.PHONY' line can go without splitting the rule.
+        """
         target_positions: dict[str, int] = {}
         target_pattern = re.compile(r"^([^:=]+):(:?)\s*(.*)$")
 
@@ -500,7 +860,7 @@ class PhonyRule(FormatterPlugin):
             if not stripped or stripped.startswith("#") or line.startswith("\t"):
                 continue
             match = target_pattern.match(stripped)
-            if match:
+            if match and i not in recipe_text:
                 target_list = match.group(1).strip()
                 is_double_colon = match.group(2) == ":"
                 target_body = match.group(3).strip()
@@ -508,18 +868,26 @@ class PhonyRule(FormatterPlugin):
                 if is_double_colon or "%" in target_list:
                     continue
 
-                if re.match(r"^\s*[A-Z_][A-Z0-9_]*\s*[+:?]?=", target_body):
+                # Skip target-specific variable assignments of any form (GNU
+                # make manual 6.11, lines 4938-4951). The upper-case pattern
+                # also skips lines such as 'endif # clean: OPT = -O0'.
+                if re.match(
+                    r"^\s*[A-Z_][A-Z0-9_]*\s*[+:?]?=", target_body
+                ) or LineUtils.is_target_specific_variable(stripped):
                     continue
 
                 target_names_on_line = [
                     t.strip() for t in target_list.split() if t.strip()
                 ]
+                start = i
+                while start > 0 and LineUtils.ends_with_continuation(lines[start - 1]):
+                    start -= 1
                 for target_name in target_names_on_line:
                     if (
                         target_name in target_names
                         and target_name not in target_positions
                     ):
-                        target_positions[target_name] = i
+                        target_positions[target_name] = start
 
         return target_positions
 
@@ -545,3 +913,13 @@ class PhonyRule(FormatterPlugin):
             if line.strip().startswith(".PHONY:"):
                 return i + 1  # 1-indexed
         return 1
+
+
+class _AnyOf:
+    """The line indexes that any of some containers holds."""
+
+    def __init__(self, *containers: Container[int]) -> None:
+        self._containers = containers
+
+    def __contains__(self, index: object) -> bool:
+        return any(index in container for container in self._containers)

@@ -3,10 +3,36 @@
 from typing import Any
 
 from ...plugins.base import FormatResult, FormatterPlugin
+from ...utils.line_utils import LineUtils
+from ...utils.rule_context import (
+    empty_recipes_to_keep,
+    repaired_readings,
+    significant_whitespace_lines,
+)
 
 
 class WhitespaceRule(FormatterPlugin):
-    """Handles trailing whitespace removal and line normalization."""
+    """Handles trailing whitespace removal and line normalization.
+
+    Whitespace that make reads as data is kept (line numbers refer to the GNU
+    make 4.4.1 manual):
+    - a recipe line of only whitespace that gives a rule an empty recipe, so
+      that no implicit rule applies (5.1, lines 2890-2891; 5.9, lines
+      4040-4055), as one recipe prefix (see empty_recipes_to_keep);
+    - define bodies, which are variable values (6.8, lines 4795-4814);
+    - the trailing whitespace of a variable value (6.2.2, lines 4273-4288),
+      and of an include directive whose file names make 3.81 reads
+      differently without it (see include_whitespace_lines);
+    - the whitespace after a final backslash, without which the backslash
+      would continue the line (3.1.1, lines 762-769), unless make rejects
+      the next line on its own: then it goes, as it always did, and the line
+      continues (see dangling_backslash_repairs).
+
+    A line counts as such wherever make may read it so, in any branch of the
+    conditionals above it and with make 3.81 or 4.x (see
+    LineState.readings). Keeping the whitespace of a line that make reads as
+    a recipe line in other branches does not change the command.
+    """
 
     def __init__(self) -> None:
         super().__init__(
@@ -25,28 +51,55 @@ class WhitespaceRule(FormatterPlugin):
         remove_trailing_whitespace = config.get("remove_trailing_whitespace", True)
         normalize_empty_lines = config.get("normalize_empty_lines", True)
 
+        # {index of a '# bake-format off' line: the lines it hides}
+        hidden = context.get("disabled_region_lines") or {}
+        # The whitespace after a final backslash goes where
+        # dangling_backslash_repairs finds it, so the lines are read as they
+        # will be after that, the last reading. An empty recipe line is kept
+        # only where make reads it so in the lines as they are as well.
+        readings = repaired_readings(lines, hidden, remove_trailing_whitespace)
+        read_lines, states = readings[-1]
+        empty_recipes = empty_recipes_to_keep(readings)
+        value_lines = significant_whitespace_lines(read_lines, states)
+
         prev_was_empty = False
 
-        for line in lines:
-            # Remove trailing whitespace if enabled
+        for index, line in enumerate(read_lines):
+            original = lines[index]
+            if states[index].may_be_define_body:
+                # A define body is the variable's value, blank lines and
+                # trailing whitespace included.
+                formatted_lines.append(line)
+                changed = changed or line != original
+                prev_was_empty = False
+                continue
+
+            # Remove trailing whitespace if enabled. A backslash that whitespace
+            # still follows here is not repaired, and keeps it so as not to
+            # continue the line.
             if remove_trailing_whitespace:
-                cleaned_line = line.rstrip()
-                if cleaned_line != line:
-                    changed = True
-                    line = cleaned_line
+                if index in empty_recipes:
+                    line = empty_recipes[index]
+                elif index not in value_lines and not (
+                    LineUtils.has_dangling_backslash(line)
+                ):
+                    line = line.rstrip()
 
             # Normalize consecutive empty lines if enabled
             if normalize_empty_lines:
-                is_empty = not line.strip()
+                is_empty = not line.strip() and index not in empty_recipes
                 if is_empty and prev_was_empty:
                     # Skip this empty line (already have one)
                     changed = True
                     continue
                 prev_was_empty = is_empty
 
+            changed = changed or line != original
             formatted_lines.append(line)
 
-        # Remove extra trailing empty lines
+        # Remove extra trailing empty lines. Blank lines of a define body that
+        # the end of the file cuts off go too: make stops at such a body
+        # ("missing 'endef'").
         while (
             len(formatted_lines) > 1
             and formatted_lines[-1] == ""

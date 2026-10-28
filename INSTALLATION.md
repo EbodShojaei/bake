@@ -14,12 +14,15 @@ pip install mbake
 
 ### 2. Configuration
 
-Your configuration file is located at `{XDG_CONFIG_HOME}/bake.toml`. It contains sensible defaults for Makefile formatting:
+`mbake init` creates `{XDG_CONFIG_HOME}/bake.toml` (default `~/.config/bake.toml`). A `.bake.toml` in the current directory or the nearest parent directory takes precedence, followed by `~/.bake.toml`. The generated file contains sensible defaults for Makefile formatting:
 
 ```toml
 # Global settings
 debug = false
 verbose = false
+
+# Timeout in seconds for syntax checking with 'make -f'
+syntax_check_timeout = 10
 
 # Error message formatting
 gnu_error_format = true
@@ -158,7 +161,7 @@ Once installed, the extension provides:
 Access these settings through VS Code preferences (`Cmd/Ctrl + ,`) and search for "bake":
 
 - **`bake.executablePath`**: Path to bake executable (default: `"bake"`)
-- **`bake.configPath`**: Path to config file (default: uses `{XDG_CONFIG_HOME}/bake.toml`)
+- **`bake.configPath`**: Path to config file (default: mbake's normal lookup, starting from the Makefile's directory)
 - **`bake.formatOnSave`**: Auto-format on save (default: `false`)
 - **`bake.showDiff`**: Show diff when formatting (default: `false`)
 - **`bake.verbose`**: Enable verbose output (default: `false`)
@@ -289,7 +292,7 @@ Now every time you save a Makefile, it's automatically formatted!
 
 **Configuration errors:**
 
-- Ensure `{XDG_CONFIG_HOME}/bake.toml` exists and is valid TOML
+- Run `mbake config` to see which configuration file is used and whether it loads
 - Use the provided example: `cp .bake.toml.example ${XDG_CONFIG_HOME}/bake.toml`
   or `cp .bake.toml.example ~/.config/bake.toml`
 
