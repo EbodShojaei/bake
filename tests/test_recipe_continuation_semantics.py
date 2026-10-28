@@ -228,6 +228,24 @@ PROBE = (
 )
 
 
+def _make_release(make):
+    """Return (major, minor) of a GNU make, or None if it is not one."""
+    try:
+        version = subprocess.run(
+            [make, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=_MAKE_ENV,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"GNU Make (\d+)\.(\d+)", version)
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
 def _make_version(make):
     """Return the major version of a GNU make, or None if it is not one."""
     try:
@@ -782,23 +800,24 @@ class TestMakefileSyntax:
         _assert_make_reads_the_same(gnu_make, tmp_path, text, formatted, "all")
 
     def test_posix_keeps_the_whitespace_before_the_backslash(self, gnu_make, tmp_path):
-        """With .POSIX, make 4.x keeps the whitespace before a backslash (GNU
-        783-786), so the value of v1.5.0's output, which condensed it,
-        differs there."""
+        """With .POSIX, GNU make 4.4 and later keep the whitespace before a
+        backslash (GNU 783-786), so the value of v1.5.0's output, which
+        condensed it, differs there. make 4.3 and 3.81 condense either way."""
         text = ".POSIX:\nY = a\\\n  b\\\n  c   \\\n  d\nall: ; @echo [$(Y)]\n"
         formatted = _format(text, DEFAULT).content
         assert formatted == text
         _assert_make_reads_the_same(gnu_make, tmp_path, text, formatted, "all")
-        if gnu_make[3] >= 4:
+        if _make_release(gnu_make[0]) >= (4, 4):
             values = _readings(gnu_make, tmp_path, text, "all")[0]
             assert "[Y=a b c    d]" in values[1]
             v150 = text.replace("b\\\n  c   \\", "b \\\n  c \\")
             assert "[Y=a b  c  d]" in _readings(gnu_make, tmp_path, v150, "all")[0][1]
 
     def test_posix_define_body_stays_as_written(self, gnu_make, tmp_path):
-        """A define body below .POSIX stays as written too: make 4.x keeps the
-        whitespace before its backslashes (GNU 783-786, 4795-4814), so the
-        value of v1.5.0's output, which condensed it, differs there."""
+        """A define body below .POSIX stays as written too: GNU make 4.4 and
+        later keep the whitespace before its backslashes (GNU 783-786,
+        4795-4814), so the value of v1.5.0's output, which condensed it,
+        differs there. make 4.3 and 3.81 condense either way."""
         text = (
             ".POSIX:\ndefine BODY\na\\\n  b   \\\n      c \\\n  d\nendef\n"
             "all: ; @echo [$(BODY)]\n"
@@ -806,7 +825,7 @@ class TestMakefileSyntax:
         formatted = _format(text, DEFAULT).content
         assert formatted == text
         _assert_make_reads_the_same(gnu_make, tmp_path, text, formatted, "all")
-        if gnu_make[3] >= 4:
+        if _make_release(gnu_make[0]) >= (4, 4):
             values = _readings(gnu_make, tmp_path, text, "all")[0]
             assert "[BODY=a b    c  d]" in values[1]
             v150 = text.replace("  b   \\\n      c", "  b \\\n  c")
